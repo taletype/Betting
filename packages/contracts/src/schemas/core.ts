@@ -1,7 +1,12 @@
 import { z } from "zod";
 
-export const MoneySchema = z.bigint();
-export const QuantitySchema = z.bigint();
+const BigIntSchema = z
+  .union([z.bigint(), z.string().regex(/^-?\d+$/)])
+  .transform((value) => (typeof value === "bigint" ? value : BigInt(value)));
+
+export const MoneySchema = BigIntSchema;
+export const QuantitySchema = BigIntSchema;
+export const SequenceSchema = BigIntSchema;
 export const TimestampSchema = z.string().datetime();
 export const UuidSchema = z.string().uuid();
 
@@ -140,13 +145,71 @@ export const ClaimSchema = z.object({
   updatedAt: TimestampSchema,
 });
 
+export const MarketStatsSchema = z.object({
+  bestBid: MoneySchema.nullable(),
+  bestAsk: MoneySchema.nullable(),
+  lastTradePrice: MoneySchema.nullable(),
+  volumeNotional: MoneySchema,
+});
+
+export const MarketSnapshotSchema = MarketSchema.extend({
+  stats: MarketStatsSchema,
+});
+
+export const OrderBookLevelSchema = z.object({
+  outcomeId: UuidSchema,
+  side: z.enum(["buy", "sell"]),
+  priceTicks: MoneySchema,
+  quantityAtoms: QuantitySchema,
+});
+
+export const OrderBookSchema = z.object({
+  marketId: UuidSchema,
+  levels: z.array(OrderBookLevelSchema),
+});
+
+export const RecentTradeSchema = z.object({
+  id: UuidSchema,
+  outcomeId: UuidSchema,
+  priceTicks: MoneySchema,
+  quantityAtoms: QuantitySchema,
+  takerSide: z.enum(["buy", "sell"]).nullable(),
+  executedAt: TimestampSchema,
+});
+
+export const MarketTradesSchema = z.object({
+  marketId: UuidSchema,
+  trades: z.array(RecentTradeSchema),
+});
+
+export const PortfolioBalanceSchema = z.object({
+  currency: z.string().min(1),
+  available: MoneySchema,
+  reserved: MoneySchema,
+});
+
+export const PortfolioSnapshotSchema = z.object({
+  balances: z.array(PortfolioBalanceSchema),
+  openOrders: z.array(OrderSchema),
+  positions: z.array(PositionSchema),
+  claims: z.array(ClaimSchema),
+});
+
 export type Market = z.infer<typeof MarketSchema>;
+export type MarketStats = z.infer<typeof MarketStatsSchema>;
+export type MarketSnapshot = z.infer<typeof MarketSnapshotSchema>;
 export type Outcome = z.infer<typeof OutcomeSchema>;
 export type Order = z.infer<typeof OrderSchema>;
 export type Trade = z.infer<typeof TradeSchema>;
+export type OrderBookLevel = z.infer<typeof OrderBookLevelSchema>;
+export type OrderBook = z.infer<typeof OrderBookSchema>;
+export type RecentTrade = z.infer<typeof RecentTradeSchema>;
+export type MarketTrades = z.infer<typeof MarketTradesSchema>;
 export type Position = z.infer<typeof PositionSchema>;
 export type Resolution = z.infer<typeof ResolutionSchema>;
 export type Claim = z.infer<typeof ClaimSchema>;
 export type ExternalMarket = z.infer<typeof ExternalMarketSchema>;
 export type ExternalOutcome = z.infer<typeof ExternalOutcomeSchema>;
 export type ExternalTradeTick = z.infer<typeof ExternalTradeTickSchema>;
+export type PortfolioBalance = z.infer<typeof PortfolioBalanceSchema>;
+export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;

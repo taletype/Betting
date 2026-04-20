@@ -2,7 +2,12 @@ import { createServer } from "node:http";
 
 import { getExternalMarketBySourceAndId, listExternalMarkets } from "./modules/external-markets/handlers";
 import { getHealth } from "./modules/health/handlers";
-import { getMarketById, listMarkets } from "./modules/markets/handlers";
+import {
+  getMarketById,
+  getOrderBookByMarketId,
+  getTradesByMarketId,
+  listMarkets,
+} from "./modules/markets/handlers";
 import { cancelOrder, createOrder } from "./modules/orders/handlers";
 import { getPortfolio } from "./modules/portfolio/handlers";
 import { toJson } from "./presenters/json";
@@ -27,6 +32,7 @@ const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<stri
 const handleRequest = async (request: Request): Promise<Response> => {
   try {
     const url = new URL(request.url);
+    const segments = url.pathname.split("/").filter(Boolean);
 
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json(getHealth());
@@ -54,8 +60,30 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "GET" && url.pathname.startsWith("/markets/")) {
-      const marketId = url.pathname.split("/").at(-1) ?? "";
+    if (
+      request.method === "GET" &&
+      segments.length === 3 &&
+      segments[0] === "markets" &&
+      segments[2] === "orderbook"
+    ) {
+      return new Response(toJson(await getOrderBookByMarketId(segments[1] ?? "")), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (
+      request.method === "GET" &&
+      segments.length === 3 &&
+      segments[0] === "markets" &&
+      segments[2] === "trades"
+    ) {
+      return new Response(toJson(await getTradesByMarketId(segments[1] ?? "")), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "GET" && segments.length === 2 && segments[0] === "markets") {
+      const marketId = segments[1] ?? "";
       const market = await getMarketById(marketId);
       return new Response(toJson({ market }), {
         headers: { "content-type": "application/json" },
@@ -81,8 +109,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "DELETE" && url.pathname.startsWith("/orders/")) {
-      const orderId = url.pathname.split("/").at(-1) ?? "";
+    if (request.method === "DELETE" && segments.length === 2 && segments[0] === "orders") {
+      const orderId = segments[1] ?? "";
       const result = await cancelOrder({ orderId });
       return new Response(toJson(result), {
         headers: { "content-type": "application/json" },

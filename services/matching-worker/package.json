@@ -13,7 +13,7 @@
     "test": "pnpm exec node -e \"console.log('matching-worker: no tests yet')\""
   },
   "dependencies": {
-    "@bet/matching": "workspace:*",
-    "@bet/observability": "workspace:*"
+    "@bet/observability": "workspace:*",
+    "@bet/trading": "workspace:*"
   }
 }

@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('web: no tests yet')\""
+    "test": "pnpm exec node --import tsx --test src/lib/market-realtime.test.ts"
   },
   "dependencies": {
     "@bet/contracts": "workspace:*",

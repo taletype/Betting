@@ -1,32 +1,92 @@
 import { z } from "zod";
 
-import { MarketSchema, TradeSchema } from "../schemas/core";
+import {
+  MarketTradesSchema,
+  OrderBookSchema,
+  RecentTradeSchema,
+  SequenceSchema,
+  UuidSchema,
+} from "../schemas/core";
 
-export const PublicMarketSnapshotEventSchema = z.object({
-  type: z.literal("market.snapshot"),
-  market: MarketSchema,
-  sequence: z.bigint(),
+export const PublicMarketChannelSchema = z.enum(["orderbook", "trades"]);
+export const PUBLIC_MARKET_EVENTS_NOTIFICATION_CHANNEL = "public_market_events";
+
+export const PublicMarketSubscribeMessageSchema = z.object({
+  type: z.literal("market.subscribe"),
+  marketId: UuidSchema,
+  channels: z.array(PublicMarketChannelSchema).min(1),
 });
 
-export const PublicTradeCreatedEventSchema = z.object({
-  type: z.literal("trade.created"),
-  trade: TradeSchema,
-  sequence: z.bigint(),
+export const PublicMarketUnsubscribeMessageSchema = z.object({
+  type: z.literal("market.unsubscribe"),
+  marketId: UuidSchema,
 });
 
-export const PublicOrderBookUpdatedEventSchema = z.object({
-  type: z.literal("orderbook.updated"),
-  marketId: z.string().uuid(),
-  outcomeId: z.string().uuid(),
-  sequence: z.bigint(),
-  bids: z.array(z.tuple([z.bigint(), z.bigint()])),
-  asks: z.array(z.tuple([z.bigint(), z.bigint()])),
+export const PublicWebsocketClientMessageSchema = z.discriminatedUnion("type", [
+  PublicMarketSubscribeMessageSchema,
+  PublicMarketUnsubscribeMessageSchema,
+]);
+
+export const PublicOrderBookSnapshotEventSchema = z.object({
+  type: z.literal("market.orderbook.snapshot"),
+  marketId: UuidSchema,
+  sequence: SequenceSchema,
+  orderbook: OrderBookSchema,
+});
+
+export const PublicOrderBookDeltaEventSchema = z.object({
+  type: z.literal("market.orderbook.delta"),
+  marketId: UuidSchema,
+  sequence: SequenceSchema,
+  orderbook: OrderBookSchema,
+});
+
+export const PublicTradesSnapshotEventSchema = z.object({
+  type: z.literal("market.trades.snapshot"),
+  marketId: UuidSchema,
+  sequence: SequenceSchema,
+  trades: MarketTradesSchema,
+});
+
+export const PublicTradeExecutedEventSchema = z.object({
+  type: z.literal("market.trade.executed"),
+  marketId: UuidSchema,
+  sequence: SequenceSchema,
+  trade: RecentTradeSchema,
+});
+
+export const PublicErrorEventSchema = z.object({
+  type: z.literal("system.error"),
+  message: z.string().min(1),
 });
 
 export const PublicWebsocketEventSchema = z.discriminatedUnion("type", [
-  PublicMarketSnapshotEventSchema,
-  PublicTradeCreatedEventSchema,
-  PublicOrderBookUpdatedEventSchema,
+  PublicOrderBookSnapshotEventSchema,
+  PublicOrderBookDeltaEventSchema,
+  PublicTradesSnapshotEventSchema,
+  PublicTradeExecutedEventSchema,
+  PublicErrorEventSchema,
 ]);
 
+export const PublicOrderBookChangedNotificationSchema = z.object({
+  type: z.literal("market.orderbook.changed"),
+  marketId: UuidSchema,
+  sequence: SequenceSchema,
+});
+
+export const PublicTradeExecutedNotificationSchema = z.object({
+  type: z.literal("market.trade.executed"),
+  marketId: UuidSchema,
+  sequence: SequenceSchema,
+  trade: RecentTradeSchema,
+});
+
+export const PublicMarketNotificationSchema = z.discriminatedUnion("type", [
+  PublicOrderBookChangedNotificationSchema,
+  PublicTradeExecutedNotificationSchema,
+]);
+
+export type PublicMarketChannel = z.infer<typeof PublicMarketChannelSchema>;
+export type PublicWebsocketClientMessage = z.infer<typeof PublicWebsocketClientMessageSchema>;
 export type PublicWebsocketEvent = z.infer<typeof PublicWebsocketEventSchema>;
+export type PublicMarketNotification = z.infer<typeof PublicMarketNotificationSchema>;

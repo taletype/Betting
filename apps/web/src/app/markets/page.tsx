@@ -1,45 +1,44 @@
 import Link from "next/link";
+import { listMarkets } from "../../lib/api";
 
-const markets = [
-  {
-    id: "11111111-1111-4111-8111-111111111111",
-    title: "Will the Fed cut rates before year end?",
-    status: "Open",
-    price: "54",
-    volume: "128900",
-  },
-  {
-    id: "44444444-4444-4444-8444-444444444444",
-    title: "Will ETH ETF net inflows stay positive this month?",
-    status: "Open",
-    price: "61",
-    volume: "88200",
-  },
-];
+const formatTicks = (value: bigint | null): string => (value === null ? "—" : value.toString());
 
-export default function MarketsPage() {
+export default async function MarketsPage() {
+  const markets = await listMarkets();
+
   return (
     <main className="stack">
       <section className="hero">
         <h1>Markets</h1>
         <p>
-          Integer-priced prediction markets, append-only ledger accounting, and worker-driven state
-          transitions. This page is scaffolded to compile cleanly while backend modules fill in.
+          Live markets now render from the API-backed read layer with DB-derived top-of-book and
+          recent trade stats.
         </p>
       </section>
       <section className="grid">
         {markets.map((market) => (
           <Link className="panel stack" key={market.id} href={`/markets/${market.id}`}>
-            <div className="muted">{market.status}</div>
+            <div className="muted">{market.status.toUpperCase()}</div>
             <strong>{market.title}</strong>
+            <div className="muted">{market.description}</div>
             <div className="grid">
               <div>
-                <div className="muted">Mid price</div>
-                <div className="metric">{market.price}</div>
+                <div className="muted">Best bid</div>
+                <div className="metric">{formatTicks(market.stats.bestBid)}</div>
+              </div>
+              <div>
+                <div className="muted">Best ask</div>
+                <div className="metric">{formatTicks(market.stats.bestAsk)}</div>
+              </div>
+            </div>
+            <div className="grid">
+              <div>
+                <div className="muted">Last trade</div>
+                <div className="metric">{formatTicks(market.stats.lastTradePrice)}</div>
               </div>
               <div>
                 <div className="muted">Volume</div>
-                <div className="metric">{market.volume}</div>
+                <div className="metric">{market.stats.volumeNotional.toString()}</div>
               </div>
             </div>
           </Link>

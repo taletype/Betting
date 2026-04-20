@@ -54,6 +54,12 @@ importers:
       '@bet/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@bet/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
 
   packages/chain: {}
 
@@ -106,6 +112,27 @@ importers:
 
   packages/test-utils: {}
 
+  packages/trading:
+    dependencies:
+      '@bet/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@bet/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bet/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@bet/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bet/matching':
+        specifier: workspace:*
+        version: link:../matching
+      '@bet/observability':
+        specifier: workspace:*
+        version: link:../observability
+
   packages/wallet: {}
 
   services/api:
@@ -125,6 +152,9 @@ importers:
       '@bet/matching':
         specifier: workspace:*
         version: link:../../packages/matching
+      '@bet/trading':
+        specifier: workspace:*
+        version: link:../../packages/trading
 
   services/candles-worker: {}
 
@@ -139,12 +169,12 @@ importers:
 
   services/matching-worker:
     dependencies:
-      '@bet/matching':
-        specifier: workspace:*
-        version: link:../../packages/matching
       '@bet/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@bet/trading':
+        specifier: workspace:*
+        version: link:../../packages/trading
 
   services/reconciliation-worker:
     dependencies:
