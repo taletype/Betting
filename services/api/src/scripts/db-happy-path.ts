@@ -9,6 +9,7 @@ import { resolveMarket } from "../modules/admin/handlers";
 import { claimMarket, getClaimableStateForMarket } from "../modules/claims/handlers";
 import { verifyDepositWithDependencies } from "../modules/deposits/handlers";
 import { DEMO_USER_ID, INTEGRATION_FLOW_USER_ID } from "../modules/shared/constants";
+import { failWithdrawal, requestWithdrawal } from "../modules/withdrawals/handlers";
 import { getLinkedWallet, linkBaseWallet } from "../modules/wallets/handlers";
 
 const db = createDatabaseClient();
@@ -20,6 +21,7 @@ const PRICE_TICKS = 44n;
 const RESTING_QUANTITY = 10n;
 const CROSSING_QUANTITY = 6n;
 const DEPOSIT_AMOUNT = 5000n;
+const WITHDRAWAL_TEST_AMOUNT = 50n;
 
 interface FundsSnapshotRow {
   available: bigint;
@@ -38,12 +40,29 @@ interface OrderStateRow {
   reserved_amount: bigint;
 }
 
+interface OpenOrderSummaryRow {
+  id: string;
+  user_id: string;
+  side: "buy" | "sell";
+  status: "open" | "partially_filled";
+  remaining_quantity: bigint;
+  reserved_amount: bigint;
+}
+
 interface TradeRow {
   id: string;
   market_id: string;
   outcome_id: string;
   maker_order_id: string;
   taker_order_id: string;
+  price: bigint;
+  quantity: bigint;
+}
+
+interface TradeSummaryRow {
+  id: string;
+  maker_user_id: string;
+  taker_user_id: string;
   price: bigint;
   quantity: bigint;
 }
@@ -166,7 +185,7 @@ const getClaimSummary = async (userId: string, marketId: string) => {
   return row ?? null;
 };
 
-const listWithdrawalsIfTableExists = async (userId: string): Promise<WithdrawalSummaryRow[]> => {
+const isWithdrawalsTableAvailable = async (): Promise<boolean> => {
   const [tableExists] = await db.query<{ exists: boolean }>(
     `
       select exists(
@@ -178,7 +197,11 @@ const listWithdrawalsIfTableExists = async (userId: string): Promise<WithdrawalS
     `,
   );
 
-  if (!tableExists?.exists) {
+  return Boolean(tableExists?.exists);
+};
+
+const listWithdrawalsIfTableExists = async (userId: string): Promise<WithdrawalSummaryRow[]> => {
+  if (!(await isWithdrawalsTableAvailable())) {
     return [];
   }
 
@@ -197,6 +220,43 @@ const listWithdrawalsIfTableExists = async (userId: string): Promise<WithdrawalS
     [userId],
   );
 };
+
+const listOpenOrders = async () =>
+  db.query<OpenOrderSummaryRow>(
+    `
+      select
+        id,
+        user_id,
+        side,
+        status,
+        remaining_quantity,
+        reserved_amount
+      from public.orders
+      where market_id = $1::uuid
+        and outcome_id = $2::uuid
+        and status in ('open', 'partially_filled')
+      order by created_at asc, id asc
+    `,
+    [MARKET_ID, WINNING_OUTCOME_ID],
+  );
+
+const listRecentTrades = async () =>
+  db.query<TradeSummaryRow>(
+    `
+      select
+        id,
+        maker_user_id,
+        taker_user_id,
+        price,
+        quantity
+      from public.trades
+      where market_id = $1::uuid
+        and outcome_id = $2::uuid
+      order by matched_at desc, id desc
+      limit 10
+    `,
+    [MARKET_ID, WINNING_OUTCOME_ID],
+  );
 
 const cleanupScenarioOrders = async (userId: string) => {
   const orders = await db.query<{ id: string }>(
@@ -287,6 +347,7 @@ const main = async () => {
   const sellerPositionBeforeTrade = await getPositionSnapshot(INTEGRATION_FLOW_USER_ID);
 
   const restingOrder = await createOrder({
+    userId: INTEGRATION_FLOW_USER_ID,
     marketId: MARKET_ID,
     outcomeId: WINNING_OUTCOME_ID,
     side: "sell",
@@ -297,6 +358,7 @@ const main = async () => {
   });
 
   const crossingOrder = await createOrder({
+    userId: DEMO_USER_ID,
     marketId: MARKET_ID,
     outcomeId: WINNING_OUTCOME_ID,
     side: "buy",
@@ -406,12 +468,50 @@ const main = async () => {
   const claimSummary = await getClaimSummary(DEMO_USER_ID, MARKET_ID);
   assertCondition(claimSummary?.status === "claimed", "claim row should be persisted as claimed");
 
+  let withdrawalSummary: { requestedId: string; failedId: string; finalStatus: string } | null = null;
+  if (await isWithdrawalsTableAvailable()) {
+    const beforeWithdrawalFunds = await getFundsSnapshot(DEMO_USER_ID);
+
+    const requestedWithdrawal = await requestWithdrawal({
+      userId: DEMO_USER_ID,
+      amountAtoms: WITHDRAWAL_TEST_AMOUNT,
+      destinationAddress: "0x00000000000000000000000000000000000000bb",
+    });
+
+    const afterRequestFunds = await getFundsSnapshot(DEMO_USER_ID);
+    assertCondition(
+      beforeWithdrawalFunds.available - afterRequestFunds.available === WITHDRAWAL_TEST_AMOUNT,
+      "requested withdrawal should move available funds into pending withdrawal",
+    );
+
+    const failedWithdrawal = await failWithdrawal({
+      adminUserId: INTEGRATION_FLOW_USER_ID,
+      isAdmin: true,
+      withdrawalId: requestedWithdrawal.id,
+      reason: `db-happy-path rollback ${runId}`,
+    });
+
+    const afterFailureFunds = await getFundsSnapshot(DEMO_USER_ID);
+    assertCondition(
+      afterFailureFunds.available - beforeWithdrawalFunds.available === 0n,
+      "failed withdrawal should restore available funds",
+    );
+
+    withdrawalSummary = {
+      requestedId: requestedWithdrawal.id,
+      failedId: failedWithdrawal.id,
+      finalStatus: failedWithdrawal.status,
+    };
+  }
+
   const withdrawals = await listWithdrawalsIfTableExists(DEMO_USER_ID);
 
   const finalBuyerFunds = await getFundsSnapshot(DEMO_USER_ID);
   const finalSellerFunds = await getFundsSnapshot(INTEGRATION_FLOW_USER_ID);
   const finalBuyerPosition = await getPositionSnapshot(DEMO_USER_ID);
   const finalSellerPosition = await getPositionSnapshot(INTEGRATION_FLOW_USER_ID);
+  const openOrders = await listOpenOrders();
+  const recentTrades = await listRecentTrades();
 
   console.log("db-happy-path: ok");
   console.log(
@@ -431,6 +531,21 @@ const main = async () => {
           makerOrderId: restingOrder.order.id,
           takerOrderId: crossingOrder.order.id,
         },
+        openOrders: openOrders.map((row) => ({
+          id: row.id,
+          userId: row.user_id,
+          side: row.side,
+          status: row.status,
+          remainingQuantity: row.remaining_quantity.toString(),
+          reservedAmount: row.reserved_amount.toString(),
+        })),
+        trades: recentTrades.map((row) => ({
+          id: row.id,
+          makerUserId: row.maker_user_id,
+          takerUserId: row.taker_user_id,
+          price: row.price.toString(),
+          quantity: row.quantity.toString(),
+        })),
         finalBalances: {
           demoUser: {
             available: finalBuyerFunds.available.toString(),
@@ -459,6 +574,7 @@ const main = async () => {
               claimedAmount: claimSummary.claimed_amount.toString(),
             }
           : null,
+        withdrawalFlow: withdrawalSummary,
         withdrawals,
       },
       null,

@@ -10,7 +10,7 @@
     "dev": "node --import tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node --test --import tsx src/**/*.test.ts",
+    "test": "pnpm exec node --test --import tsx $(find src -name '*.test.ts' -print)",
     "test:db-happy-path": "node --import tsx src/scripts/db-happy-path.ts"
   },
   "dependencies": {
