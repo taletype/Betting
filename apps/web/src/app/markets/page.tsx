@@ -1,16 +1,7 @@
 import Link from "next/link";
+
 import { listMarkets } from "../../lib/api";
 
-import { apiRequest } from "../../lib/api";
-
-interface MarketRow {
-  id: string;
-  title: string;
-  status: string;
-}
-
-export default async function MarketsPage() {
-  const markets = await apiRequest<MarketRow[]>("/markets");
 const formatTicks = (value: bigint | null): string => (value === null ? "—" : value.toString());
 
 export default async function MarketsPage() {
@@ -21,10 +12,7 @@ export default async function MarketsPage() {
       <section className="hero">
         <h1>Markets</h1>
         <p>Browse live and resolved markets, then open detail pages to trade or claim payouts.</p>
-        <p>
-          Live markets now render from the API-backed read layer with DB-derived top-of-book and
-          recent trade stats.
-        </p>
+        <p>Live markets now render from the API-backed read layer with DB-derived top-of-book and recent trade stats.</p>
       </section>
       <section className="grid">
         {markets.map((market) => (

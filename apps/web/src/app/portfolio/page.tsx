@@ -1,6 +1,18 @@
-import { getPortfolio, linkWallet, toBigInt, verifyDepositTx } from "../../lib/api";
+import { getPortfolio, linkWallet, requestWithdrawal, toBigInt, verifyDepositTx } from "../../lib/api";
 
 const formatTicks = (value: bigint): string => value.toString();
+
+const statusLabel = (status: "requested" | "completed" | "failed"): string => {
+  if (status === "completed") {
+    return "COMPLETED";
+  }
+
+  if (status === "failed") {
+    return "FAILED";
+  }
+
+  return "REQUESTED";
+};
 
 export default async function PortfolioPage() {
   const portfolio = await getPortfolio();
@@ -20,11 +32,19 @@ export default async function PortfolioPage() {
     await verifyDepositTx(String(formData.get("txHash") ?? ""));
   };
 
+  const requestWithdrawalAction = async (formData: FormData) => {
+    "use server";
+    await requestWithdrawal({
+      amountAtoms: BigInt(String(formData.get("amountAtoms") ?? "0")),
+      destinationAddress: String(formData.get("destinationAddress") ?? ""),
+    });
+  };
+
   return (
     <main className="stack">
       <section className="hero">
         <h1>Portfolio</h1>
-        <p>Base deposits credit via ledger journals only.</p>
+        <p>Base deposits and withdrawals credit via ledger journals only.</p>
       </section>
 
       <section className="grid">
@@ -68,6 +88,15 @@ export default async function PortfolioPage() {
       </section>
 
       <section className="panel stack">
+        <h2>Request Base Withdrawal</h2>
+        <form action={requestWithdrawalAction} className="stack">
+          <input name="amountAtoms" type="number" min="1" step="1" placeholder="Amount atoms" required />
+          <input name="destinationAddress" placeholder="0x destination wallet" required />
+          <button type="submit">Request Withdrawal</button>
+        </form>
+      </section>
+
+      <section className="panel stack">
         <h2>Deposit History</h2>
         {portfolio.deposits.length === 0 ? <div className="muted">No deposits credited yet.</div> : null}
         {portfolio.deposits.map((deposit) => (
@@ -77,6 +106,24 @@ export default async function PortfolioPage() {
               Amount: {toBigInt(deposit.amount).toString()} {deposit.currency} · Status: {deposit.txStatus}
             </div>
             <div className="muted">{new Date(deposit.verifiedAt).toISOString()}</div>
+          </div>
+        ))}
+      </section>
+
+      <section className="panel stack">
+        <h2>Withdrawal History</h2>
+        {portfolio.withdrawals.length === 0 ? <div className="muted">No withdrawals requested yet.</div> : null}
+        {portfolio.withdrawals.map((withdrawal) => (
+          <div key={withdrawal.id}>
+            <div>{withdrawal.destinationAddress}</div>
+            <div>
+              Amount: {toBigInt(withdrawal.amountAtoms).toString()} · Status: {statusLabel(withdrawal.status)}
+            </div>
+            <div className="muted">
+              Requested: {new Date(withdrawal.requestedAt).toISOString()}
+              {withdrawal.processedAt ? ` · Processed: ${new Date(withdrawal.processedAt).toISOString()}` : ""}
+              {withdrawal.txHash ? ` · Tx: ${withdrawal.txHash}` : ""}
+            </div>
           </div>
         ))}
       </section>

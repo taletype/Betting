@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { apiRequest } from "../../lib/api";
+import { apiRequest, executeAdminWithdrawal, failAdminWithdrawal } from "../../lib/api";
 
 export const resolveMarketAction = async (formData: FormData) => {
   const marketId = String(formData.get("marketId") ?? "");
@@ -26,5 +26,25 @@ export const resolveMarketAction = async (formData: FormData) => {
 
   revalidatePath("/admin");
   revalidatePath(`/markets/${marketId}`);
+  revalidatePath("/portfolio");
+};
+
+export const executeWithdrawalAction = async (formData: FormData) => {
+  const withdrawalId = String(formData.get("withdrawalId") ?? "");
+  const txHash = String(formData.get("txHash") ?? "");
+
+  await executeAdminWithdrawal(withdrawalId, txHash);
+
+  revalidatePath("/admin");
+  revalidatePath("/portfolio");
+};
+
+export const failWithdrawalAction = async (formData: FormData) => {
+  const withdrawalId = String(formData.get("withdrawalId") ?? "");
+  const reason = String(formData.get("reason") ?? "");
+
+  await failAdminWithdrawal(withdrawalId, reason);
+
+  revalidatePath("/admin");
   revalidatePath("/portfolio");
 };
