@@ -1,4 +1,4 @@
-import { createDatabaseClient } from "@bet/db";
+import { createSupabaseAdminClient } from "@bet/supabase";
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ interface ExternalMarketRow {
   last_synced_at: Date | string | null;
 }
 
-const db = createDatabaseClient();
+const supabase = createSupabaseAdminClient();
 
 const toNumber = (value: number | string | null): number | null => {
   if (value === null) {
@@ -48,24 +48,20 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
   return "neutral";
 };
 
-const loadMarkets = async (): Promise<ExternalMarketRow[]> =>
-  db.query<ExternalMarketRow>(
-    `
-      select
-        id,
-        source,
-        external_id,
-        title,
-        status,
-        best_bid,
-        best_ask,
-        last_trade_price,
-        last_synced_at
-      from public.external_markets
-      order by last_synced_at desc nulls last, updated_at desc
-      limit 100
-    `,
-  );
+const loadMarkets = async (): Promise<ExternalMarketRow[]> => {
+  const { data, error } = await supabase
+    .from("external_markets")
+    .select("id, source, external_id, title, status, best_bid, best_ask, last_trade_price, last_synced_at")
+    .order("last_synced_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as ExternalMarketRow[];
+};
 
 export default async function ExternalMarketsPage() {
   const markets = await loadMarkets();
