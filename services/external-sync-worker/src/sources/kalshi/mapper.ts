@@ -1,1 +1,1 @@
-export const mapKalshiMarket = (payload: unknown) => payload;
+export const mapKalshiMarket = <T>(payload: T): T => payload;

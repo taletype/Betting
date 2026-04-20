@@ -1,4 +1,8 @@
-import type { Order } from "@bet/contracts";
+import type {
+  PortfolioBalance as ContractPortfolioBalance,
+  PortfolioSnapshot as ContractPortfolioSnapshot,
+  Position,
+} from "@bet/contracts";
 import { createDatabaseClient } from "@bet/db";
 
 import { DEFAULT_COLLATERAL_CURRENCY } from "../shared/constants";
@@ -10,23 +14,62 @@ interface PortfolioBalanceRow {
   reserved: bigint;
 }
 
+interface PositionRow {
+  id: string;
+  user_id: string;
+  market_id: string;
+  outcome_id: string;
+  net_quantity: bigint;
+  average_entry_price: bigint;
+  realized_pnl: bigint;
+  updated_at: Date | string;
+}
+
 const db = createDatabaseClient();
 
 const buildAvailableFundsAccountCode = (userId: string): string => `user:${userId}:funds:available`;
 const buildReservedFundsAccountCode = (userId: string): string => `user:${userId}:funds:reserved`;
 
-export interface PortfolioBalance {
-  currency: string;
-  available: bigint;
-  reserved: bigint;
-}
+const toIsoString = (value: Date | string): string =>
+  value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
-export interface PortfolioSnapshot {
-  balances: PortfolioBalance[];
-  openOrders: Order[];
-}
+const mapPositionRow = (row: PositionRow): Position => ({
+  id: row.id,
+  userId: row.user_id,
+  marketId: row.market_id,
+  outcomeId: row.outcome_id,
+  netQuantity: row.net_quantity,
+  averageEntryPrice: row.average_entry_price,
+  realizedPnl: row.realized_pnl,
+  updatedAt: toIsoString(row.updated_at),
+});
 
-export const getPortfolioSnapshot = async (userId: string): Promise<PortfolioSnapshot> => {
+const listPositionsForUser = async (userId: string): Promise<Position[]> => {
+  const rows = await db.query<PositionRow>(
+    `
+      select
+        id,
+        user_id,
+        market_id,
+        outcome_id,
+        net_quantity,
+        average_entry_price,
+        realized_pnl,
+        updated_at
+      from public.positions
+      where user_id = $1::uuid
+        and net_quantity <> 0
+      order by updated_at desc, id desc
+    `,
+    [userId],
+  );
+
+  return rows.map((row) => mapPositionRow(row));
+};
+
+export const getPortfolioSnapshot = async (
+  userId: string,
+): Promise<ContractPortfolioSnapshot> => {
   const balanceRows = await db.query<PortfolioBalanceRow>(
     `
       select
@@ -59,7 +102,7 @@ export const getPortfolioSnapshot = async (userId: string): Promise<PortfolioSna
     [buildAvailableFundsAccountCode(userId), buildReservedFundsAccountCode(userId)],
   );
 
-  const balances =
+  const balances: ContractPortfolioBalance[] =
     balanceRows.length > 0
       ? balanceRows.map((row) => ({
           currency: row.currency,
@@ -77,5 +120,7 @@ export const getPortfolioSnapshot = async (userId: string): Promise<PortfolioSna
   return {
     balances,
     openOrders: await listOpenOrdersForUser(db, userId),
+    positions: await listPositionsForUser(userId),
+    claims: [],
   };
 };
