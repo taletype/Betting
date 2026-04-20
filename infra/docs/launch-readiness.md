@@ -2,6 +2,7 @@
 
 > This document is a hardening snapshot captured on 2026-04-20.
 > For the active RC freeze checklist and merge plan, use `infra/docs/release-candidate-freeze-plan.md`.
+> For launch vs post-launch prioritization, use `infra/docs/v1.0-v1.1-backlog-split.md`.
 
 Date: 2026-04-20
 
