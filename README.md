@@ -122,6 +122,7 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - `pnpm dev:workers` → matching + external-sync + settlement + reconciliation workers
 - `pnpm db:reset` → local Supabase reset + happy-path DB verification
 - `pnpm smoke:local` → local environment smoke checks
+- `pnpm load:launch` → narrow launch-path load harness (reads, order burst, ws fan-in)
 
 ## Notes
 
@@ -129,3 +130,8 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - Balance changes must flow through append-only ledger journals and entries.
 - External market sync stays read-only and never mutates balances directly.
 - Chain support is adapter-shaped; Base comes first and Solana remains a stub surface for later work.
+
+## Load Harness
+
+- Run `pnpm load:launch` for a narrow launch-path performance check.
+- See `infra/docs/load-testing.md` for setup, thresholds, and tuning knobs.
