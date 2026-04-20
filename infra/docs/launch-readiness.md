@@ -1,5 +1,8 @@
 # Launch Readiness Hardening Report
 
+> This document is a hardening snapshot captured on 2026-04-20.
+> For the active RC freeze checklist and merge plan, use `infra/docs/release-candidate-freeze-plan.md`.
+
 Date: 2026-04-20
 
 ## What was verified
@@ -11,7 +14,8 @@ Date: 2026-04-20
   - verify trade/order/position/funds state transitions,
   - run admin resolution + claim,
   - optionally exercise withdrawal request + admin fail and verify balance restoration when withdrawals are available,
-  - print final balances/open orders/positions/trades/claims/withdrawals summary.
+  - print final balances/open orders/positions/trades/claims/withdrawals summary,
+  - persist JSON evidence when `DB_HAPPY_PATH_ARTIFACT` is provided.
 - Reconciliation coverage verified in `services/reconciliation-worker/src/main.ts` and `baseTreasuryReconciliation.ts` for:
   - ledger journal balance consistency,
   - reserved balance vs open order exposure,
@@ -30,22 +34,57 @@ Date: 2026-04-20
 - `pnpm --filter @bet/reconciliation-worker typecheck`
 - `pnpm --filter @bet/service-api test:db-happy-path`
 
+## DB-backed launch smoke command (CI/staging ready)
+
+Use a single command for DB lifecycle smoke evidence:
+
+```bash
+pnpm smoke:db
+```
+
+What it does:
+
+1. checks DB connectivity against `SUPABASE_DB_URL` or `DATABASE_URL`,
+2. optionally runs migrations/seed/reset based on `SMOKE_DB_PREP_MODE`,
+3. runs the DB happy-path smoke script,
+4. exits non-zero on any failure,
+5. stores launch artifacts.
+
+### Prep controls
+
+- `SMOKE_DB_PREP_MODE=none` (default): skip DB reset/migration step.
+- `SMOKE_DB_PREP_MODE=reset-local`: run `supabase db reset --local --yes`.
+- `SMOKE_DB_PREP_MODE=reset`: run `supabase db reset --yes`.
+- `SMOKE_DB_PREP_MODE=command` with `SMOKE_DB_PREP_CMD='<command>'`: run an explicit custom prep command.
+
+### Artifact/log location
+
+Default output directory:
+
+- `infra/artifacts/smoke-db/`
+
+Files created per run:
+
+- `db-happy-path-<UTC timestamp>.log`
+- `db-happy-path-<UTC timestamp>.json`
+- `latest.log`
+- `latest.json`
+
+The JSON artifact includes final balances, trades, positions, claim state, and withdrawals when available.
+
 ## Manual-only / environment-limited
 
-- `test:db-happy-path` requires local Postgres/Supabase stack. In this environment it failed with `ECONNREFUSED 127.0.0.1:54322`.
-- To run locally once DB is up:
-  1. `pnpm db:reset`
-  2. `pnpm --filter @bet/service-api test:db-happy-path`
+- DB-backed smoke requires a reachable Postgres/Supabase database and seeded launch fixtures (market `77777777-7777-4777-8777-777777777777` and outcome `88888888-8888-4888-8888-888888888888`).
 
 ## Current known blockers
 
 ### Must fix before launch
 
-- Run the DB-backed happy-path script in a real local/staging DB and record a passing run artifact/log. (Currently blocked only by unavailable local DB in this environment.)
+- Execute `pnpm smoke:db` in CI/staging DB-enabled environment and attach `infra/artifacts/smoke-db/latest.log` + `latest.json` to launch signoff.
 
 ### Should fix soon after launch
 
-- Add CI job(s) that run `test:db-happy-path` against ephemeral DB to prevent regressions in the full lifecycle path.
+- Add a dedicated CI workflow/job that runs `pnpm smoke:db` against an ephemeral DB and uploads the generated artifacts.
 
 ### Acceptable to defer
 
@@ -53,4 +92,4 @@ Date: 2026-04-20
 
 ## Launch recommendation
 
-**Ready with caveats**: code-level baseline and automated tests are green, reconciliation and realtime guards are in place, but DB-backed smoke must be run in a DB-enabled environment before go-live signoff.
+**Ready with evidence step pending**: launch hardening is in place and a single DB-backed smoke command now produces reusable artifacts; final go-live signoff still requires one passing CI/staging artifact run.

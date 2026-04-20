@@ -141,7 +141,6 @@ export const executeAdminWithdrawal = async (withdrawalId: string, txHash: strin
     method: "POST",
     headers: {
       "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
-      "x-user-id": process.env.ADMIN_USER_ID ?? "00000000-0000-4000-8000-000000000001",
     },
     body: { txHash },
   });
@@ -151,7 +150,6 @@ export const failAdminWithdrawal = async (withdrawalId: string, reason: string) 
     method: "POST",
     headers: {
       "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
-      "x-user-id": process.env.ADMIN_USER_ID ?? "00000000-0000-4000-8000-000000000001",
     },
     body: { reason },
   });
