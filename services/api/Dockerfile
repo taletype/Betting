@@ -2,8 +2,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy monorepo root for pnpm
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy monorepo root files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY services/ ./services/
 
@@ -15,7 +15,7 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY services/ ./services/
 COPY --from=builder /app/services/api/dist ./services/api/dist
