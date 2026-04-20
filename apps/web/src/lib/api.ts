@@ -10,14 +10,26 @@ import {
 
 const getApiBaseUrl = (): string => {
   const configuredUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
-  
-  // If configured URL is set and not localhost, use it directly (for external API)
-  if (configuredUrl && !configuredUrl.includes("127.0.0.1") && !configuredUrl.includes("localhost")) {
-    return configuredUrl;
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
   }
-  
-  // Always use /api prefix for local/Vercel functions
-  return "/api";
+
+  return "";
+};
+
+const getAdminApiToken = (): string => {
+  const configuredToken = process.env.ADMIN_API_TOKEN?.trim();
+
+  if (configuredToken) {
+    return configuredToken;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ADMIN_API_TOKEN is required in production");
+  }
+
+  return "dev-admin-token";
 };
 
 const getAdminApiToken = (): string => {
@@ -38,7 +50,10 @@ export const apiRequest = async <T>(
   path: string,
   init?: RequestInit & { allowNotFound?: boolean },
 ): Promise<T | null> => {
-  const response = await fetch(new URL(path, getApiBaseUrl()).toString(), {
+  const base = getApiBaseUrl();
+  const url = base ? `${base}${path}` : path;
+
+  const response = await fetch(url, {
     ...init,
     headers: {
       "content-type": "application/json",

@@ -1,4 +1,5 @@
 import { createDatabaseClient } from "@bet/db";
+import { incrementCounter, logger, observeDuration, recordGauge } from "@bet/observability";
 import {
   createKalshiAdapter,
   createPolymarketAdapter,
@@ -9,6 +10,8 @@ import {
 const db = createDatabaseClient();
 
 const adapters: ExternalMarketAdapter[] = [createPolymarketAdapter(), createKalshiAdapter()];
+const isExternalSyncWritesDisabled = (): boolean =>
+  (process.env.OP_DISABLE_EXTERNAL_SYNC_WRITES ?? "").trim().toLowerCase() === "true";
 
 const upsertMarket = async (market: NormalizedExternalMarket): Promise<void> => {
   await db.transaction(async (tx) => {
@@ -196,6 +199,25 @@ const upsertMarket = async (market: NormalizedExternalMarket): Promise<void> => 
   });
 };
 
+const getPreviousCheckpointLagMs = async (source: string): Promise<number | null> => {
+  const rows = await db.query<{ synced_at: string }>(
+    `
+      select synced_at
+      from public.external_sync_checkpoints
+      where source = $1 and checkpoint_key = 'last_market_sync'
+      limit 1
+    `,
+    [source],
+  );
+
+  const syncedAt = rows[0]?.synced_at;
+  if (!syncedAt) {
+    return null;
+  }
+
+  return Date.now() - new Date(syncedAt).getTime();
+};
+
 const recordCheckpoint = async (source: string, syncedCount: number): Promise<void> => {
   await db.query(
     `
@@ -215,7 +237,14 @@ const recordCheckpoint = async (source: string, syncedCount: number): Promise<vo
 };
 
 export const runMarketSyncJob = async (): Promise<void> => {
+  if (isExternalSyncWritesDisabled()) {
+    console.log("external sync worker: writes disabled via OP_DISABLE_EXTERNAL_SYNC_WRITES=true");
+    return;
+  }
+
   for (const adapter of adapters) {
+    const syncStartedAt = Date.now();
+    const previousLagMs = await getPreviousCheckpointLagMs(adapter.source);
     const markets = await adapter.listMarkets();
 
     for (const market of markets) {
@@ -223,5 +252,27 @@ export const runMarketSyncJob = async (): Promise<void> => {
     }
 
     await recordCheckpoint(adapter.source, markets.length);
+
+    observeDuration("external_sync_duration_ms", Date.now() - syncStartedAt, {
+      source: adapter.source,
+    });
+    incrementCounter("external_sync_runs_total", {
+      source: adapter.source,
+      status: "success",
+    });
+    recordGauge("external_sync_markets_synced", markets.length, {
+      source: adapter.source,
+    });
+    if (previousLagMs !== null) {
+      recordGauge("external_sync_lag_ms", previousLagMs, {
+        source: adapter.source,
+      });
+    }
+
+    logger.info("external sync completed", {
+      source: adapter.source,
+      syncedCount: markets.length,
+      previousLagMs,
+    });
   }
 };

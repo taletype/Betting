@@ -1,4 +1,4 @@
-import { logger } from "@bet/observability";
+import { incrementCounter, logger } from "@bet/observability";
 import { processNextSubmittedOrderMatchingJob } from "@bet/trading";
 
 const POLL_INTERVAL_MS = Number(process.env.MATCHING_WORKER_POLL_INTERVAL_MS ?? 1000);
@@ -20,6 +20,9 @@ export const main = async (): Promise<void> => {
         continue;
       }
     } catch (error) {
+      incrementCounter("worker_loop_failures_total", {
+        worker: "matching-worker",
+      });
       logger.error("matching-worker.loop_failed", {
         error: error instanceof Error ? error.message : "unknown error",
       });

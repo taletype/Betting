@@ -97,6 +97,7 @@ export function MarketDetailClient({
     }
 
     resyncingRef.current = true;
+    console.warn("market.websocket.resync_requested", { marketId: market.id });
     setConnectionStatus("resyncing");
     socketRef.current?.close();
 
@@ -104,9 +105,14 @@ export function MarketDetailClient({
       const [orderBook, recentTrades] = await Promise.all([getOrderBook(market.id), getRecentTrades(market.id)]);
 
       setRealtimeState(createMarketRealtimeState(orderBook, recentTrades));
+      console.info("market.websocket.resync_completed", { marketId: market.id });
       setConnectionStatus("reconnecting");
     } catch (error) {
       console.error("failed to resync market state", error);
+      console.error("market.websocket.resync_failed", {
+        marketId: market.id,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
       setConnectionStatus("error");
     } finally {
       resyncingRef.current = false;
@@ -153,6 +159,12 @@ export function MarketDetailClient({
           const result = applyMarketRealtimeMessage(currentState, event);
 
           if (result.shouldResync) {
+            console.warn("market.websocket.sequence_gap_detected", {
+              marketId: market.id,
+              lastSequence: currentState.lastSequence?.toString() ?? null,
+              eventType: event.type,
+              eventSequence: event.sequence.toString(),
+            });
             queueMicrotask(() => {
               void beginResync();
             });

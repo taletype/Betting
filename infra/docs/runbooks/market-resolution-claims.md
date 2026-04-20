@@ -22,8 +22,25 @@ curl -sS -X POST http://127.0.0.1:4000/admin/markets/<market_id>/resolve \
 - `public.resolutions.winning_outcome_id`: set to selected outcome.
 
 ## Claims flow (current repo behavior)
-- Claim logic exists in API module (`claimMarket`), but there is **no public `/claims` HTTP route** in `services/api/src/server.ts`.
-- Operationally, validate claim state through DB and via the DB happy-path script.
+Claims are available through API routes:
+- `GET /claims` (list user claims + claim states)
+- `GET /claims/:marketId/state` (claimability for one market)
+- `POST /claims/:marketId` (submit claim payout)
+
+Auth headers:
+- user-scoped routes expect `x-user-id` in current local/dev flow.
+
+### Check claimability for one market
+```bash
+curl -sS http://127.0.0.1:4000/claims/<market_id>/state \
+  -H 'x-user-id: 00000000-0000-4000-8000-000000000001'
+```
+
+### Submit claim for one market
+```bash
+curl -sS -X POST http://127.0.0.1:4000/claims/<market_id> \
+  -H 'x-user-id: 00000000-0000-4000-8000-000000000001'
+```
 
 ### Validate end-to-end resolution + claim path
 ```bash

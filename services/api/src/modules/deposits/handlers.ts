@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { createBaseChainAdapter, type DepositVerificationAdapter } from "@bet/chain";
 import { readEthereumAddress, readPositiveInteger } from "@bet/config";
 import { createDatabaseClient } from "@bet/db";
+import { incrementCounter, logger } from "@bet/observability";
 
 import { getLinkedWalletForUser } from "../wallets/repository";
 import { insertAuditRecord } from "../shared/audit";
@@ -54,113 +55,138 @@ export const verifyDepositWithDependencies = async (
   const adapter = dependencies?.adapter ?? createBaseChainAdapter();
   const txHash = normalizeTxHash(input.txHash);
 
-  return db.transaction(async (transaction) => {
-    const existing = await getDepositByTxHash(transaction, { chain: "base", txHash });
-    if (existing) {
-      if (existing.userId !== userId) {
-        throw new Error("deposit tx already credited to another user");
+  try {
+    const result: VerifyDepositResult = await db.transaction(async (transaction) => {
+      const existing = await getDepositByTxHash(transaction, { chain: "base", txHash });
+      if (existing) {
+        if (existing.userId !== userId) {
+          throw new Error("deposit tx already credited to another user");
+        }
+
+        await insertDepositVerificationAttempt(transaction, {
+          userId,
+          txHash,
+          status: "accepted",
+          reason: "already_credited",
+        });
+
+        return {
+          status: "already_credited",
+          deposit: existing,
+        };
       }
+
+      const linkedWallet = await getLinkedWalletForUser(transaction, userId);
+      if (!linkedWallet) {
+        throw new Error("link a Base wallet before verifying deposits");
+      }
+
+      const verification = await adapter.verifyUsdcTransfer({
+        txHash,
+        tokenAddress: baseUsdcAddress(),
+        expectedFrom: linkedWallet.walletAddress,
+        expectedTo: baseTreasuryAddress(),
+        minConfirmations: minConfirmations(),
+      });
+
+      if (verification.status !== "confirmed" || !verification.transfer) {
+        await insertDepositVerificationAttempt(transaction, {
+          userId,
+          txHash,
+          status: "rejected",
+          reason: verification.status,
+          metadata: {
+            reason: verification.reason ?? null,
+            confirmations: verification.confirmations ?? null,
+          },
+        });
+
+        throw new Error(`deposit verification failed: ${verification.status}`);
+      }
+
+      const journalId = crypto.randomUUID();
+
+      await insertDepositJournal(transaction, {
+        journalId,
+        reference: `base:${verification.transfer.txHash}`,
+        userId,
+        currency: "USDC",
+        amount: verification.transfer.amount,
+        metadata: {
+          chain: "base",
+          txHash: verification.transfer.txHash,
+          sender: verification.transfer.from,
+          recipient: verification.transfer.to,
+          tokenAddress: verification.transfer.tokenAddress,
+        },
+      });
+
+      const deposit = await insertDepositRecord(transaction, {
+        userId,
+        txHash: verification.transfer.txHash,
+        txSender: verification.transfer.from,
+        txRecipient: verification.transfer.to,
+        tokenAddress: verification.transfer.tokenAddress,
+        amount: verification.transfer.amount,
+        currency: "USDC",
+        blockNumber: verification.transfer.blockNumber,
+        journalId,
+        metadata: {
+          confirmations: verification.confirmations ?? null,
+        },
+      });
 
       await insertDepositVerificationAttempt(transaction, {
         userId,
         txHash,
         status: "accepted",
-        reason: "already_credited",
-      });
-
-      return {
-        status: "already_credited",
-        deposit: existing,
-      };
-    }
-
-    const linkedWallet = await getLinkedWalletForUser(transaction, userId);
-    if (!linkedWallet) {
-      throw new Error("link a Base wallet before verifying deposits");
-    }
-
-    const verification = await adapter.verifyUsdcTransfer({
-      txHash,
-      tokenAddress: baseUsdcAddress(),
-      expectedFrom: linkedWallet.walletAddress,
-      expectedTo: baseTreasuryAddress(),
-      minConfirmations: minConfirmations(),
-    });
-
-    if (verification.status !== "confirmed" || !verification.transfer) {
-      await insertDepositVerificationAttempt(transaction, {
-        userId,
-        txHash,
-        status: "rejected",
-        reason: verification.status,
+        reason: null,
         metadata: {
-          reason: verification.reason ?? null,
-          confirmations: verification.confirmations ?? null,
+          creditedAmount: verification.transfer.amount.toString(),
         },
       });
 
-      throw new Error(`deposit verification failed: ${verification.status}`);
-    }
+      await insertAuditRecord(transaction, {
+        actorUserId: userId,
+        action: "deposit.verified",
+        entityType: "chain_deposit",
+        entityId: deposit.id,
+        metadata: {
+          txHash: deposit.txHash,
+          amount: deposit.amount.toString(),
+          chain: deposit.chain,
+        },
+      });
 
-    const journalId = crypto.randomUUID();
-
-    await insertDepositJournal(transaction, {
-      journalId,
-      reference: `base:${verification.transfer.txHash}`,
-      userId,
-      currency: "USDC",
-      amount: verification.transfer.amount,
-      metadata: {
-        chain: "base",
-        txHash: verification.transfer.txHash,
-        sender: verification.transfer.from,
-        recipient: verification.transfer.to,
-        tokenAddress: verification.transfer.tokenAddress,
-      },
+      return {
+        status: "accepted",
+        deposit,
+      };
     });
 
-    const deposit = await insertDepositRecord(transaction, {
-      userId,
-      txHash: verification.transfer.txHash,
-      txSender: verification.transfer.from,
-      txRecipient: verification.transfer.to,
-      tokenAddress: verification.transfer.tokenAddress,
-      amount: verification.transfer.amount,
-      currency: "USDC",
-      blockNumber: verification.transfer.blockNumber,
-      journalId,
-      metadata: {
-        confirmations: verification.confirmations ?? null,
-      },
+    incrementCounter("deposit_verification_success_total", {
+      status: result.status,
     });
-
-    await insertDepositVerificationAttempt(transaction, {
+    logger.info("deposit verification succeeded", {
       userId,
       txHash,
-      status: "accepted",
-      reason: null,
-      metadata: {
-        creditedAmount: verification.transfer.amount.toString(),
-      },
+      status: result.status,
+      depositId: result.deposit.id,
+      amount: result.deposit.amount.toString(),
     });
 
-    await insertAuditRecord(transaction, {
-      actorUserId: userId,
-      action: "deposit.verified",
-      entityType: "chain_deposit",
-      entityId: deposit.id,
-      metadata: {
-        txHash: deposit.txHash,
-        amount: deposit.amount.toString(),
-        chain: deposit.chain,
-      },
+    return result;
+  } catch (error) {
+    incrementCounter("deposit_verification_failure_total", {
+      reason: error instanceof Error ? error.message : "unknown_error",
     });
-
-    return {
-      status: "accepted",
-      deposit,
-    };
-  });
+    logger.error("deposit verification failed", {
+      userId,
+      txHash,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+    throw error;
+  }
 };
 
 

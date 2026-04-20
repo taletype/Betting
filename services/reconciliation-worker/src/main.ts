@@ -1,7 +1,7 @@
 import { createBaseChainMonitor } from "@bet/chain";
 import { readPositiveInteger } from "@bet/config";
 import { createDatabaseClient } from "@bet/db";
-import { logger } from "@bet/observability";
+import { incrementCounter, logger, recordGauge } from "@bet/observability";
 
 import { runBaseTreasuryReconciliation, type ReconciliationFailure } from "./baseTreasuryReconciliation";
 
@@ -152,8 +152,14 @@ export const main = async (): Promise<void> => {
     treasuryInflowAmount: baseReport.treasurySummary.inflowAmount.toString(),
     treasuryOutflowAmount: baseReport.treasurySummary.outflowAmount.toString(),
   });
+  recordGauge("reconciliation_drift_count", failures.length, {
+    service: "reconciliation-worker",
+  });
 
   if (failures.length === 0) {
+    incrementCounter("reconciliation_pass_total", {
+      service: "reconciliation-worker",
+    });
     console.log(
       `reconciliation summary: ok (deposits=${baseReport.counts.depositsChecked}, withdrawals=${baseReport.counts.withdrawalsChecked})`,
     );
@@ -165,6 +171,9 @@ export const main = async (): Promise<void> => {
     count: failures.length,
     failures,
     checkedAt: new Date().toISOString(),
+  });
+  incrementCounter("reconciliation_fail_total", {
+    service: "reconciliation-worker",
   });
 
   console.error(`reconciliation summary: FAILED mismatches=${failures.length}`);
