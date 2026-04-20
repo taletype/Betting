@@ -16,18 +16,7 @@ const getApiBaseUrl = (): string => {
     return configuredUrl;
   }
   
-  // Use local Vercel Functions for all other cases
-  if (typeof window !== "undefined") {
-    // Browser-side: use relative /api path
-    return "/api";
-  }
-  
-  // Server-side: need absolute URL for server components
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api`;
-  }
-  
-  // Local development: use /api
+  // Always use /api prefix for local/Vercel functions
   return "/api";
 };
 
