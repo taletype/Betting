@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@bet/ledger": "workspace:*",
-    "@bet/settlement": "workspace:*"
+    "@bet/settlement": "workspace:*",
+    "@bet/observability": "workspace:*"
   }
 }

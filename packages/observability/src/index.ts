@@ -3,11 +3,45 @@ export interface Logger {
   error(message: string, metadata?: Record<string, unknown>): void;
 }
 
+const write = (level: "info" | "error", message: string, metadata: Record<string, unknown>) => {
+  const payload = {
+    level,
+    message,
+    ...metadata,
+    timestamp: new Date().toISOString(),
+  };
+
+  const line = JSON.stringify(payload);
+
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+
+  console.log(line);
+};
+
 export const logger: Logger = {
-  info(message, metadata) {
-    console.log(message, metadata ?? {});
+  info(message, metadata = {}) {
+    write("info", message, metadata);
   },
-  error(message, metadata) {
-    console.error(message, metadata ?? {});
+  error(message, metadata = {}) {
+    write("error", message, metadata);
   },
+};
+
+const counters = new Map<string, number>();
+
+export const incrementCounter = (name: string, labels: Record<string, string> = {}): number => {
+  const key = `${name}:${JSON.stringify(labels)}`;
+  const nextValue = (counters.get(key) ?? 0) + 1;
+  counters.set(key, nextValue);
+
+  logger.info("metric.increment", {
+    metric: name,
+    labels,
+    value: nextValue,
+  });
+
+  return nextValue;
 };

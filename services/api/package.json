@@ -19,6 +19,7 @@
     "@bet/domain": "workspace:*",
     "@bet/ledger": "workspace:*",
     "@bet/matching": "workspace:*",
+    "@bet/observability": "workspace:*"
     "@bet/trading": "workspace:*"
   }
 }

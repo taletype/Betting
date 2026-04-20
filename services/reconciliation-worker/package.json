@@ -13,6 +13,8 @@
     "test": "pnpm exec node -e \"console.log('reconciliation-worker: no tests yet')\""
   },
   "dependencies": {
-    "@bet/ledger": "workspace:*"
+    "@bet/ledger": "workspace:*",
+    "@bet/db": "workspace:*",
+    "@bet/observability": "workspace:*"
   }
 }

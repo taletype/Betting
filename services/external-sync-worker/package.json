@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@bet/integrations": "workspace:*",
+    "@bet/observability": "workspace:*"
     "@bet/db": "workspace:*"
   }
 }
