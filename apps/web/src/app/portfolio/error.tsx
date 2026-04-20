@@ -7,7 +7,7 @@ export default function PortfolioError() {
         <h1>Portfolio</h1>
         <p>Could not load portfolio data.</p>
       </section>
-      <section className="error-state">Failed to fetch your balances or transfer history. Refresh to try again.</section>
+      <section className="error-state">Failed to fetch portfolio data. Refresh the page to try again.</section>
     </main>
   );
 }

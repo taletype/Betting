@@ -1,6 +1,5 @@
 import { getPortfolio, linkWallet, requestWithdrawal, toBigInt, verifyDepositTx } from "../../lib/api";
-
-const formatTicks = (value: bigint): string => value.toString();
+import { formatUsdc, formatPrice, formatQuantity } from "../../lib/format";
 
 const formatDate = (value: string): string =>
   new Intl.DateTimeFormat("en-US", {
@@ -73,20 +72,21 @@ export default async function PortfolioPage() {
       <section className="grid">
         <div className="panel stack">
           <strong>Available Balance</strong>
-          <div className="metric">{primaryBalance ? formatTicks(primaryBalance.available) : "0"}</div>
+          <div className="metric">{primaryBalance ? formatUsdc(primaryBalance.available) : "$0.00"}</div>
           <div className="muted">{primaryBalance?.currency ?? "USDC"} available to trade.</div>
         </div>
         <div className="panel stack">
           <strong>Reserved Balance</strong>
-          <div className="metric">{primaryBalance ? formatTicks(primaryBalance.reserved) : "0"}</div>
+          <div className="metric">{primaryBalance ? formatUsdc(primaryBalance.reserved) : "$0.00"}</div>
           <div className="muted">Locked for open orders and pending fills.</div>
         </div>
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Linked Base Wallet</h2>
+        <h2 className="section-title">Linked Wallet</h2>
         {portfolio.linkedWallet ? (
           <div className="stack">
+            <div className="badge badge-neutral">Base Network</div>
             <div className="kv">
               <span className="kv-key">Wallet address</span>
               <span className="kv-value">{portfolio.linkedWallet.walletAddress}</span>
@@ -97,38 +97,140 @@ export default async function PortfolioPage() {
           <div className="empty-state">No linked wallet yet. Link a wallet to enable Base deposits and withdrawals.</div>
         )}
 
-        <form action={linkWalletAction} className="stack">
-          <label className="stack">
-            Wallet address
-            <input name="walletAddress" placeholder="0x..." required />
-          </label>
-          <label className="stack">
-            Signed message
-            <textarea name="signedMessage" placeholder="Bet wallet link\nuser:...\nnonce:..." required />
-          </label>
-          <label className="stack">
-            Signature
-            <textarea name="signature" placeholder="0x signature" required />
-          </label>
-          <button type="submit">Link Wallet</button>
-        </form>
+        {!portfolio.linkedWallet && (
+          <form action={linkWalletAction} className="stack">
+            <label className="stack">
+              Wallet address
+              <input name="walletAddress" placeholder="0x..." required />
+            </label>
+            <label className="stack">
+              Signed message
+              <textarea name="signedMessage" placeholder="Bet wallet link\nuser:...\nnonce:..." required />
+            </label>
+            <label className="stack">
+              Signature
+              <textarea name="signature" placeholder="0x signature" required />
+            </label>
+            <button type="submit">Link Wallet</button>
+          </form>
+        )}
+      </section>
+
+      <section className="panel stack">
+        <h2 className="section-title">Positions</h2>
+        {portfolio.positions.length === 0 ? (
+          <div className="empty-state">No open positions.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Market ID</th>
+                <th>Outcome ID</th>
+                <th>Shares</th>
+                <th>Avg Price</th>
+                <th>Realized PnL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.positions.map((position) => (
+                <tr key={position.id}>
+                  <td>{position.marketId.slice(0, 8)}</td>
+                  <td>{position.outcomeId.slice(0, 8)}</td>
+                  <td>{formatQuantity(position.netQuantity)}</td>
+                  <td>{formatPrice(position.averageEntryPrice)}</td>
+                  <td>{formatUsdc(position.realizedPnl)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="panel stack">
+        <h2 className="section-title">Open Orders</h2>
+        {portfolio.openOrders.length === 0 ? (
+          <div className="empty-state">No open orders.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Market ID</th>
+                <th>Side</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Filled</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.openOrders.map((order) => (
+                <tr key={order.id}>
+                  <td>{order.marketId.slice(0, 8)}</td>
+                  <td>{order.side.charAt(0).toUpperCase() + order.side.slice(1)}</td>
+                  <td>{formatPrice(order.price)}</td>
+                  <td>{formatQuantity(order.quantity)}</td>
+                  <td>{formatQuantity(order.remainingQuantity)}</td>
+                  <td>
+                    <span className={`badge badge-${order.status === "open" ? "success" : order.status === "filled" ? "neutral" : "warning"}`}>
+                      {order.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="panel stack">
+        <h2 className="section-title">Claimable Winnings</h2>
+        {portfolio.claims.length === 0 ? (
+          <div className="empty-state">No winnings to claim.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Market ID</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.claims.map((claim) => (
+                <tr key={claim.id}>
+                  <td>{claim.marketId.slice(0, 8)}</td>
+                  <td>{formatUsdc(claim.claimableAmount)}</td>
+                  <td>
+                    <span className={`badge badge-${claim.status === "claimable" ? "success" : claim.status === "claimed" ? "neutral" : "warning"}`}>
+                      {claim.status}
+                    </span>
+                  </td>
+                  <td>{claim.status === "claimable" ? "Claim" : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       <section className="grid">
         <article className="panel stack">
-          <h2 className="section-title">Verify Base Deposit</h2>
-          <p className="muted">Paste a Base transaction hash to credit a completed transfer.</p>
+          <div className="badge badge-neutral">Base Network</div>
+          <h2 className="section-title">Credit Deposit</h2>
+          <p className="muted">Enter your Base transaction hash to credit USDC to your account. Deposits must be from your linked wallet.</p>
           <form action={verifyDepositAction} className="stack">
             <input name="txHash" placeholder="0x transaction hash" required />
-            <button type="submit">Verify Deposit</button>
+            <button type="submit">Credit Deposit</button>
           </form>
         </article>
 
         <article className="panel stack">
-          <h2 className="section-title">Request Base Withdrawal</h2>
-          <p className="muted">Enter amount and destination wallet to create a manual withdrawal request.</p>
+          <div className="badge badge-neutral">Base Network</div>
+          <h2 className="section-title">Request Withdrawal</h2>
+          <p className="muted">Enter amount and destination wallet to create a withdrawal request. Withdrawals are sent to your linked wallet.</p>
           <form action={requestWithdrawalAction} className="stack">
-            <input name="amountAtoms" type="number" min="1" step="1" placeholder="Amount atoms" required />
+            <input name="amountAtoms" type="number" min="1" step="1" placeholder="Amount (atoms)" required />
             <input name="destinationAddress" placeholder="0x destination wallet" required />
             <button type="submit">Request Withdrawal</button>
           </form>
@@ -153,9 +255,7 @@ export default async function PortfolioPage() {
               {portfolio.deposits.map((deposit) => (
                 <tr key={deposit.id}>
                   <td>{deposit.txHash}</td>
-                  <td>
-                    {toBigInt(deposit.amount).toString()} {deposit.currency}
-                  </td>
+                  <td>{formatUsdc(deposit.amount)} {deposit.currency}</td>
                   <td>
                     <span className={`badge badge-${depositTone(deposit.txStatus)}`}>{deposit.txStatus}</span>
                   </td>
@@ -185,7 +285,7 @@ export default async function PortfolioPage() {
               {portfolio.withdrawals.map((withdrawal) => (
                 <tr key={withdrawal.id}>
                   <td>{withdrawal.destinationAddress}</td>
-                  <td>{toBigInt(withdrawal.amountAtoms).toString()}</td>
+                  <td>{formatUsdc(withdrawal.amountAtoms)}</td>
                   <td>
                     <span className={`badge badge-${withdrawalTone(withdrawal.status)}`}>{withdrawal.status}</span>
                   </td>

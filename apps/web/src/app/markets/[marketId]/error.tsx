@@ -7,7 +7,7 @@ export default function MarketDetailError() {
         <h1>Market Detail</h1>
         <p>Could not load this market.</p>
       </section>
-      <section className="error-state">Failed to load market data. Check the market ID and refresh to retry.</section>
+      <section className="error-state">Failed to load market data. Refresh the page to try again.</section>
     </main>
   );
 }

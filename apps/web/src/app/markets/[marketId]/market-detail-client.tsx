@@ -9,6 +9,7 @@ import {
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { getOrderBook, getRecentTrades } from "../../../lib/api";
+import { formatPrice, formatQuantity } from "../../../lib/format";
 import {
   applyMarketRealtimeMessage,
   createMarketRealtimeState,
@@ -22,8 +23,6 @@ interface MarketDetailClientProps {
 }
 
 type ConnectionStatus = "connecting" | "live" | "reconnecting" | "resyncing" | "error";
-
-const formatTicks = (value: bigint | null): string => (value === null ? "—" : value.toString());
 
 const formatTimestamp = (value: string): string =>
   new Intl.DateTimeFormat("en-US", {
@@ -260,22 +259,21 @@ export function MarketDetailClient({
             <span className="kv-key">Resolution time</span>
             <span className="kv-value">{market.resolvesAt ? formatTimestamp(market.resolvesAt) : "—"}</span>
           </div>
-          <div className={`badge badge-${getConnectionStatusTone(connectionStatus)}`}>Realtime {connectionStatus}</div>
         </div>
 
         <div className="panel stack">
           <strong>Market Stats</strong>
           <div className="kv">
             <span className="kv-key">Best bid</span>
-            <span className="kv-value">{formatTicks(market.stats.bestBid)}</span>
+            <span className="kv-value">{formatPrice(market.stats.bestBid)}</span>
           </div>
           <div className="kv">
             <span className="kv-key">Best ask</span>
-            <span className="kv-value">{formatTicks(market.stats.bestAsk)}</span>
+            <span className="kv-value">{formatPrice(market.stats.bestAsk)}</span>
           </div>
           <div className="kv">
             <span className="kv-key">Last trade</span>
-            <span className="kv-value">{formatTicks(market.stats.lastTradePrice)}</span>
+            <span className="kv-value">{formatPrice(market.stats.lastTradePrice)}</span>
           </div>
           <div className="kv">
             <span className="kv-key">Total volume</span>
@@ -312,15 +310,15 @@ export function MarketDetailClient({
                     <thead>
                       <tr>
                         <th>Price</th>
-                        <th>Quantity</th>
+                        <th>Shares</th>
                       </tr>
                     </thead>
                     <tbody>
                       {levels.buy.length > 0 ? (
                         levels.buy.map((level) => (
                           <tr key={`${level.side}-${level.priceTicks.toString()}`}>
-                            <td>{level.priceTicks.toString()}</td>
-                            <td>{level.quantityAtoms.toString()}</td>
+                            <td>{formatPrice(level.priceTicks)}</td>
+                            <td>{formatQuantity(level.quantityAtoms)}</td>
                           </tr>
                         ))
                       ) : (
@@ -339,15 +337,15 @@ export function MarketDetailClient({
                     <thead>
                       <tr>
                         <th>Price</th>
-                        <th>Quantity</th>
+                        <th>Shares</th>
                       </tr>
                     </thead>
                     <tbody>
                       {levels.sell.length > 0 ? (
                         levels.sell.map((level) => (
                           <tr key={`${level.side}-${level.priceTicks.toString()}`}>
-                            <td>{level.priceTicks.toString()}</td>
-                            <td>{level.quantityAtoms.toString()}</td>
+                            <td>{formatPrice(level.priceTicks)}</td>
+                            <td>{formatQuantity(level.quantityAtoms)}</td>
                           </tr>
                         ))
                       ) : (
@@ -373,9 +371,9 @@ export function MarketDetailClient({
             <tr>
               <th>Time</th>
               <th>Outcome</th>
-              <th>Taker side</th>
+              <th>Side</th>
               <th>Price</th>
-              <th>Quantity</th>
+              <th>Shares</th>
             </tr>
           </thead>
           <tbody>
@@ -384,9 +382,9 @@ export function MarketDetailClient({
                 <tr key={trade.id}>
                   <td>{formatTimestamp(trade.executedAt)}</td>
                   <td>{outcomeTitleById.get(trade.outcomeId) ?? trade.outcomeId}</td>
-                  <td>{trade.takerSide ?? "—"}</td>
-                  <td>{trade.priceTicks.toString()}</td>
-                  <td>{trade.quantityAtoms.toString()}</td>
+                  <td>{trade.takerSide ? trade.takerSide.charAt(0).toUpperCase() + trade.takerSide.slice(1) : "—"}</td>
+                  <td>{formatPrice(trade.priceTicks)}</td>
+                  <td>{formatQuantity(trade.quantityAtoms)}</td>
                 </tr>
               ))
             ) : (

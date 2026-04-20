@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 import { listMarkets } from "../../lib/api";
-
-const formatTicks = (value: bigint | null): string => (value === null ? "—" : value.toString());
+import { formatPrice, formatUsdc } from "../../lib/format";
 
 const getStatusTone = (status: string): "neutral" | "success" | "warning" => {
   if (status === "resolved") {
@@ -23,7 +22,7 @@ export default async function MarketsPage() {
     <main className="stack">
       <section className="hero">
         <h1>Markets</h1>
-        <p>Browse active and resolved markets, then open a market detail page to review order book and recent trade flow.</p>
+        <p>Active prediction markets. Click any market to view the order book and trade.</p>
       </section>
 
       {markets.length === 0 ? (
@@ -37,26 +36,25 @@ export default async function MarketsPage() {
             <Link className="panel stack" key={market.id} href={`/markets/${market.id}`}>
               <div className={`badge badge-${getStatusTone(market.status)}`}>{market.status}</div>
               <strong>{market.title}</strong>
-              <div className="muted">Market ID: {market.id.slice(0, 8)}</div>
-              <div className="muted">{market.description}</div>
+              <div className="muted">{market.description.length > 80 ? market.description.slice(0, 80) + "…" : market.description}</div>
               <div className="grid">
                 <div>
-                  <div className="muted">Best bid</div>
-                  <div className="metric-sm">{formatTicks(market.stats.bestBid)}</div>
+                  <div className="muted">Bid</div>
+                  <div className="metric-sm">{formatPrice(market.stats.bestBid)}</div>
                 </div>
                 <div>
-                  <div className="muted">Best ask</div>
-                  <div className="metric-sm">{formatTicks(market.stats.bestAsk)}</div>
+                  <div className="muted">Ask</div>
+                  <div className="metric-sm">{formatPrice(market.stats.bestAsk)}</div>
                 </div>
               </div>
               <div className="grid">
                 <div>
                   <div className="muted">Last trade</div>
-                  <div className="metric-sm">{formatTicks(market.stats.lastTradePrice)}</div>
+                  <div className="metric-sm">{formatPrice(market.stats.lastTradePrice)}</div>
                 </div>
                 <div>
-                  <div className="muted">Total volume</div>
-                  <div className="metric-sm">{market.stats.volumeNotional.toString()}</div>
+                  <div className="muted">Volume</div>
+                  <div className="metric-sm">{formatUsdc(market.stats.volumeNotional)}</div>
                 </div>
               </div>
             </Link>

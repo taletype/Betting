@@ -3,10 +3,10 @@ export default function PortfolioLoading() {
     <main className="stack">
       <section className="hero">
         <h1>Portfolio</h1>
-        <p>Loading balances and transfer history…</p>
+        <p>Loading portfolio data…</p>
       </section>
       <section className="panel">
-        <div className="empty-state">Fetching wallet balances, deposits, and withdrawals.</div>
+        <div className="empty-state">Fetching balances, positions, orders, and transfer history.</div>
       </section>
     </main>
   );

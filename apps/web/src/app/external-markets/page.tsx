@@ -73,12 +73,12 @@ export default async function ExternalMarketsPage() {
   return (
     <main className="stack">
       <section className="hero">
-        <h1>External Markets</h1>
-        <p>Read-only market snapshots synced from Polymarket and Kalshi.</p>
+        <h1>Market Research</h1>
+        <p>Price data from Polymarket and Kalshi for research. Trade these markets on their native platforms.</p>
       </section>
       <section className="stack">
         {markets.length === 0 ? (
-          <div className="panel empty-state">No synced external markets yet. Run the external sync job, then refresh.</div>
+          <div className="panel empty-state">No market data yet. Run the external sync job, then refresh this page.</div>
         ) : (
           markets.map((market) => (
             <div key={market.id} className="panel stack">

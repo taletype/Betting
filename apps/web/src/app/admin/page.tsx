@@ -63,10 +63,10 @@ export default async function AdminPage() {
               <form action={executeWithdrawalAction} className="stack">
                 <input type="hidden" name="withdrawalId" value={withdrawal.id} />
                 <label className="stack">
-                  Execution tx hash
-                  <input name="txHash" placeholder="0x tx hash" required />
+                  Transaction hash
+                  <input name="txHash" placeholder="0x transaction hash" required />
                 </label>
-                <button type="submit">Mark Executed</button>
+                <button type="submit">Confirm Payout</button>
               </form>
 
               <form action={failWithdrawalAction} className="stack">
@@ -87,7 +87,7 @@ export default async function AdminPage() {
         {(markets ?? []).length === 0 ? (
           <div className="panel empty-state">No markets available for resolution actions.</div>
         ) : (
-          (markets ?? []).map((market) => (
+          (markets ?? []).filter((market) => market.status === "open").map((market) => (
             <article className="panel stack" key={market.id}>
               <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
               <strong>{market.title}</strong>
