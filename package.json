@@ -13,7 +13,8 @@
     "dev:ws": "pnpm --filter @bet/ws dev",
     "dev:workers": "./infra/scripts/dev-workers.sh",
     "db:reset": "./infra/scripts/reset-local-db.sh",
-    "smoke:local": "./infra/scripts/smoke-local.sh"
+    "smoke:local": "./infra/scripts/smoke-local.sh",
+    "load:launch": "node --import tsx infra/load/launch-load-harness.ts"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
