@@ -3,25 +3,26 @@ import {
   MarketTradesSchema,
   OrderBookSchema,
   PortfolioSnapshotSchema,
+  WithdrawalRecordSchema,
 } from "@bet/contracts";
 
 const getApiBaseUrl = (): string =>
   process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
-const readApiJson = async (
+export const apiRequest = async <T>(
   path: string,
-  options?: { allowNotFound?: boolean; method?: string; body?: unknown },
-) => {
+  init?: RequestInit & { allowNotFound?: boolean },
+): Promise<T | null> => {
   const response = await fetch(new URL(path, getApiBaseUrl()).toString(), {
-    method: options?.method ?? "GET",
+    ...init,
     headers: {
       "content-type": "application/json",
+      ...(init?.headers ?? {}),
     },
-    body: options?.body ? JSON.stringify(options.body) : undefined,
     cache: "no-store",
   });
 
-  if (options?.allowNotFound && response.status === 404) {
+  if (init?.allowNotFound && response.status === 404) {
     return null;
   }
 
@@ -30,8 +31,19 @@ const readApiJson = async (
     throw new Error(payload.error ?? `API request failed for ${path}: ${response.status}`);
   }
 
-  return response.json();
+  return (await response.json()) as T;
 };
+
+const readApiJson = async (
+  path: string,
+  options?: { allowNotFound?: boolean; method?: string; body?: unknown; headers?: HeadersInit },
+) =>
+  apiRequest(path, {
+    method: options?.method ?? "GET",
+    headers: options?.headers,
+    body: options?.body ? JSON.stringify(options.body) : undefined,
+    allowNotFound: options?.allowNotFound,
+  });
 
 export const toBigInt = (value: string | number | bigint | null | undefined): bigint => {
   if (typeof value === "bigint") {
@@ -79,3 +91,47 @@ export const linkWallet = async (input: {
 
 export const verifyDepositTx = async (txHash: string) =>
   readApiJson("/deposits/verify", { method: "POST", body: { txHash } });
+
+export const requestWithdrawal = async (input: {
+  amountAtoms: bigint;
+  destinationAddress: string;
+}) =>
+  readApiJson("/withdrawals", {
+    method: "POST",
+    body: { amountAtoms: input.amountAtoms.toString(), destinationAddress: input.destinationAddress },
+  });
+
+export const listWithdrawals = async () => {
+  const payload = await readApiJson("/withdrawals");
+  return WithdrawalRecordSchema.array().parse((payload as { withdrawals: unknown[] }).withdrawals);
+};
+
+export const listAdminRequestedWithdrawals = async () => {
+  const payload = await readApiJson("/admin/withdrawals", {
+    headers: {
+      "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
+    },
+  });
+
+  return WithdrawalRecordSchema.array().parse((payload as { withdrawals: unknown[] }).withdrawals);
+};
+
+export const executeAdminWithdrawal = async (withdrawalId: string, txHash: string) =>
+  readApiJson(`/admin/withdrawals/${withdrawalId}/execute`, {
+    method: "POST",
+    headers: {
+      "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
+      "x-user-id": process.env.ADMIN_USER_ID ?? "00000000-0000-4000-8000-000000000001",
+    },
+    body: { txHash },
+  });
+
+export const failAdminWithdrawal = async (withdrawalId: string, reason: string) =>
+  readApiJson(`/admin/withdrawals/${withdrawalId}/fail`, {
+    method: "POST",
+    headers: {
+      "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
+      "x-user-id": process.env.ADMIN_USER_ID ?? "00000000-0000-4000-8000-000000000001",
+    },
+    body: { reason },
+  });

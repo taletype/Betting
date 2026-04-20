@@ -1,6 +1,6 @@
-import { apiRequest } from "../../lib/api";
+import { apiRequest, listAdminRequestedWithdrawals, toBigInt } from "../../lib/api";
 
-import { resolveMarketAction } from "./actions";
+import { executeWithdrawalAction, failWithdrawalAction, resolveMarketAction } from "./actions";
 
 interface MarketResponse {
   id: string;
@@ -10,16 +10,47 @@ interface MarketResponse {
 }
 
 export default async function AdminPage() {
-  const markets = await apiRequest<MarketResponse[]>("/markets");
+  const [markets, withdrawals] = await Promise.all([
+    apiRequest<MarketResponse[]>("/markets"),
+    listAdminRequestedWithdrawals(),
+  ]);
 
   return (
     <main className="stack">
       <section className="hero">
         <h1>Admin</h1>
-        <p>Resolve eligible markets by selecting the winning outcome and attaching evidence metadata.</p>
+        <p>Resolve markets and manually execute/fail Base withdrawals.</p>
       </section>
+
       <section className="stack">
-        {markets.map((market) => (
+        <h2>Requested Withdrawals</h2>
+        {withdrawals.length === 0 ? <div className="muted">No pending withdrawals.</div> : null}
+        {withdrawals.map((withdrawal) => (
+          <article className="panel stack" key={withdrawal.id}>
+            <strong>{withdrawal.id}</strong>
+            <div>
+              Amount: {toBigInt(withdrawal.amountAtoms).toString()} · Destination: {withdrawal.destinationAddress}
+            </div>
+            <div className="muted">Requested {new Date(withdrawal.requestedAt).toISOString()}</div>
+
+            <form action={executeWithdrawalAction} className="stack">
+              <input type="hidden" name="withdrawalId" value={withdrawal.id} />
+              <input name="txHash" placeholder="0x tx hash" required />
+              <button type="submit">Mark executed</button>
+            </form>
+
+            <form action={failWithdrawalAction} className="stack">
+              <input type="hidden" name="withdrawalId" value={withdrawal.id} />
+              <input name="reason" placeholder="Failure reason" required />
+              <button type="submit">Mark failed</button>
+            </form>
+          </article>
+        ))}
+      </section>
+
+      <section className="stack">
+        <h2>Market Resolution</h2>
+        {(markets ?? []).map((market) => (
           <article className="panel stack" key={market.id}>
             <div className="muted">{market.status.toUpperCase()}</div>
             <strong>{market.title}</strong>
