@@ -1,47 +1,28 @@
 import Link from "next/link";
 
-const markets = [
-  {
-    id: "11111111-1111-4111-8111-111111111111",
-    title: "Will the Fed cut rates before year end?",
-    status: "Open",
-    price: "54",
-    volume: "128900",
-  },
-  {
-    id: "44444444-4444-4444-8444-444444444444",
-    title: "Will ETH ETF net inflows stay positive this month?",
-    status: "Open",
-    price: "61",
-    volume: "88200",
-  },
-];
+import { apiRequest } from "../../lib/api";
 
-export default function MarketsPage() {
+interface MarketRow {
+  id: string;
+  title: string;
+  status: string;
+}
+
+export default async function MarketsPage() {
+  const markets = await apiRequest<MarketRow[]>("/markets");
+
   return (
     <main className="stack">
       <section className="hero">
         <h1>Markets</h1>
-        <p>
-          Integer-priced prediction markets, append-only ledger accounting, and worker-driven state
-          transitions. This page is scaffolded to compile cleanly while backend modules fill in.
-        </p>
+        <p>Browse live and resolved markets, then open detail pages to trade or claim payouts.</p>
       </section>
       <section className="grid">
         {markets.map((market) => (
           <Link className="panel stack" key={market.id} href={`/markets/${market.id}`}>
-            <div className="muted">{market.status}</div>
+            <div className="muted">{market.status.toUpperCase()}</div>
             <strong>{market.title}</strong>
-            <div className="grid">
-              <div>
-                <div className="muted">Mid price</div>
-                <div className="metric">{market.price}</div>
-              </div>
-              <div>
-                <div className="muted">Volume</div>
-                <div className="metric">{market.volume}</div>
-              </div>
-            </div>
+            <div className="muted">Market ID: {market.id.slice(0, 8)}</div>
           </Link>
         ))}
       </section>
