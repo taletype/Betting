@@ -9,6 +9,6 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('chain: no tests yet')\""
+    "test": "pnpm exec tsx --test src/base/BaseChainMonitor.test.ts"
   }
 }

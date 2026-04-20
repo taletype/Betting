@@ -287,7 +287,6 @@ const main = async () => {
   const sellerPositionBeforeTrade = await getPositionSnapshot(INTEGRATION_FLOW_USER_ID);
 
   const restingOrder = await createOrder({
-    userId: INTEGRATION_FLOW_USER_ID,
     marketId: MARKET_ID,
     outcomeId: WINNING_OUTCOME_ID,
     side: "sell",
@@ -298,7 +297,6 @@ const main = async () => {
   });
 
   const crossingOrder = await createOrder({
-    userId: DEMO_USER_ID,
     marketId: MARKET_ID,
     outcomeId: WINNING_OUTCOME_ID,
     side: "buy",

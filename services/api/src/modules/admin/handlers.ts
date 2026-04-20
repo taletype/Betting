@@ -37,9 +37,7 @@ const buildResolutionNotes = (input: {
   input.evidenceText,
 ].join("\n");
 
-export const resolveMarket = async (
-  input: ResolveMarketInput,
-): Promise<ResolveMarketResult> => {
+export const resolveMarket = async (input: ResolveMarketInput): Promise<ResolveMarketResult> => {
   if (!input.isAdmin) {
     throw new Error("admin authorization is required");
   }

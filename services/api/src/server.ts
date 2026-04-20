@@ -13,7 +13,15 @@ import {
 } from "./modules/markets/handlers";
 import { cancelOrder, createOrder } from "./modules/orders/handlers";
 import { getPortfolio } from "./modules/portfolio/handlers";
+import { resolveMarket } from "./modules/admin/handlers";
 import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
+import {
+  executeWithdrawal,
+  failWithdrawal,
+  getRequestedWithdrawals,
+  getWithdrawalHistory,
+  requestWithdrawal,
+} from "./modules/withdrawals/handlers";
 import { getLinkedWallet, linkBaseWallet } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
 import { toJson } from "./presenters/json";
@@ -38,6 +46,12 @@ const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<stri
 const getRequestUserId = (request: Request): string | undefined => {
   const userId = request.headers.get("x-user-id");
   return userId ?? undefined;
+};
+
+const isAdminRequest = (request: Request): boolean => {
+  const incoming = request.headers.get("x-admin-token");
+  const expected = process.env.ADMIN_API_TOKEN ?? "dev-admin-token";
+  return Boolean(incoming) && incoming === expected;
 };
 
 const handleRequest = async (request: Request): Promise<Response> => {
@@ -196,6 +210,91 @@ const handleRequest = async (request: Request): Promise<Response> => {
         headers: { "content-type": "application/json" },
       });
     }
+
+    if (request.method === "GET" && url.pathname === "/withdrawals") {
+      return new Response(toJson({ withdrawals: await getWithdrawalHistory(getRequestUserId(request)) }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/withdrawals") {
+      const body = await parseBody(request);
+      const result = await requestWithdrawal({
+        userId: getRequestUserId(request),
+        amountAtoms: BigInt(String(body.amountAtoms ?? "0")),
+        destinationAddress: String(body.destinationAddress ?? ""),
+      });
+      return new Response(toJson(result), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "markets" &&
+      segments[3] === "resolve"
+    ) {
+      const body = await parseBody(request);
+      const result = await resolveMarket({
+        marketId: segments[2] ?? "",
+        winningOutcomeId: String(body.winningOutcomeId ?? ""),
+        evidenceText: String(body.evidenceText ?? ""),
+        evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
+        resolverId: String(body.resolverId ?? ""),
+        isAdmin: isAdminRequest(request),
+      });
+      return new Response(toJson(result), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/admin/withdrawals") {
+      return new Response(toJson({ withdrawals: await getRequestedWithdrawals({ isAdmin: isAdminRequest(request) }) }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "withdrawals" &&
+      segments[3] === "execute"
+    ) {
+      const body = await parseBody(request);
+      const result = await executeWithdrawal({
+        adminUserId: getRequestUserId(request),
+        isAdmin: isAdminRequest(request),
+        withdrawalId: segments[2] ?? "",
+        txHash: String(body.txHash ?? ""),
+      });
+      return new Response(toJson(result), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "withdrawals" &&
+      segments[3] === "fail"
+    ) {
+      const body = await parseBody(request);
+      const result = await failWithdrawal({
+        adminUserId: getRequestUserId(request),
+        isAdmin: isAdminRequest(request),
+        withdrawalId: segments[2] ?? "",
+        reason: String(body.reason ?? ""),
+      });
+      return new Response(toJson(result), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
 
     return Response.json({ error: "Not found" }, { status: 404 });
   } catch (error) {

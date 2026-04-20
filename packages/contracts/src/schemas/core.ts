@@ -205,6 +205,17 @@ export const DepositRecordSchema = z.object({
   verifiedAt: TimestampSchema,
 });
 
+
+export const WithdrawalRecordSchema = z.object({
+  id: UuidSchema,
+  amountAtoms: MoneySchema,
+  destinationAddress: z.string().min(1),
+  status: z.enum(["requested", "completed", "failed"]),
+  requestedAt: TimestampSchema,
+  processedAt: TimestampSchema.nullable(),
+  txHash: z.string().nullable(),
+});
+
 export const PortfolioBalanceSchema = z.object({
   currency: z.string().min(1),
   available: MoneySchema,
@@ -218,6 +229,7 @@ export const PortfolioSnapshotSchema = z.object({
   claims: z.array(ClaimSchema),
   linkedWallet: LinkedWalletSchema.nullable().default(null),
   deposits: z.array(DepositRecordSchema).default([]),
+  withdrawals: z.array(WithdrawalRecordSchema).default([]),
 });
 
 export type Market = z.infer<typeof MarketSchema>;
@@ -238,5 +250,6 @@ export type ExternalOutcome = z.infer<typeof ExternalOutcomeSchema>;
 export type ExternalTradeTick = z.infer<typeof ExternalTradeTickSchema>;
 export type LinkedWallet = z.infer<typeof LinkedWalletSchema>;
 export type DepositRecord = z.infer<typeof DepositRecordSchema>;
+export type WithdrawalRecord = z.infer<typeof WithdrawalRecordSchema>;
 export type PortfolioBalance = z.infer<typeof PortfolioBalanceSchema>;
 export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;

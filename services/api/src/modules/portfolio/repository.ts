@@ -4,6 +4,7 @@ import type {
   PortfolioBalance as ContractPortfolioBalance,
   PortfolioSnapshot as ContractPortfolioSnapshot,
   Position,
+  WithdrawalRecord as ContractWithdrawalRecord,
 } from "@bet/contracts";
 import { createDatabaseClient } from "@bet/db";
 
@@ -32,6 +33,17 @@ interface LinkedWalletRow {
   chain: "base";
   wallet_address: string;
   verified_at: Date | string;
+}
+
+
+interface WithdrawalRow {
+  id: string;
+  amount: bigint;
+  destination_address: string;
+  status: "requested" | "completed" | "failed";
+  processed_at: Date | string | null;
+  tx_hash: string | null;
+  created_at: Date | string;
 }
 
 interface DepositRow {
@@ -73,6 +85,17 @@ const mapLinkedWalletRow = (row: LinkedWalletRow): LinkedWallet => ({
   chain: row.chain,
   walletAddress: row.wallet_address,
   verifiedAt: toIsoString(row.verified_at),
+});
+
+
+const mapWithdrawalRow = (row: WithdrawalRow): ContractWithdrawalRecord => ({
+  id: row.id,
+  amountAtoms: row.amount,
+  destinationAddress: row.destination_address,
+  status: row.status,
+  requestedAt: toIsoString(row.created_at),
+  processedAt: row.processed_at ? toIsoString(row.processed_at) : null,
+  txHash: row.tx_hash,
 });
 
 const mapDepositRow = (row: DepositRow): DepositRecord => ({
@@ -129,6 +152,28 @@ const getLinkedWalletForUser = async (userId: string): Promise<LinkedWallet | nu
   );
 
   return row ? mapLinkedWalletRow(row) : null;
+};
+
+
+const listWithdrawalsForUser = async (userId: string): Promise<ContractWithdrawalRecord[]> => {
+  const rows = await db.query<WithdrawalRow>(
+    `
+      select
+        id,
+        amount,
+        destination_address,
+        status,
+        processed_at,
+        tx_hash,
+        created_at
+      from public.withdrawals
+      where user_id = $1::uuid
+      order by created_at desc, id desc
+    `,
+    [userId],
+  );
+
+  return rows.map((row) => mapWithdrawalRow(row));
 };
 
 const listDepositsForUser = async (userId: string): Promise<DepositRecord[]> => {
@@ -207,11 +252,12 @@ export const getPortfolioSnapshot = async (
           },
         ];
 
-  const [openOrders, positions, linkedWallet, deposits] = await Promise.all([
+  const [openOrders, positions, linkedWallet, deposits, withdrawals] = await Promise.all([
     listOpenOrdersForUser(db, userId),
     listPositionsForUser(userId),
     getLinkedWalletForUser(userId),
     listDepositsForUser(userId),
+    listWithdrawalsForUser(userId),
   ]);
 
   return {
@@ -221,5 +267,6 @@ export const getPortfolioSnapshot = async (
     claims: [],
     linkedWallet,
     deposits,
+    withdrawals,
   };
 };
