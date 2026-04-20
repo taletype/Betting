@@ -8,8 +8,28 @@ import {
   PostOrdersResponseSchema,
 } from "@bet/contracts";
 
-const getApiBaseUrl = (): string =>
-  process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+const getApiBaseUrl = (): string => {
+  const configuredUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
+  
+  // If configured URL is set and not localhost, use it directly
+  if (configuredUrl && !configuredUrl.includes("127.0.0.1") && !configuredUrl.includes("localhost")) {
+    return configuredUrl;
+  }
+  
+  // In production (Vercel) or when API is not available, use the proxy routes
+  if (typeof window !== "undefined") {
+    // Browser-side: use relative /api path
+    return "/api";
+  }
+  
+  // Server-side: need absolute URL for server components
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api`;
+  }
+  
+  // Local development fallback
+  return configuredUrl ?? "http://127.0.0.1:4000";
+};
 
 export const apiRequest = async <T>(
   path: string,
