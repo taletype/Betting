@@ -26,6 +26,9 @@ importers:
       '@bet/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@bet/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@bet/supabase':
         specifier: workspace:*
         version: link:../../packages/supabase
@@ -157,6 +160,9 @@ importers:
 
   services/external-sync-worker:
     dependencies:
+      '@bet/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@bet/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations

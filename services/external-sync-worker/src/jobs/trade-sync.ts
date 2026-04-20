@@ -1,3 +1,5 @@
+import { runMarketSyncJob } from "./market-sync";
+
 export const runTradeSyncJob = async (): Promise<void> => {
-  console.log("TODO: trade sync");
+  await runMarketSyncJob();
 };

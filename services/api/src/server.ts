@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 
+import { getExternalMarketBySourceAndId, listExternalMarkets } from "./modules/external-markets/handlers";
 import { getHealth } from "./modules/health/handlers";
 import {
   getMarketById,
@@ -37,6 +38,22 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return Response.json(getHealth());
     }
 
+
+    if (request.method === "GET" && url.pathname === "/external/markets") {
+      return new Response(toJson(await listExternalMarkets()), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/external/markets/")) {
+      const [, , , source, ...idParts] = url.pathname.split("/");
+      const externalId = decodeURIComponent(idParts.join("/"));
+      const market = await getExternalMarketBySourceAndId(source ?? "", externalId);
+      return new Response(toJson({ market }), {
+        headers: { "content-type": "application/json" },
+        status: market ? 200 : 404,
+      });
+    }
     if (request.method === "GET" && url.pathname === "/markets") {
       return new Response(toJson(await listMarkets()), {
         headers: { "content-type": "application/json" },

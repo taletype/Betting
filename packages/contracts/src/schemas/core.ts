@@ -35,6 +35,54 @@ export const MarketSchema = z.object({
   outcomes: z.array(OutcomeSchema).default([]),
 });
 
+
+export const ExternalSourceSchema = z.enum(["polymarket", "kalshi"]);
+
+export const ExternalOutcomeSchema = z.object({
+  externalOutcomeId: z.string().min(1),
+  title: z.string().min(1),
+  slug: z.string().min(1),
+  index: z.number().int().nonnegative(),
+  yesNo: z.enum(["yes", "no"]).nullable(),
+  bestBid: z.number().nullable(),
+  bestAsk: z.number().nullable(),
+  lastPrice: z.number().nullable(),
+  volume: z.number().nullable(),
+});
+
+export const ExternalTradeTickSchema = z.object({
+  externalTradeId: z.string().min(1),
+  externalOutcomeId: z.string().nullable(),
+  side: z.enum(["buy", "sell"]).nullable(),
+  price: z.number().nullable(),
+  size: z.number().nullable(),
+  tradedAt: TimestampSchema,
+});
+
+export const ExternalMarketSchema = z.object({
+  id: UuidSchema,
+  source: ExternalSourceSchema,
+  externalId: z.string().min(1),
+  slug: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string(),
+  status: z.enum(["open", "closed", "resolved", "cancelled"]),
+  marketUrl: z.string().nullable(),
+  closeTime: TimestampSchema.nullable(),
+  endTime: TimestampSchema.nullable(),
+  resolvedAt: TimestampSchema.nullable(),
+  bestBid: z.number().nullable(),
+  bestAsk: z.number().nullable(),
+  lastTradePrice: z.number().nullable(),
+  volume24h: z.number().nullable(),
+  volumeTotal: z.number().nullable(),
+  lastSyncedAt: TimestampSchema.nullable(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+  outcomes: z.array(ExternalOutcomeSchema).default([]),
+  recentTrades: z.array(ExternalTradeTickSchema).default([]),
+});
+
 export const OrderSchema = z.object({
   id: UuidSchema,
   marketId: UuidSchema,
@@ -160,5 +208,8 @@ export type MarketTrades = z.infer<typeof MarketTradesSchema>;
 export type Position = z.infer<typeof PositionSchema>;
 export type Resolution = z.infer<typeof ResolutionSchema>;
 export type Claim = z.infer<typeof ClaimSchema>;
+export type ExternalMarket = z.infer<typeof ExternalMarketSchema>;
+export type ExternalOutcome = z.infer<typeof ExternalOutcomeSchema>;
+export type ExternalTradeTick = z.infer<typeof ExternalTradeTickSchema>;
 export type PortfolioBalance = z.infer<typeof PortfolioBalanceSchema>;
 export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;

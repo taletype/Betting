@@ -16,7 +16,8 @@
     "@bet/supabase": "workspace:*",
     "next": "^16.0.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@bet/db": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.1.13",
