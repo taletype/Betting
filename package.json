@@ -4,10 +4,17 @@
   "packageManager": "pnpm@10.8.1",
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev --parallel",
+    "dev": "./infra/scripts/dev.sh",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test"
+    "test": "turbo test",
+    "dev:web": "pnpm --filter @bet/web dev",
+    "dev:api": "./infra/scripts/dev-api.sh",
+    "dev:ws": "pnpm --filter @bet/ws dev",
+    "dev:workers": "./infra/scripts/dev-workers.sh",
+    "db:reset": "./infra/scripts/reset-local-db.sh",
+    "smoke:local": "./infra/scripts/smoke-local.sh",
+    "load:launch": "node --import tsx infra/load/launch-load-harness.ts"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

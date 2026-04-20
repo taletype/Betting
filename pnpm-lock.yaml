@@ -190,6 +190,9 @@ importers:
 
   services/reconciliation-worker:
     dependencies:
+      '@bet/chain':
+        specifier: workspace:*
+        version: link:../../packages/chain
       '@bet/db':
         specifier: workspace:*
         version: link:../../packages/db

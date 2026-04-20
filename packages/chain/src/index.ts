@@ -4,3 +4,4 @@ export * from "./shared/WithdrawalExecutor";
 export * from "./shared/BalanceReconciler";
 export * from "./shared/DepositVerification";
 export * from "./base/BaseChainAdapter";
+export * from "./base/BaseChainMonitor";
