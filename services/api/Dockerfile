@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -9,20 +9,7 @@ COPY services/ ./services/
 
 RUN npm install -g pnpm@latest
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @bet/service-api build
-
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY packages/ ./packages/
-COPY services/ ./services/
-COPY --from=builder /app/services/api/dist ./services/api/dist
-
-RUN npm install -g pnpm@latest
-RUN pnpm install --frozen-lockfile --prod
 
 EXPOSE 4000
 
-CMD ["node", "services/api/dist/server.js"]
+CMD ["pnpm", "--filter", "@bet/service-api", "start"]
