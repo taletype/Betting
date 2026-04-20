@@ -10,16 +10,18 @@
     "dev": "node --import tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('service-api: no tests yet')\"",
+    "test": "pnpm exec node --test --import tsx src/**/*.test.ts",
     "test:db-happy-path": "node --import tsx src/scripts/db-happy-path.ts"
   },
   "dependencies": {
+    "@bet/chain": "workspace:*",
     "@bet/contracts": "workspace:*",
     "@bet/db": "workspace:*",
     "@bet/domain": "workspace:*",
     "@bet/ledger": "workspace:*",
     "@bet/matching": "workspace:*",
-    "@bet/observability": "workspace:*"
-    "@bet/trading": "workspace:*"
+    "@bet/observability": "workspace:*",
+    "@bet/trading": "workspace:*",
+    "ethers": "^6.14.4"
   }
 }

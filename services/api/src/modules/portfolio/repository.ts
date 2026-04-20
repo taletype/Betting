@@ -1,4 +1,6 @@
 import type {
+  DepositRecord,
+  LinkedWallet,
   PortfolioBalance as ContractPortfolioBalance,
   PortfolioSnapshot as ContractPortfolioSnapshot,
   Position,
@@ -25,6 +27,28 @@ interface PositionRow {
   updated_at: Date | string;
 }
 
+interface LinkedWalletRow {
+  id: string;
+  chain: "base";
+  wallet_address: string;
+  verified_at: Date | string;
+}
+
+interface DepositRow {
+  id: string;
+  chain: "base";
+  tx_hash: string;
+  tx_sender: string;
+  tx_recipient: string;
+  token_address: string;
+  amount: bigint;
+  currency: string;
+  tx_status: "confirmed" | "rejected";
+  block_number: bigint;
+  created_at: Date | string;
+  verified_at: Date | string;
+}
+
 const db = createDatabaseClient();
 
 const buildAvailableFundsAccountCode = (userId: string): string => `user:${userId}:funds:available`;
@@ -42,6 +66,28 @@ const mapPositionRow = (row: PositionRow): Position => ({
   averageEntryPrice: row.average_entry_price,
   realizedPnl: row.realized_pnl,
   updatedAt: toIsoString(row.updated_at),
+});
+
+const mapLinkedWalletRow = (row: LinkedWalletRow): LinkedWallet => ({
+  id: row.id,
+  chain: row.chain,
+  walletAddress: row.wallet_address,
+  verifiedAt: toIsoString(row.verified_at),
+});
+
+const mapDepositRow = (row: DepositRow): DepositRecord => ({
+  id: row.id,
+  chain: row.chain,
+  txHash: row.tx_hash,
+  txSender: row.tx_sender,
+  txRecipient: row.tx_recipient,
+  tokenAddress: row.token_address,
+  amount: row.amount,
+  currency: row.currency,
+  txStatus: row.tx_status,
+  blockNumber: row.block_number,
+  createdAt: toIsoString(row.created_at),
+  verifiedAt: toIsoString(row.verified_at),
 });
 
 const listPositionsForUser = async (userId: string): Promise<Position[]> => {
@@ -65,6 +111,50 @@ const listPositionsForUser = async (userId: string): Promise<Position[]> => {
   );
 
   return rows.map((row) => mapPositionRow(row));
+};
+
+const getLinkedWalletForUser = async (userId: string): Promise<LinkedWallet | null> => {
+  const [row] = await db.query<LinkedWalletRow>(
+    `
+      select
+        id,
+        chain,
+        wallet_address,
+        verified_at
+      from public.linked_wallets
+      where user_id = $1::uuid
+      limit 1
+    `,
+    [userId],
+  );
+
+  return row ? mapLinkedWalletRow(row) : null;
+};
+
+const listDepositsForUser = async (userId: string): Promise<DepositRecord[]> => {
+  const rows = await db.query<DepositRow>(
+    `
+      select
+        id,
+        chain,
+        tx_hash,
+        tx_sender,
+        tx_recipient,
+        token_address,
+        amount,
+        currency,
+        tx_status,
+        block_number,
+        created_at,
+        verified_at
+      from public.chain_deposits
+      where user_id = $1::uuid
+      order by created_at desc, id desc
+    `,
+    [userId],
+  );
+
+  return rows.map((row) => mapDepositRow(row));
 };
 
 export const getPortfolioSnapshot = async (
@@ -117,10 +207,19 @@ export const getPortfolioSnapshot = async (
           },
         ];
 
+  const [openOrders, positions, linkedWallet, deposits] = await Promise.all([
+    listOpenOrdersForUser(db, userId),
+    listPositionsForUser(userId),
+    getLinkedWalletForUser(userId),
+    listDepositsForUser(userId),
+  ]);
+
   return {
     balances,
-    openOrders: await listOpenOrdersForUser(db, userId),
-    positions: await listPositionsForUser(userId),
+    openOrders,
+    positions,
     claims: [],
+    linkedWallet,
+    deposits,
   };
 };
