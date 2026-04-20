@@ -143,6 +143,9 @@ importers:
       '@bet/chain':
         specifier: workspace:*
         version: link:../../packages/chain
+      '@bet/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@bet/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
