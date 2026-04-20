@@ -10,5 +10,6 @@
 - [Websocket recovery basics](./websocket-recovery.md)
 - [Incident response](./incidents.md)
 - [Launch checklist](./launch-checklist.md)
+- [Staging launch drill (dress rehearsal)](./staging-launch-drill.md)
 
 - [Release candidate freeze plan](../release-candidate-freeze-plan.md)
