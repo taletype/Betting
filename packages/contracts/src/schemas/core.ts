@@ -182,6 +182,29 @@ export const MarketTradesSchema = z.object({
   trades: z.array(RecentTradeSchema),
 });
 
+
+export const LinkedWalletSchema = z.object({
+  id: UuidSchema,
+  chain: z.literal("base"),
+  walletAddress: z.string().min(1),
+  verifiedAt: TimestampSchema,
+});
+
+export const DepositRecordSchema = z.object({
+  id: UuidSchema,
+  chain: z.literal("base"),
+  txHash: z.string().min(1),
+  txSender: z.string().min(1),
+  txRecipient: z.string().min(1),
+  tokenAddress: z.string().min(1),
+  amount: MoneySchema,
+  currency: z.string().min(1),
+  txStatus: z.enum(["confirmed", "rejected"]),
+  blockNumber: MoneySchema,
+  createdAt: TimestampSchema,
+  verifiedAt: TimestampSchema,
+});
+
 export const PortfolioBalanceSchema = z.object({
   currency: z.string().min(1),
   available: MoneySchema,
@@ -193,6 +216,8 @@ export const PortfolioSnapshotSchema = z.object({
   openOrders: z.array(OrderSchema),
   positions: z.array(PositionSchema),
   claims: z.array(ClaimSchema),
+  linkedWallet: LinkedWalletSchema.nullable().default(null),
+  deposits: z.array(DepositRecordSchema).default([]),
 });
 
 export type Market = z.infer<typeof MarketSchema>;
@@ -211,5 +236,7 @@ export type Claim = z.infer<typeof ClaimSchema>;
 export type ExternalMarket = z.infer<typeof ExternalMarketSchema>;
 export type ExternalOutcome = z.infer<typeof ExternalOutcomeSchema>;
 export type ExternalTradeTick = z.infer<typeof ExternalTradeTickSchema>;
+export type LinkedWallet = z.infer<typeof LinkedWalletSchema>;
+export type DepositRecord = z.infer<typeof DepositRecordSchema>;
 export type PortfolioBalance = z.infer<typeof PortfolioBalanceSchema>;
 export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;

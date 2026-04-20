@@ -1,14 +1,10 @@
 import { createServer } from "node:http";
+
 import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger } from "@bet/observability";
 
-import { resolveMarket } from "./modules/admin/handlers";
-import { createClaim } from "./modules/claims/handlers";
 import { getExternalMarketBySourceAndId, listExternalMarkets } from "./modules/external-markets/handlers";
 import { getHealth } from "./modules/health/handlers";
-import { resolveMarket } from "./modules/admin/handlers";
-import { claimMarket, getClaims, getClaimableStateForMarket } from "./modules/claims/handlers";
-import { getMarketById, listMarkets } from "./modules/markets/handlers";
 import {
   getMarketById,
   getOrderBookByMarketId,
@@ -17,6 +13,8 @@ import {
 } from "./modules/markets/handlers";
 import { cancelOrder, createOrder } from "./modules/orders/handlers";
 import { getPortfolio } from "./modules/portfolio/handlers";
+import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
+import { getLinkedWallet, linkBaseWallet } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
 import { toJson } from "./presenters/json";
 
@@ -27,12 +25,6 @@ const parseBody = async (request: Request): Promise<Record<string, unknown>> => 
   return body ? (JSON.parse(body) as Record<string, unknown>) : {};
 };
 
-
-const isAdminRequest = (request: Request): boolean => {
-  const expectedToken = process.env.ADMIN_API_TOKEN ?? "dev-admin-token";
-  const token = request.headers.get("x-admin-token");
-  return token === expectedToken;
-};
 const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<string> => {
   const chunks: Uint8Array[] = [];
 
@@ -41,6 +33,11 @@ const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<stri
   }
 
   return Buffer.concat(chunks).toString("utf8");
+};
+
+const getRequestUserId = (request: Request): string | undefined => {
+  const userId = request.headers.get("x-user-id");
+  return userId ?? undefined;
 };
 
 const handleRequest = async (request: Request): Promise<Response> => {
@@ -57,14 +54,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
     if (request.method === "GET" && url.pathname === "/ready") {
       const db = createDatabaseClient();
       await db.query("select 1");
-      return Response.json({
-        ok: true,
-        service: "api",
-        ready: true,
-        checkedAt: new Date().toISOString(),
-      });
+      return Response.json({ ok: true, service: "api", ready: true, checkedAt: new Date().toISOString() });
     }
-
 
     if (request.method === "GET" && url.pathname === "/external/markets") {
       return new Response(toJson(await listExternalMarkets()), {
@@ -81,6 +72,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         status: market ? 200 : 404,
       });
     }
+
     if (request.method === "GET" && url.pathname === "/markets") {
       return new Response(toJson(await listMarkets()), {
         headers: { "content-type": "application/json" },
@@ -110,8 +102,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && segments.length === 2 && segments[0] === "markets") {
-      const marketId = segments[1] ?? "";
-      const market = await getMarketById(marketId);
+      const market = await getMarketById(segments[1] ?? "");
       return new Response(toJson({ market }), {
         headers: { "content-type": "application/json" },
         status: market ? 200 : 404,
@@ -124,10 +115,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         incrementCounter("rate_limited_total", { scope: "orders" });
         return Response.json(
           { error: "rate limit exceeded" },
-          {
-            status: 429,
-            headers: { "retry-after": String(rateLimit.retryAfterSeconds) },
-          },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
         );
       }
 
@@ -149,22 +137,17 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "DELETE" && url.pathname.startsWith("/orders/")) {
+    if (request.method === "DELETE" && segments.length === 2 && segments[0] === "orders") {
       const rateLimit = checkRateLimit("orderCancel", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "order_cancel" });
         return Response.json(
           { error: "rate limit exceeded" },
-          {
-            status: 429,
-            headers: { "retry-after": String(rateLimit.retryAfterSeconds) },
-          },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
         );
       }
-      const orderId = url.pathname.split("/").at(-1) ?? "";
-    if (request.method === "DELETE" && segments.length === 2 && segments[0] === "orders") {
-      const orderId = segments[1] ?? "";
-      const result = await cancelOrder({ orderId });
+
+      const result = await cancelOrder({ orderId: segments[1] ?? "" });
       return new Response(toJson(result), {
         headers: { "content-type": "application/json" },
         status: 200,
@@ -172,98 +155,44 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/portfolio") {
-      return new Response(toJson(await getPortfolio()), {
+      return new Response(toJson(await getPortfolio(getRequestUserId(request))), {
         headers: { "content-type": "application/json" },
       });
     }
 
-    if (request.method === "POST" && url.pathname.startsWith("/claims/")) {
-      const rateLimit = checkRateLimit("claims", actorIdentity);
-      if (!rateLimit.allowed) {
-        incrementCounter("rate_limited_total", { scope: "claims" });
-        return Response.json(
-          { error: "rate limit exceeded" },
-          {
-            status: 429,
-            headers: { "retry-after": String(rateLimit.retryAfterSeconds) },
-          },
-        );
-      }
-
-      const marketId = url.pathname.split("/").at(-1) ?? "";
-      if (!idempotencyKey) {
-        return Response.json({ error: "missing idempotency-key header" }, { status: 400 });
-      }
-      const response = await createClaim({ marketId, idempotencyKey });
-      return new Response(response.body, {
+    if (request.method === "GET" && url.pathname === "/wallets/linked") {
+      return new Response(toJson({ wallet: await getLinkedWallet(getRequestUserId(request)) }), {
         headers: { "content-type": "application/json" },
-        status: response.status,
       });
     }
 
-    if (request.method === "POST" && url.pathname.startsWith("/admin/markets/") && url.pathname.endsWith("/resolve")) {
-      const rateLimit = checkRateLimit("adminResolution", actorIdentity);
-      if (!rateLimit.allowed) {
-        incrementCounter("rate_limited_total", { scope: "admin_resolution" });
-        return Response.json(
-          { error: "rate limit exceeded" },
-          {
-            status: 429,
-            headers: { "retry-after": String(rateLimit.retryAfterSeconds) },
-          },
-        );
-      }
-
-      const marketId = url.pathname.split("/")[3] ?? "";
+    if (request.method === "POST" && url.pathname === "/wallets/link") {
       const body = await parseBody(request);
-      const result = await resolveMarket({
-        marketId,
-        winningOutcomeId: String(body.winningOutcomeId ?? ""),
-        notes: body.notes ? String(body.notes) : undefined,
-      });
-      return new Response(toJson({ resolution: result }), {
-        headers: { "content-type": "application/json" },
-        status: 200,
-    if (request.method === "POST" && url.pathname.startsWith("/admin/markets/") && url.pathname.endsWith("/resolve")) {
-      const [, , , marketId] = url.pathname.split("/");
-      const body = await parseBody(request);
-      const resolution = await resolveMarket({
-        marketId,
-        winningOutcomeId: String(body.winningOutcomeId ?? ""),
-        evidenceText: String(body.evidenceText ?? ""),
-        evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
-        resolverId: body.resolverId ? String(body.resolverId) : String(request.headers.get("x-resolver-id") ?? ""),
-        isAdmin: isAdminRequest(request),
+      const linkedWallet = await linkBaseWallet({
+        userId: getRequestUserId(request),
+        walletAddress: String(body.walletAddress ?? ""),
+        signature: String(body.signature ?? ""),
+        signedMessage: String(body.signedMessage ?? ""),
       });
 
-      return new Response(toJson(resolution), {
+      return new Response(toJson({ wallet: linkedWallet }), {
         headers: { "content-type": "application/json" },
-        status: 200,
       });
     }
 
-    if (request.method === "POST" && url.pathname.startsWith("/claims/")) {
-      const marketId = url.pathname.split("/").at(-1) ?? "";
-      const result = await claimMarket({ marketId });
+    if (request.method === "GET" && url.pathname === "/deposits") {
+      return new Response(toJson({ deposits: await getDepositHistory(getRequestUserId(request)) }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/deposits/verify") {
+      const body = await parseBody(request);
+      const result = await verifyDeposit({
+        userId: getRequestUserId(request),
+        txHash: String(body.txHash ?? ""),
+      });
       return new Response(toJson(result), {
-        headers: { "content-type": "application/json" },
-        status: 200,
-      });
-    }
-
-    if (request.method === "GET" && url.pathname === "/claims") {
-      return new Response(toJson(await getClaims()), {
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/claims/") && url.pathname.endsWith("/state")) {
-      const marketId = url.pathname.split("/")[2] ?? "";
-      const claimState = await getClaimableStateForMarket({
-        marketId,
-        userId: "00000000-0000-4000-8000-000000000001",
-      });
-      return new Response(toJson({ claimState }), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -278,8 +207,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
 if (process.env.NODE_ENV !== "test") {
   const server = createServer(async (req, res) => {
-    const body =
-      req.method === "GET" || req.method === "HEAD" ? undefined : await readIncomingMessage(req);
+    const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readIncomingMessage(req);
     const request = new Request(`http://localhost:${port}${req.url}`, {
       method: req.method,
       headers: req.headers as HeadersInit,
