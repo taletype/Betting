@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@bet/supabase";
 import { readMarketById, readMarketOrderBook, readMarkets, readMarketTrades } from "../_shared/market-read";
 
-import { canUseDevHeaderOverride, DEV_USER_HEADER, isAdminRole, resolveUserId } from "../auth";
+import {
+  canUseDevHeaderOverride,
+  DEV_USER_HEADER,
+  getAuthenticatedUser,
+  getUserRole,
+  isAdminRole,
+  resolveUserId,
+} from "../auth";
 
 async function handleRequest(
   request: NextRequest,
