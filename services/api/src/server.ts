@@ -35,7 +35,14 @@ import {
 import { getLinkedWallet, linkBaseWallet } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
 import { DEMO_USER_ID } from "./modules/shared/constants";
+import {
+  isDepositVerificationDisabled,
+  isGlobalOrderPlacementDisabled,
+  isOrderPlacementDisabledForMarket,
+  isWithdrawalRequestDisabled,
+} from "./modules/shared/kill-switches";
 import { toJson } from "./presenters/json";
+import { getAdminApiToken, validateApiEnvironment } from "./env";
 
 const port = Number(process.env.PORT ?? 4000);
 
@@ -61,7 +68,7 @@ const getRequestUserId = (request: Request): string | undefined => {
 
 const isAdminRequest = (request: Request): boolean => {
   const incoming = request.headers.get("x-admin-token");
-  const expected = process.env.ADMIN_API_TOKEN ?? "dev-admin-token";
+  const expected = getAdminApiToken();
   return Boolean(incoming) && incoming === expected;
 };
 
@@ -143,6 +150,23 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/orders") {
+      const body = await parseBody(request);
+      const marketId = String(body.marketId ?? "");
+
+      if (isGlobalOrderPlacementDisabled()) {
+        const payload: ApiErrorResponse = {
+          error: "order placement is temporarily disabled",
+        };
+        return Response.json(payload, { status: 503 });
+      }
+
+      if (isOrderPlacementDisabledForMarket(marketId)) {
+        const payload: ApiErrorResponse = {
+          error: "order placement is temporarily disabled for this market",
+        };
+        return Response.json(payload, { status: 503 });
+      }
+
       const rateLimit = checkRateLimit("orderPlacement", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "orders" });
@@ -153,9 +177,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
         );
       }
 
-      const body = await parseBody(request);
       const result = await createOrder({
-        marketId: String(body.marketId ?? ""),
+        marketId,
         outcomeId: String(body.outcomeId ?? ""),
         side: body.side === "sell" ? "sell" : "buy",
         orderType: body.orderType === "market" ? "market" : "limit",
@@ -253,6 +276,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/deposits/verify") {
+      if (isDepositVerificationDisabled()) {
+        const payload: ApiErrorResponse = {
+          error: "deposit verification is temporarily disabled",
+        };
+        return Response.json(payload, { status: 503 });
+      }
+
       const body = await parseBody(request);
       const result = await verifyDeposit({
         userId: getRequestUserId(request),
@@ -272,6 +302,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/withdrawals") {
+      if (isWithdrawalRequestDisabled()) {
+        const payload: ApiErrorResponse = {
+          error: "withdrawal requests are temporarily disabled",
+        };
+        return Response.json(payload, { status: 503 });
+      }
+
       const body = await parseBody(request);
       const result = await requestWithdrawal({
         userId: getRequestUserId(request),
@@ -340,6 +377,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/withdrawals") {
+      if (isWithdrawalRequestDisabled()) {
+        const payload: ApiErrorResponse = {
+          error: "withdrawal requests are temporarily disabled",
+        };
+        return Response.json(payload, { status: 503 });
+      }
+
       const body = await parseBody(request);
       const result = await requestWithdrawal({
         userId: getRequestUserId(request),
@@ -430,6 +474,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
 };
 
 if (process.env.NODE_ENV !== "test") {
+  validateApiEnvironment();
+
   const server = createServer(async (req, res) => {
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readIncomingMessage(req);
     const request = new Request(`http://localhost:${port}${req.url}`, {

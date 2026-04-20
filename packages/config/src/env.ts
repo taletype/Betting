@@ -1,0 +1,102 @@
+const LOCAL_ENVIRONMENTS = new Set(["development", "test", "local", ""]);
+
+const readNodeEnv = (): string => process.env.NODE_ENV ?? "";
+
+const isLocalEnvironment = (): boolean => LOCAL_ENVIRONMENTS.has(readNodeEnv());
+
+const requiredEnvMessage = (name: string): string =>
+  `${name} is required. Set ${name} in your deployment environment.`;
+
+export const readRequiredString = (name: string, options?: { defaultInLocal?: string }): string => {
+  const value = process.env[name]?.trim();
+
+  if (value) {
+    return value;
+  }
+
+  if (options?.defaultInLocal !== undefined && isLocalEnvironment()) {
+    return options.defaultInLocal;
+  }
+
+  throw new Error(requiredEnvMessage(name));
+};
+
+export const readRequiredUrl = (name: string, options?: { defaultInLocal?: string }): string => {
+  const value = readRequiredString(name, options);
+
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+  } catch {
+    throw new Error(`${name} must be a valid URL. Received: ${value}`);
+  }
+
+  return value;
+};
+
+export const readPositiveInteger = (
+  name: string,
+  options?: { defaultInLocal?: number; defaultValue?: number },
+): number => {
+  const raw = process.env[name]?.trim();
+
+  if (!raw) {
+    if (options?.defaultValue !== undefined) {
+      return options.defaultValue;
+    }
+
+    if (options?.defaultInLocal !== undefined && isLocalEnvironment()) {
+      return options.defaultInLocal;
+    }
+
+    throw new Error(requiredEnvMessage(name));
+  }
+
+  const parsed = Number(raw);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer. Received: ${raw}`);
+  }
+
+  return parsed;
+};
+
+export const readEthereumAddress = (name: string, options?: { defaultInLocal?: string }): string => {
+  const value = readRequiredString(name, options).toLowerCase();
+
+  if (!/^0x[a-f0-9]{40}$/.test(value)) {
+    throw new Error(`${name} must be a 20-byte hex address. Received: ${value}`);
+  }
+
+  return value;
+};
+
+export const readChainId = (
+  name: string,
+  options?: { defaultInLocal?: number; supported?: readonly number[] },
+): number => {
+  const chainId = readPositiveInteger(name, { defaultInLocal: options?.defaultInLocal });
+
+  if (options?.supported && !options.supported.includes(chainId)) {
+    throw new Error(
+      `${name} must be one of: ${options.supported.join(", ")}. Received: ${chainId}`,
+    );
+  }
+
+  return chainId;
+};
+
+export const readSecret = (name: string): string => {
+  const value = readRequiredString(name);
+
+  if (value === "replace-me" || value === "changeme") {
+    throw new Error(`${name} cannot be a placeholder value`);
+  }
+
+  return value;
+};
+
+export const environment = {
+  nodeEnv: readNodeEnv(),
+  isLocal: isLocalEnvironment(),
+};

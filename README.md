@@ -47,6 +47,16 @@ Required local vars:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `API_BASE_URL`
 - `NEXT_PUBLIC_WS_URL` (recommended: `ws://localhost:4001/ws`)
+- `ADMIN_API_TOKEN`
+- `BASE_RPC_URL`
+- `BASE_CHAIN_ID`
+- `BASE_TREASURY_ADDRESS`
+- `BASE_USDC_ADDRESS`
+- `BASE_MIN_CONFIRMATIONS`
+- `BASE_RECON_MIN_CONFIRMATIONS`
+
+For staging/production matrices and secret rotation guidance, see:
+- `infra/docs/runbooks/environment-configuration.md`
 
 Validate your setup:
 
@@ -130,6 +140,7 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - Balance changes must flow through append-only ledger journals and entries.
 - External market sync stays read-only and never mutates balances directly.
 - Chain support is adapter-shaped; Base comes first and Solana remains a stub surface for later work.
+- Launch incident kill switches are documented in `infra/docs/launch-kill-switches.md`.
 
 ## Load Harness
 

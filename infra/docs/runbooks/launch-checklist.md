@@ -16,9 +16,15 @@
   - `@bet/external-sync-worker`
 
 ## 2) Required env vars
+<<<<<<< codex/create-staging-launch-drill-checklist
 
 Minimum stack vars (validated by `./infra/scripts/check-env.sh`):
 
+=======
+Use the full matrix in `infra/docs/runbooks/environment-configuration.md`.
+
+Launch-minimum set (validated by `./infra/scripts/check-env.sh`):
+>>>>>>> main
 - `DATABASE_URL`
 - `SUPABASE_DB_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
@@ -28,12 +34,17 @@ Minimum stack vars (validated by `./infra/scripts/check-env.sh`):
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_JWT_SECRET`
 - `API_BASE_URL`
+<<<<<<< codex/create-staging-launch-drill-checklist
 
 Critical runtime vars:
 
+=======
+- `NEXT_PUBLIC_WS_URL`
+>>>>>>> main
 - `ADMIN_API_TOKEN`
-- `BASE_TREASURY_ADDRESS`
 - `BASE_RPC_URL`
+- `BASE_CHAIN_ID`
+- `BASE_TREASURY_ADDRESS`
 - `BASE_USDC_ADDRESS`
 - `BASE_MIN_CONFIRMATIONS`
 - `BASE_RECON_MIN_CONFIRMATIONS`
@@ -66,6 +77,10 @@ Manual spot checks:
 - Execute and fail one test withdrawal path.
 
 ## 5) Post-launch monitoring checks
+<<<<<<< codex/create-staging-launch-drill-checklist
+=======
+Reference: `infra/docs/runbooks/launch-monitoring.md` for metric names, dashboard panels, and alert thresholds.
+>>>>>>> main
 
 - Matching queue depth and retries:
   - `public.matching_commands.processed_at`, `attempt_count`, `last_error`

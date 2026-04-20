@@ -98,7 +98,15 @@ export const applyMarketRealtimeMessage = (
 };
 
 export const getMarketWebSocketUrl = (): string => {
-  const configuredUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://127.0.0.1:4001/ws";
+  const configuredUrl = process.env.NEXT_PUBLIC_WS_URL?.trim();
+
+  if (!configuredUrl) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NEXT_PUBLIC_WS_URL is required in production");
+    }
+
+    return "ws://127.0.0.1:4001/ws";
+  }
 
   if (configuredUrl.endsWith("/ws")) {
     return configuredUrl;
