@@ -9,14 +9,15 @@
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('web: no tests yet')\""
+    "test": "pnpm exec node --import tsx --test src/lib/market-realtime.test.ts"
   },
   "dependencies": {
     "@bet/contracts": "workspace:*",
     "@bet/supabase": "workspace:*",
     "next": "^16.0.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@bet/db": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.1.13",

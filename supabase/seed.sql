@@ -33,6 +33,41 @@ insert into auth.users (
 )
 on conflict (id) do nothing;
 
+insert into auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at,
+  confirmation_token,
+  email_change,
+  email_change_token_new,
+  recovery_token
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  '00000000-0000-4000-8000-000000000002',
+  'authenticated',
+  'authenticated',
+  'integration@bet.local',
+  crypt('integration-password', gen_salt('bf')),
+  now(),
+  '{"provider":"email","providers":["email"]}',
+  '{"display_name":"Integration Trader"}',
+  now(),
+  now(),
+  '',
+  '',
+  '',
+  ''
+)
+on conflict (id) do nothing;
+
 insert into public.profiles (
   id,
   username,
@@ -42,6 +77,23 @@ insert into public.profiles (
   '00000000-0000-4000-8000-000000000001',
   'demo-trader',
   'Demo Trader',
+  null
+)
+on conflict (id) do update
+set username = excluded.username,
+    display_name = excluded.display_name,
+    wallet_address = excluded.wallet_address,
+    updated_at = now();
+
+insert into public.profiles (
+  id,
+  username,
+  display_name,
+  wallet_address
+) values (
+  '00000000-0000-4000-8000-000000000002',
+  'integration-trader',
+  'Integration Trader',
   null
 )
 on conflict (id) do update
@@ -145,6 +197,22 @@ insert into public.ledger_journals (
 on conflict (journal_kind, reference) do update
 set metadata = excluded.metadata;
 
+insert into public.ledger_journals (
+  id,
+  journal_kind,
+  reference,
+  metadata,
+  created_at
+) values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'deposit',
+  'seed:integration-user:initial-funds',
+  '{"seed":"true","userId":"00000000-0000-4000-8000-000000000002"}',
+  '2026-04-20T00:00:00.000Z'
+)
+on conflict (journal_kind, reference) do update
+set metadata = excluded.metadata;
+
 insert into public.ledger_entries (
   journal_id,
   account_code,
@@ -163,6 +231,32 @@ insert into public.ledger_entries (
   ),
   (
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'platform:seed:cash',
+    'credit',
+    100000,
+    'USD',
+    '2026-04-20T00:00:00.000Z'
+  )
+on conflict do nothing;
+
+insert into public.ledger_entries (
+  journal_id,
+  account_code,
+  direction,
+  amount,
+  currency,
+  created_at
+) values
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'user:00000000-0000-4000-8000-000000000002:funds:available',
+    'debit',
+    100000,
+    'USD',
+    '2026-04-20T00:00:00.000Z'
+  ),
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     'platform:seed:cash',
     'credit',
     100000,

@@ -1,4 +1,4 @@
-import { Pool, type PoolClient, type QueryResultRow, types } from "pg";
+import { Client, Pool, type PoolClient, type QueryResultRow, types } from "pg";
 
 const POSTGRES_BIGINT_OID = 20;
 
@@ -28,6 +28,8 @@ const getConnectionString = (): string =>
   process.env.SUPABASE_DB_URL ??
   process.env.DATABASE_URL ??
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
+export const getDatabaseConnectionString = (): string => getConnectionString();
 
 let pool: Pool | null = null;
 
@@ -62,4 +64,13 @@ export const createDatabaseClient = (): DatabaseClient => {
       }
     },
   };
+};
+
+export const createDatabaseNotificationClient = async (): Promise<Client> => {
+  const client = new Client({
+    connectionString: getConnectionString(),
+  });
+
+  await client.connect();
+  return client;
 };

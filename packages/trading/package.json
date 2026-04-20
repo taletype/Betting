@@ -1,0 +1,22 @@
+{
+  "name": "@bet/trading",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json",
+    "test": "pnpm exec node -e \"console.log('trading: no tests yet')\""
+  },
+  "dependencies": {
+    "@bet/contracts": "workspace:*",
+    "@bet/db": "workspace:*",
+    "@bet/domain": "workspace:*",
+    "@bet/ledger": "workspace:*",
+    "@bet/matching": "workspace:*",
+    "@bet/observability": "workspace:*"
+  }
+}

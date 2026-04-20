@@ -10,7 +10,8 @@
     "dev": "node --import tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('service-api: no tests yet')\""
+    "test": "pnpm exec node -e \"console.log('service-api: no tests yet')\"",
+    "test:db-happy-path": "node --import tsx src/scripts/db-happy-path.ts"
   },
   "dependencies": {
     "@bet/contracts": "workspace:*",
@@ -19,5 +20,6 @@
     "@bet/ledger": "workspace:*",
     "@bet/matching": "workspace:*",
     "@bet/observability": "workspace:*"
+    "@bet/trading": "workspace:*"
   }
 }
