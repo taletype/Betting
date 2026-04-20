@@ -200,24 +200,6 @@ export default async function PortfolioPage() {
           </table>
         )}
       </section>
-
-      <section className="panel stack">
-        <h2>Withdrawal History</h2>
-        {portfolio.withdrawals.length === 0 ? <div className="muted">No withdrawals requested yet.</div> : null}
-        {portfolio.withdrawals.map((withdrawal) => (
-          <div key={withdrawal.id}>
-            <div>{withdrawal.destinationAddress}</div>
-            <div>
-              Amount: {toBigInt(withdrawal.amountAtoms).toString()} · Status: {statusLabel(withdrawal.status)}
-            </div>
-            <div className="muted">
-              Requested: {new Date(withdrawal.requestedAt).toISOString()}
-              {withdrawal.processedAt ? ` · Processed: ${new Date(withdrawal.processedAt).toISOString()}` : ""}
-              {withdrawal.txHash ? ` · Tx: ${withdrawal.txHash}` : ""}
-            </div>
-          </div>
-        ))}
-      </section>
     </main>
   );
 }

@@ -13,6 +13,22 @@
     "declaration": true,
     "declarationMap": true,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@bet/db": ["./packages/db/src"],
+      "@bet/chain": ["./packages/chain/src"],
+      "@bet/config": ["./packages/config/src"],
+      "@bet/contracts": ["./packages/contracts/src"],
+      "@bet/domain": ["./packages/domain/src"],
+      "@bet/integrations": ["./packages/integrations/src"],
+      "@bet/ledger": ["./packages/ledger/src"],
+      "@bet/matching": ["./packages/matching/src"],
+      "@bet/observability": ["./packages/observability/src"],
+      "@bet/settlement": ["./packages/settlement/src"],
+      "@bet/supabase": ["./packages/supabase/src"],
+      "@bet/test-utils": ["./packages/test-utils/src"],
+      "@bet/trading": ["./packages/trading/src"],
+      "@bet/wallet": ["./packages/wallet/src"]
+    }
   }
 }

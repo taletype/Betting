@@ -1,5 +1,7 @@
 import { createDatabaseClient } from "@bet/db";
 
+export const dynamic = 'force-dynamic';
+
 interface ExternalMarketRow {
   id: string;
   source: "polymarket" | "kalshi";
