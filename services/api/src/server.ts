@@ -6,6 +6,9 @@ import { resolveMarket } from "./modules/admin/handlers";
 import { createClaim } from "./modules/claims/handlers";
 import { getExternalMarketBySourceAndId, listExternalMarkets } from "./modules/external-markets/handlers";
 import { getHealth } from "./modules/health/handlers";
+import { resolveMarket } from "./modules/admin/handlers";
+import { claimMarket, getClaims, getClaimableStateForMarket } from "./modules/claims/handlers";
+import { getMarketById, listMarkets } from "./modules/markets/handlers";
 import {
   getMarketById,
   getOrderBookByMarketId,
@@ -24,6 +27,12 @@ const parseBody = async (request: Request): Promise<Record<string, unknown>> => 
   return body ? (JSON.parse(body) as Record<string, unknown>) : {};
 };
 
+
+const isAdminRequest = (request: Request): boolean => {
+  const expectedToken = process.env.ADMIN_API_TOKEN ?? "dev-admin-token";
+  const token = request.headers.get("x-admin-token");
+  return token === expectedToken;
+};
 const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<string> => {
   const chunks: Uint8Array[] = [];
 
@@ -215,6 +224,47 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return new Response(toJson({ resolution: result }), {
         headers: { "content-type": "application/json" },
         status: 200,
+    if (request.method === "POST" && url.pathname.startsWith("/admin/markets/") && url.pathname.endsWith("/resolve")) {
+      const [, , , marketId] = url.pathname.split("/");
+      const body = await parseBody(request);
+      const resolution = await resolveMarket({
+        marketId,
+        winningOutcomeId: String(body.winningOutcomeId ?? ""),
+        evidenceText: String(body.evidenceText ?? ""),
+        evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
+        resolverId: body.resolverId ? String(body.resolverId) : String(request.headers.get("x-resolver-id") ?? ""),
+        isAdmin: isAdminRequest(request),
+      });
+
+      return new Response(toJson(resolution), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (request.method === "POST" && url.pathname.startsWith("/claims/")) {
+      const marketId = url.pathname.split("/").at(-1) ?? "";
+      const result = await claimMarket({ marketId });
+      return new Response(toJson(result), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/claims") {
+      return new Response(toJson(await getClaims()), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/claims/") && url.pathname.endsWith("/state")) {
+      const marketId = url.pathname.split("/")[2] ?? "";
+      const claimState = await getClaimableStateForMarket({
+        marketId,
+        userId: "00000000-0000-4000-8000-000000000001",
+      });
+      return new Response(toJson({ claimState }), {
+        headers: { "content-type": "application/json" },
       });
     }
 
