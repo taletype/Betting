@@ -13,6 +13,8 @@
     "test": "pnpm exec node -e \"console.log('ws: no tests yet')\""
   },
   "dependencies": {
-    "@bet/contracts": "workspace:*"
+    "@bet/contracts": "workspace:*",
+    "@bet/db": "workspace:*",
+    "ws": "^8.20.0"
   }
 }

@@ -6,11 +6,17 @@ import { invariant } from "../errors/invariant";
 import type { PriceTicks, QuantityAtoms, ReservedAmountAtoms } from "../trade/money";
 
 export const assertOrderCanReserve = (orderState: OrderState): void => {
-  invariant(orderState === "open", "order must be open to reserve");
+  invariant(
+    orderState === "pending" || orderState === "open",
+    "order must be pending or open to reserve",
+  );
 };
 
 export const assertOrderCanCancel = (orderState: OrderState): void => {
-  invariant(ACTIVE_ORDER_STATES.has(orderState), "order must be open or partially_filled to cancel");
+  invariant(
+    orderState === "pending" || ACTIVE_ORDER_STATES.has(orderState),
+    "order must be pending, open, or partially_filled to cancel",
+  );
 };
 
 export const assertCancelReleaseWithinReserved = (
