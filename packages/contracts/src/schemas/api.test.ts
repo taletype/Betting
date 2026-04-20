@@ -2,14 +2,31 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  AdminExecuteWithdrawalRequestSchema,
+  AdminFailWithdrawalRequestSchema,
+  AdminResolveMarketRequestSchema,
+  AdminResolveMarketResponseSchema,
+  AdminWithdrawalActionResponseSchema,
+  ApiErrorResponseSchema,
+  ApiHealthResponseSchema,
+  ApiReadyResponseSchema,
   CreateOrderRequestSchema,
+  CreateWithdrawalRequestSchema,
+  DeleteOrderResponseSchema,
+  GetClaimStateByMarketResponseSchema,
+  GetClaimsResponseSchema,
   GetDepositsResponseSchema,
+  GetExternalMarketBySourceAndIdResponseSchema,
+  GetExternalMarketsResponseSchema,
   GetMarketByIdResponseSchema,
   GetMarketsResponseSchema,
   GetMarketTradesResponseSchema,
   GetOrderBookResponseSchema,
   GetPortfolioResponseSchema,
+  GetWithdrawalsResponseSchema,
+  PostClaimByMarketResponseSchema,
   PostOrdersResponseSchema,
+  PostWithdrawalsResponseSchema,
   VerifyDepositRequestSchema,
   VerifyDepositResponseSchema,
   apiOpenApiSource,
@@ -20,6 +37,9 @@ const marketId = "11111111-1111-4111-8111-111111111111";
 const outcomeId = "22222222-2222-4222-8222-222222222222";
 const orderId = "33333333-3333-4333-8333-333333333333";
 const userId = "44444444-4444-4444-8444-444444444444";
+const claimId = "55555555-5555-4555-8555-555555555555";
+const resolutionId = "66666666-6666-4666-8666-666666666666";
+const withdrawalId = "77777777-7777-4777-8777-777777777777";
 
 const marketSnapshot = {
   id: marketId,
@@ -52,6 +72,12 @@ const marketSnapshot = {
   },
 } as const;
 
+test("health and readiness schemas parse expected payloads", () => {
+  assert.doesNotThrow(() => ApiHealthResponseSchema.parse({ ok: true, service: "api", checkedAt: now }));
+  assert.doesNotThrow(() => ApiReadyResponseSchema.parse({ ok: true, service: "api", ready: true, checkedAt: now }));
+  assert.doesNotThrow(() => ApiErrorResponseSchema.parse({ error: "nope" }));
+});
+
 test("market endpoints schemas parse expected wire payloads", () => {
   assert.doesNotThrow(() => GetMarketsResponseSchema.parse([marketSnapshot]));
   assert.doesNotThrow(() => GetMarketByIdResponseSchema.parse({ market: marketSnapshot }));
@@ -82,36 +108,37 @@ test("orders schemas parse expected wire payloads", () => {
     }),
   );
 
-  assert.doesNotThrow(() =>
-    PostOrdersResponseSchema.parse({
-      order: {
-        id: orderId,
-        marketId,
-        outcomeId,
-        userId,
-        side: "buy",
-        orderType: "limit",
-        status: "open",
-        price: "50",
-        quantity: "2",
-        remainingQuantity: "2",
-        reservedAmount: "100",
-        clientOrderId: null,
-        createdAt: now,
-        updatedAt: now,
-      },
-      reserve: {
-        journal: { id: "journal-1" },
-        entryCount: 2,
-        balanceDeltas: { "user:available": "-100", "user:reserved": "100" },
-      },
+  const orderResponse = {
+    order: {
+      id: orderId,
+      marketId,
+      outcomeId,
+      userId,
+      side: "buy",
+      orderType: "limit",
       status: "open",
-      trades: [],
-    }),
-  );
+      price: "50",
+      quantity: "2",
+      remainingQuantity: "2",
+      reservedAmount: "100",
+      clientOrderId: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    reserve: {
+      journal: { id: "journal-1" },
+      entryCount: 2,
+      balanceDeltas: { "user:available": "-100", "user:reserved": "100" },
+    },
+    status: "open",
+    trades: [],
+  };
+
+  assert.doesNotThrow(() => PostOrdersResponseSchema.parse(orderResponse));
+  assert.doesNotThrow(() => DeleteOrderResponseSchema.parse({ ...orderResponse, release: orderResponse.reserve, status: "cancelled" }));
 });
 
-test("portfolio and deposit schemas parse expected wire payloads", () => {
+test("portfolio, claims, deposits, and withdrawals schemas parse expected wire payloads", () => {
   assert.doesNotThrow(() =>
     GetPortfolioResponseSchema.parse({
       balances: [{ currency: "USD", available: "1000", reserved: "50" }],
@@ -120,8 +147,34 @@ test("portfolio and deposit schemas parse expected wire payloads", () => {
       claims: [],
       linkedWallet: null,
       deposits: [],
+      withdrawals: [],
     }),
   );
+
+  const claim = {
+    id: claimId,
+    userId,
+    marketId,
+    resolutionId,
+    claimableAmount: "100",
+    claimedAmount: "100",
+    status: "claimed",
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  assert.doesNotThrow(() => GetClaimsResponseSchema.parse({ claims: [claim], states: [] }));
+  assert.doesNotThrow(() =>
+    GetClaimStateByMarketResponseSchema.parse({
+      marketId,
+      resolutionId,
+      claimableAmount: "0",
+      claimedAmount: "100",
+      status: "claimed",
+    }),
+  );
+  assert.doesNotThrow(() => PostClaimByMarketResponseSchema.parse({ claim, payoutJournalId: resolutionId }));
+
   assert.doesNotThrow(() => VerifyDepositRequestSchema.parse({ txHash: "0xabc" }));
   assert.doesNotThrow(() =>
     VerifyDepositResponseSchema.parse({
@@ -143,13 +196,91 @@ test("portfolio and deposit schemas parse expected wire payloads", () => {
     }),
   );
   assert.doesNotThrow(() => GetDepositsResponseSchema.parse({ deposits: [] }));
+
+  assert.doesNotThrow(() => CreateWithdrawalRequestSchema.parse({ amountAtoms: "1", destinationAddress: "0xabc" }));
+  const withdrawal = {
+    id: withdrawalId,
+    amountAtoms: "100",
+    destinationAddress: "0xabc",
+    status: "requested",
+    requestedAt: now,
+    processedAt: null,
+    txHash: null,
+  };
+  assert.doesNotThrow(() => GetWithdrawalsResponseSchema.parse({ withdrawals: [withdrawal] }));
+  assert.doesNotThrow(() => PostWithdrawalsResponseSchema.parse(withdrawal));
+  assert.doesNotThrow(() => AdminWithdrawalActionResponseSchema.parse(withdrawal));
+});
+
+test("admin and external market schemas parse expected wire payloads", () => {
+  assert.doesNotThrow(() =>
+    AdminResolveMarketRequestSchema.parse({
+      winningOutcomeId: outcomeId,
+      evidenceText: "oracle settlement",
+      evidenceUrl: "https://example.com/evidence",
+      resolverId: "resolver-1",
+    }),
+  );
+  assert.doesNotThrow(() =>
+    AdminResolveMarketResponseSchema.parse({
+      marketId,
+      status: "resolved",
+      resolution: {
+        id: resolutionId,
+        marketId,
+        status: "finalized",
+        winningOutcomeId: outcomeId,
+        resolvedAt: now,
+        evidenceUrl: "https://example.com/evidence",
+        notes: "resolved",
+      },
+    }),
+  );
+  assert.doesNotThrow(() => AdminExecuteWithdrawalRequestSchema.parse({ txHash: "0xhash" }));
+  assert.doesNotThrow(() => AdminFailWithdrawalRequestSchema.parse({ reason: "tx reverted" }));
+
+  const externalMarket = {
+    id: marketId,
+    source: "polymarket",
+    externalId: "pm-1",
+    slug: "external-market",
+    title: "External market",
+    description: "desc",
+    status: "open",
+    marketUrl: "https://example.com/market",
+    closeTime: null,
+    endTime: null,
+    resolvedAt: null,
+    bestBid: 0.42,
+    bestAsk: 0.43,
+    lastTradePrice: 0.42,
+    volume24h: 1200,
+    volumeTotal: 8000,
+    lastSyncedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    outcomes: [],
+    recentTrades: [],
+  };
+
+  assert.doesNotThrow(() => GetExternalMarketsResponseSchema.parse([externalMarket]));
+  assert.doesNotThrow(() => GetExternalMarketBySourceAndIdResponseSchema.parse({ market: externalMarket }));
 });
 
 test("openapi source only lists implemented HTTP routes", () => {
   const paths = Object.keys(apiOpenApiSource.paths);
   assert.deepEqual(paths.sort(), [
+    "/admin/markets/{marketId}/resolve",
+    "/admin/withdrawals/{withdrawalId}/execute",
+    "/admin/withdrawals/{withdrawalId}/fail",
+    "/claims",
+    "/claims/{marketId}",
+    "/claims/{marketId}/state",
     "/deposits",
     "/deposits/verify",
+    "/external/markets",
+    "/external/markets/{source}/{externalId}",
+    "/health",
     "/markets",
     "/markets/{marketId}",
     "/markets/{marketId}/orderbook",
@@ -157,5 +288,7 @@ test("openapi source only lists implemented HTTP routes", () => {
     "/orders",
     "/orders/{orderId}",
     "/portfolio",
+    "/ready",
+    "/withdrawals",
   ]);
 });
