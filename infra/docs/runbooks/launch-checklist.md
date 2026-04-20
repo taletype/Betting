@@ -57,6 +57,8 @@ Manual spot checks:
 - Execute and fail one test withdrawal path.
 
 ## 5) Post-launch monitoring checks
+Reference: `infra/docs/runbooks/launch-monitoring.md` for metric names, dashboard panels, and alert thresholds.
+
 - Matching queue depth and retries:
   - `public.matching_commands.processed_at`, `attempt_count`, `last_error`
 - Deposit verification success/rejection mix:

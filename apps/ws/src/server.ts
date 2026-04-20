@@ -8,6 +8,7 @@ import {
   type PublicWebsocketEvent,
 } from "@bet/contracts";
 import { createDatabaseNotificationClient } from "@bet/db";
+import { incrementCounter, logger } from "@bet/observability";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import {
@@ -114,6 +115,7 @@ const flushBufferedEvents = (
     return;
   }
 
+  const bufferedCount = subscription.bufferedEvents.length;
   subscription.bufferedEvents
     .sort((left, right) => {
       const leftSequence = getSequencedEventValue(left) ?? 0n;
@@ -135,6 +137,17 @@ const flushBufferedEvents = (
     });
 
   subscription.bufferedEvents = [];
+
+  if (bufferedCount > 0) {
+    incrementCounter("websocket_resync_events_total", {
+      marketId,
+    });
+    logger.info("websocket buffered events flushed", {
+      marketId,
+      bufferedCount,
+      snapshotSequence: snapshotSequence.toString(),
+    });
+  }
 };
 
 const handlePublicMarketSubscribe = async (
@@ -161,8 +174,15 @@ const handlePublicMarketSubscribe = async (
     subscription.ready = true;
     flushBufferedEvents(connection, marketId, snapshot.sequence);
   } catch (error) {
+    incrementCounter("websocket_subscribe_failures_total", {
+      marketId,
+    });
     removePublicMarketSubscription(connection, marketId);
     const message = error instanceof Error ? error.message : "failed to subscribe to market";
+    logger.error("websocket market subscribe failed", {
+      marketId,
+      error: message,
+    });
     sendError(connection.socket, message);
   }
 };
@@ -256,6 +276,12 @@ export const main = async (): Promise<void> => {
     }
 
     void handleNotification(notification.payload).catch((error) => {
+      incrementCounter("websocket_notification_failures_total", {
+        stage: "handle_notification",
+      });
+      logger.error("websocket notification handling failed", {
+        error: error instanceof Error ? error.message : "unknown error",
+      });
       console.error("failed to handle market notification", error);
     });
   });
@@ -263,6 +289,9 @@ export const main = async (): Promise<void> => {
   const websocketServer = new WebSocketServer({ noServer: true });
 
   websocketServer.on("connection", (socket: WebSocket) => {
+    incrementCounter("websocket_connections_total", {
+      event: "opened",
+    });
     const connection: ConnectionState = {
       publicMarkets: new Map(),
       socket,
@@ -289,10 +318,16 @@ export const main = async (): Promise<void> => {
     });
 
     socket.on("close", () => {
+      incrementCounter("websocket_connections_total", {
+        event: "closed",
+      });
       cleanupConnection(socket);
     });
 
     socket.on("error", () => {
+      incrementCounter("websocket_connections_total", {
+        event: "errored",
+      });
       cleanupConnection(socket);
     });
   });

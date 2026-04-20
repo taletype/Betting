@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { createDatabaseClient } from "@bet/db";
+import { incrementCounter, logger } from "@bet/observability";
 
 import { DEMO_USER_ID } from "../shared/constants";
 import {
@@ -104,84 +105,109 @@ export const claimMarket = async (input: { marketId: string; userId?: string }):
   const userId = input.userId ?? DEMO_USER_ID;
   const db = createDatabaseClient();
 
-  return db.transaction(async (transaction) => {
-    const market = await getResolvedMarketForClaim(transaction, input.marketId);
+  try {
+    const result = await db.transaction(async (transaction) => {
+      const market = await getResolvedMarketForClaim(transaction, input.marketId);
 
-    if (!market) {
-      throw new Error("market not found");
-    }
+      if (!market) {
+        throw new Error("market not found");
+      }
 
-    assertMarketClaimable({
-      marketStatus: market.status,
-      resolutionStatus: market.resolutionStatus,
-      winningOutcomeId: market.winningOutcomeId,
-    });
+      assertMarketClaimable({
+        marketStatus: market.status,
+        resolutionStatus: market.resolutionStatus,
+        winningOutcomeId: market.winningOutcomeId,
+      });
 
-    const existingClaim = await getClaimForUpdate(transaction, {
-      userId,
-      marketId: input.marketId,
-    });
-
-    if (existingClaim && existingClaim.status === "claimed") {
-      throw new Error("claim already submitted for this market");
-    }
-
-    const winningOutcomeId = market.winningOutcomeId as string;
-
-    const winningPositionQuantity = await getWinningPositionQuantity(transaction, {
-      userId,
-      marketId: input.marketId,
-      winningOutcomeId,
-    });
-
-    const claimableAmount = computeClaimableAmount({
-      winningPositionQuantity,
-      maxPrice: market.maxPrice,
-    });
-
-    if (claimableAmount <= 0n) {
-      throw new Error("no claimable payout for this market");
-    }
-
-    if (existingClaim && existingClaim.claimedAmount >= claimableAmount) {
-      throw new Error("claim already submitted for this market");
-    }
-
-    const claimedAmount = existingClaim ? claimableAmount - existingClaim.claimedAmount : claimableAmount;
-
-    const claimedAt = new Date().toISOString();
-    const claim = await insertClaim(transaction, {
-      userId,
-      marketId: input.marketId,
-      resolutionId: market.resolutionId,
-      claimableAmount,
-      claimedAmount,
-      status: "claimed",
-      createdAt: claimedAt,
-    });
-
-    const payoutJournalId = crypto.randomUUID();
-
-    await insertClaimPayoutJournal(transaction, {
-      journalId: payoutJournalId,
-      createdAt: claimedAt,
-      reference: `claim:${claim.id}:payout`,
-      metadata: {
-        claimId: claim.id,
-        marketId: input.marketId,
+      const existingClaim = await getClaimForUpdate(transaction, {
         userId,
-      },
-      userId,
-      marketId: input.marketId,
-      currency: market.collateralCurrency,
-      amount: claimedAmount,
+        marketId: input.marketId,
+      });
+
+      if (existingClaim && existingClaim.status === "claimed") {
+        throw new Error("claim already submitted for this market");
+      }
+
+      const winningOutcomeId = market.winningOutcomeId as string;
+
+      const winningPositionQuantity = await getWinningPositionQuantity(transaction, {
+        userId,
+        marketId: input.marketId,
+        winningOutcomeId,
+      });
+
+      const claimableAmount = computeClaimableAmount({
+        winningPositionQuantity,
+        maxPrice: market.maxPrice,
+      });
+
+      if (claimableAmount <= 0n) {
+        throw new Error("no claimable payout for this market");
+      }
+
+      if (existingClaim && existingClaim.claimedAmount >= claimableAmount) {
+        throw new Error("claim already submitted for this market");
+      }
+
+      const claimedAmount = existingClaim ? claimableAmount - existingClaim.claimedAmount : claimableAmount;
+
+      const claimedAt = new Date().toISOString();
+      const claim = await insertClaim(transaction, {
+        userId,
+        marketId: input.marketId,
+        resolutionId: market.resolutionId,
+        claimableAmount,
+        claimedAmount,
+        status: "claimed",
+        createdAt: claimedAt,
+      });
+
+      const payoutJournalId = crypto.randomUUID();
+
+      await insertClaimPayoutJournal(transaction, {
+        journalId: payoutJournalId,
+        createdAt: claimedAt,
+        reference: `claim:${claim.id}:payout`,
+        metadata: {
+          claimId: claim.id,
+          marketId: input.marketId,
+          userId,
+        },
+        userId,
+        marketId: input.marketId,
+        currency: market.collateralCurrency,
+        amount: claimedAmount,
+      });
+
+      return {
+        claim,
+        payoutJournalId,
+      };
     });
 
-    return {
-      claim,
-      payoutJournalId,
-    };
-  });
+    incrementCounter("claims_success_total", {
+      marketId: input.marketId,
+    });
+    logger.info("claim succeeded", {
+      claimId: result.claim.id,
+      marketId: input.marketId,
+      userId,
+      claimedAmount: result.claim.claimedAmount.toString(),
+    });
+
+    return result;
+  } catch (error) {
+    incrementCounter("claims_failure_total", {
+      marketId: input.marketId,
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
+    logger.error("claim failed", {
+      marketId: input.marketId,
+      userId,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+    throw error;
+  }
 };
 
 export const getClaims = async (input?: { userId?: string }) => {

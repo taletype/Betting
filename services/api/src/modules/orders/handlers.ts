@@ -231,9 +231,10 @@ const buildAcceptedOrder = (input: CreateOrderInput, reserveAmount: bigint, crea
   updatedAt: createdAt,
 });
 
-export const createOrder = async (
+const createOrderCore = async (
   input: CreateOrderInput,
 ): Promise<CreateOrderResult> => {
+  const startedAt = Date.now();
   if (input.orderType !== "limit") {
     throw new Error("only limit orders can reserve funds in this milestone");
   }
@@ -327,13 +328,27 @@ export const createOrder = async (
       price: nextOrder.price,
     });
 
-    const matchResult = matchLimitOrder(nextOrder, restingOrders);
-    const tradeSummaries: TradeSummary[] = [];
+      let matchResult;
+      try {
+        matchResult = matchLimitOrder(nextOrder, restingOrders);
+      } catch (error) {
+        incrementCounter("order_matching_failures_total", {
+          marketId: nextOrder.marketId,
+          outcomeId: nextOrder.outcomeId,
+          reason: "engine_error",
+        });
+        throw error;
+      }
+      const tradeSummaries: TradeSummary[] = [];
 
-    if (matchResult.fills.length > 0) {
-      await lockTradeSequenceForMarket(transaction, nextOrder.marketId);
-      let nextTradeSequence = await getNextTradeSequence(transaction, nextOrder.marketId);
-      const updatedAt = new Date().toISOString();
+      if (matchResult.fills.length > 0) {
+        incrementCounter("order_matching_success_total", {
+          marketId: nextOrder.marketId,
+          outcomeId: nextOrder.outcomeId,
+        });
+        await lockTradeSequenceForMarket(transaction, nextOrder.marketId);
+        let nextTradeSequence = await getNextTradeSequence(transaction, nextOrder.marketId);
+        const updatedAt = new Date().toISOString();
 
       const ordersById = new Map<string, Order>([
         [nextOrder.id, nextOrder],
@@ -345,7 +360,15 @@ export const createOrder = async (
         const trade = buildTradeInsert(fill, nextTradeSequence, updatedAt);
         nextTradeSequence += 1n;
 
-        await insertTrade(transaction, trade);
+        try {
+          await insertTrade(transaction, trade);
+        } catch (error) {
+          incrementCounter("trade_persistence_failures_total", {
+            marketId: fill.marketId,
+            outcomeId: fill.outcomeId,
+          });
+          throw error;
+        }
         postCommitEvents.push({
           type: "order.matched",
           metadata: {
@@ -502,6 +525,13 @@ export const createOrder = async (
     marketId: order.marketId,
     outcomeId: order.outcomeId,
   });
+  logger.info("order fill latency", {
+    metric: "order_fill_latency_ms",
+    orderId: order.id,
+    marketId: order.marketId,
+    hasFill: trades.length > 0,
+    durationMs: Date.now() - startedAt,
+  });
   for (const event of postCommitEvents) {
     logger.info(event.type, event.metadata);
     if (event.type === "trade.persisted") {
@@ -524,6 +554,17 @@ export const createOrder = async (
   }
 
   return response;
+};
+
+export const createOrder = async (input: CreateOrderInput): Promise<CreateOrderResult> => {
+  try {
+    return await createOrderCore(input);
+  } catch (error) {
+    incrementCounter("orders_rejected_total", {
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
+    throw error;
+  }
 };
 
 export const cancelOrder = async (
