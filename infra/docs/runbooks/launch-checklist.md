@@ -1,5 +1,8 @@
 # Launch checklist (short)
 
+> RC freeze and merge sequencing live in `infra/docs/release-candidate-freeze-plan.md`.
+> Use this file for launch-day execution only.
+
 ## 1) Required services
 - Supabase local/hosted DB + auth.
 - `@bet/service-api` (port 4000 by default).

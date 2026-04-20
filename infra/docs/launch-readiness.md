@@ -1,5 +1,8 @@
 # Launch Readiness Hardening Report
 
+> This document is a hardening snapshot captured on 2026-04-20.
+> For the active RC freeze checklist and merge plan, use `infra/docs/release-candidate-freeze-plan.md`.
+
 Date: 2026-04-20
 
 ## What was verified
