@@ -9,6 +9,8 @@ import {
 const db = createDatabaseClient();
 
 const adapters: ExternalMarketAdapter[] = [createPolymarketAdapter(), createKalshiAdapter()];
+const isExternalSyncWritesDisabled = (): boolean =>
+  (process.env.OP_DISABLE_EXTERNAL_SYNC_WRITES ?? "").trim().toLowerCase() === "true";
 
 const upsertMarket = async (market: NormalizedExternalMarket): Promise<void> => {
   await db.transaction(async (tx) => {
@@ -215,6 +217,11 @@ const recordCheckpoint = async (source: string, syncedCount: number): Promise<vo
 };
 
 export const runMarketSyncJob = async (): Promise<void> => {
+  if (isExternalSyncWritesDisabled()) {
+    console.log("external sync worker: writes disabled via OP_DISABLE_EXTERNAL_SYNC_WRITES=true");
+    return;
+  }
+
   for (const adapter of adapters) {
     const markets = await adapter.listMarkets();
 

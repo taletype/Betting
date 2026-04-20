@@ -130,6 +130,7 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - Balance changes must flow through append-only ledger journals and entries.
 - External market sync stays read-only and never mutates balances directly.
 - Chain support is adapter-shaped; Base comes first and Solana remains a stub surface for later work.
+- Launch incident kill switches are documented in `infra/docs/launch-kill-switches.md`.
 
 ## Load Harness
 

@@ -31,6 +31,8 @@ interface ConnectionState {
 const port = Number(process.env.PORT ?? 4001);
 const subscriptionsByMarketId = new Map<string, Set<ConnectionState>>();
 const connectionStates = new WeakMap<WebSocket, ConnectionState>();
+const isBroadcastDisabled = (): boolean =>
+  (process.env.OP_DISABLE_WS_BROADCAST ?? "").trim().toLowerCase() === "true";
 
 const stringifyMessage = (value: unknown): string =>
   JSON.stringify(value, (_key, currentValue) =>
@@ -169,6 +171,10 @@ const handlePublicMarketSubscribe = async (
 
 const broadcastPublicMarketEvent = async (event: PublicWebsocketEvent): Promise<void> => {
   if (event.type === "system.error") {
+    return;
+  }
+
+  if (isBroadcastDisabled()) {
     return;
   }
 
