@@ -332,7 +332,6 @@ const main = async () => {
   const runId = crypto.randomUUID().slice(0, 8);
 
   const restingOrder = await createOrder({
-    userId: INTEGRATION_FLOW_USER_ID,
     marketId: MARKET_ID,
     outcomeId: OUTCOME_ID,
     side: "sell",
@@ -346,7 +345,6 @@ const main = async () => {
   assertCondition(restingOrder.trades.length === 0, "resting order should not trade immediately");
 
   const crossingOrder = await createOrder({
-    userId: DEMO_USER_ID,
     marketId: MARKET_ID,
     outcomeId: OUTCOME_ID,
     side: "buy",
