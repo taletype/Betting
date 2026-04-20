@@ -1,6 +1,13 @@
 import { createDatabaseClient } from "@bet/db";
 
-import { getResolvableMarketSelection, markMarketResolved, upsertFinalResolution, type ResolutionRecord } from "./repository";
+import { insertAuditRecord } from "../shared/audit";
+import { DEMO_USER_ID } from "../shared/constants";
+import {
+  getResolvableMarketSelection,
+  markMarketResolved,
+  upsertFinalResolution,
+  type ResolutionRecord,
+} from "./repository";
 
 export interface ResolveMarketInput {
   marketId: string;
@@ -79,6 +86,18 @@ export const resolveMarket = async (input: ResolveMarketInput): Promise<ResolveM
     await markMarketResolved(transaction, {
       marketId: input.marketId,
       resolvedAt,
+    });
+
+    await insertAuditRecord(transaction, {
+      actorUserId: DEMO_USER_ID,
+      action: "admin.resolution.finalized",
+      entityType: "resolution",
+      entityId: resolution.id,
+      metadata: {
+        marketId: input.marketId,
+        winningOutcomeId: input.winningOutcomeId,
+        resolverId: input.resolverId,
+      },
     });
 
     return {

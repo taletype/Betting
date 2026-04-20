@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { createBaseChainAdapter } from "@bet/chain";
+import { createBaseChainAdapter, type DepositVerificationAdapter } from "@bet/chain";
 import { createDatabaseClient } from "@bet/db";
 
 import { getLinkedWalletForUser } from "../wallets/repository";
@@ -48,7 +48,7 @@ export const getDepositHistory = async (userId?: string) => {
 
 export const verifyDepositWithDependencies = async (
   input: VerifyDepositInput,
-  dependencies?: { adapter?: ReturnType<typeof createBaseChainAdapter> },
+  dependencies?: { adapter?: DepositVerificationAdapter },
 ): Promise<VerifyDepositResult> => {
   const userId = input.userId ?? DEMO_USER_ID;
   const db = createDatabaseClient();
