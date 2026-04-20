@@ -45,3 +45,19 @@ export const incrementCounter = (name: string, labels: Record<string, string> = 
 
   return nextValue;
 };
+
+export const recordGauge = (name: string, value: number, labels: Record<string, string> = {}): void => {
+  logger.info("metric.gauge", {
+    metric: name,
+    labels,
+    value,
+  });
+};
+
+export const observeDuration = (name: string, durationMs: number, labels: Record<string, string> = {}): void => {
+  logger.info("metric.duration", {
+    metric: name,
+    labels,
+    durationMs,
+  });
+};

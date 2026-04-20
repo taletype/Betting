@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { createDatabaseClient } from "@bet/db";
+import { incrementCounter, logger } from "@bet/observability";
 import { isAddress } from "ethers";
 
 import { insertAuditRecord } from "../shared/audit";
@@ -97,19 +98,20 @@ export const requestWithdrawal = async (input: RequestWithdrawalInput): Promise<
 
   const db = createDatabaseClient();
 
-  return db.transaction(async (transaction) => {
-    const available = await getAvailableBalance(transaction, {
+  try {
+    const result = await db.transaction(async (transaction) => {
+      const available = await getAvailableBalance(transaction, {
       userId,
       currency: DEFAULT_WITHDRAWAL_CURRENCY,
     });
 
-    if (available < input.amountAtoms) {
+      if (available < input.amountAtoms) {
       throw new Error("insufficient available balance");
     }
 
-    const requestedJournalId = crypto.randomUUID();
+      const requestedJournalId = crypto.randomUUID();
 
-    const withdrawal = await insertWithdrawalRequest(transaction, {
+      const withdrawal = await insertWithdrawalRequest(transaction, {
       userId,
       amount: input.amountAtoms,
       currency: DEFAULT_WITHDRAWAL_CURRENCY,
@@ -117,7 +119,7 @@ export const requestWithdrawal = async (input: RequestWithdrawalInput): Promise<
       requestedJournalId,
     });
 
-    await insertWithdrawalRequestedJournal(transaction, {
+      await insertWithdrawalRequestedJournal(transaction, {
       journalId: requestedJournalId,
       withdrawalId: withdrawal.id,
       userId,
@@ -126,7 +128,7 @@ export const requestWithdrawal = async (input: RequestWithdrawalInput): Promise<
       destinationAddress,
     });
 
-    await insertAuditRecord(transaction, {
+      await insertAuditRecord(transaction, {
       actorUserId: userId,
       action: "withdrawal.requested",
       entityType: "withdrawal",
@@ -137,8 +139,27 @@ export const requestWithdrawal = async (input: RequestWithdrawalInput): Promise<
       },
     });
 
-    return mapWithdrawalView(withdrawal);
-  });
+      return mapWithdrawalView(withdrawal);
+    });
+
+    incrementCounter("withdrawal_requests_total", { status: "requested" });
+    logger.info("withdrawal requested", {
+      withdrawalId: result.id,
+      userId,
+      amountAtoms: result.amountAtoms.toString(),
+    });
+
+    return result;
+  } catch (error) {
+    incrementCounter("withdrawal_request_failures_total", {
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
+    logger.error("withdrawal request failed", {
+      userId,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+    throw error;
+  }
 };
 
 export const getWithdrawalHistory = async (userId?: string): Promise<WithdrawalView[]> => {
@@ -181,18 +202,19 @@ export const executeWithdrawal = async (input: ExecuteWithdrawalInput): Promise<
 
   const db = createDatabaseClient();
 
-  return db.transaction(async (transaction) => {
-    const existing = await getWithdrawalForUpdate(transaction, input.withdrawalId);
+  try {
+    const result = await db.transaction(async (transaction) => {
+      const existing = await getWithdrawalForUpdate(transaction, input.withdrawalId);
 
-    if (!existing) {
+      if (!existing) {
       throw new Error("withdrawal not found");
     }
 
-    assertRequestedStatus(existing.status);
+      assertRequestedStatus(existing.status);
 
-    const completedJournalId = crypto.randomUUID();
+      const completedJournalId = crypto.randomUUID();
 
-    await insertWithdrawalCompletedJournal(transaction, {
+      await insertWithdrawalCompletedJournal(transaction, {
       journalId: completedJournalId,
       withdrawalId: existing.id,
       userId: existing.userId,
@@ -201,14 +223,14 @@ export const executeWithdrawal = async (input: ExecuteWithdrawalInput): Promise<
       txHash,
     });
 
-    const withdrawal = await markWithdrawalCompleted(transaction, {
+      const withdrawal = await markWithdrawalCompleted(transaction, {
       withdrawalId: existing.id,
       adminUserId,
       txHash,
       completedJournalId,
     });
 
-    await insertAuditRecord(transaction, {
+      await insertAuditRecord(transaction, {
       actorUserId: adminUserId,
       action: "withdrawal.completed",
       entityType: "withdrawal",
@@ -218,8 +240,28 @@ export const executeWithdrawal = async (input: ExecuteWithdrawalInput): Promise<
       },
     });
 
-    return mapWithdrawalView(withdrawal);
-  });
+      return mapWithdrawalView(withdrawal);
+    });
+
+    incrementCounter("withdrawal_completions_total", { status: "completed" });
+    logger.info("withdrawal completed", {
+      withdrawalId: result.id,
+      adminUserId,
+      txHash: result.txHash,
+    });
+
+    return result;
+  } catch (error) {
+    incrementCounter("withdrawal_completion_failures_total", {
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
+    logger.error("withdrawal completion failed", {
+      withdrawalId: input.withdrawalId,
+      adminUserId,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+    throw error;
+  }
 };
 
 export const failWithdrawal = async (input: FailWithdrawalInput): Promise<WithdrawalView> => {
@@ -236,18 +278,19 @@ export const failWithdrawal = async (input: FailWithdrawalInput): Promise<Withdr
 
   const db = createDatabaseClient();
 
-  return db.transaction(async (transaction) => {
-    const existing = await getWithdrawalForUpdate(transaction, input.withdrawalId);
+  try {
+    const result = await db.transaction(async (transaction) => {
+      const existing = await getWithdrawalForUpdate(transaction, input.withdrawalId);
 
-    if (!existing) {
+      if (!existing) {
       throw new Error("withdrawal not found");
     }
 
-    assertRequestedStatus(existing.status);
+      assertRequestedStatus(existing.status);
 
-    const failedJournalId = crypto.randomUUID();
+      const failedJournalId = crypto.randomUUID();
 
-    await insertWithdrawalFailedJournal(transaction, {
+      await insertWithdrawalFailedJournal(transaction, {
       journalId: failedJournalId,
       withdrawalId: existing.id,
       userId: existing.userId,
@@ -256,14 +299,14 @@ export const failWithdrawal = async (input: FailWithdrawalInput): Promise<Withdr
       reason,
     });
 
-    const withdrawal = await markWithdrawalFailed(transaction, {
+      const withdrawal = await markWithdrawalFailed(transaction, {
       withdrawalId: existing.id,
       adminUserId,
       reason,
       failedJournalId,
     });
 
-    await insertAuditRecord(transaction, {
+      await insertAuditRecord(transaction, {
       actorUserId: adminUserId,
       action: "withdrawal.failed",
       entityType: "withdrawal",
@@ -273,6 +316,26 @@ export const failWithdrawal = async (input: FailWithdrawalInput): Promise<Withdr
       },
     });
 
-    return mapWithdrawalView(withdrawal);
-  });
+      return mapWithdrawalView(withdrawal);
+    });
+
+    incrementCounter("withdrawal_failures_total", { status: "failed" });
+    logger.info("withdrawal marked failed", {
+      withdrawalId: result.id,
+      adminUserId,
+      reason,
+    });
+
+    return result;
+  } catch (error) {
+    incrementCounter("withdrawal_failure_processing_errors_total", {
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
+    logger.error("withdrawal fail operation failed", {
+      withdrawalId: input.withdrawalId,
+      adminUserId,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+    throw error;
+  }
 };
