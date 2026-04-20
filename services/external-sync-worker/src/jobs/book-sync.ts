@@ -1,3 +1,5 @@
+import { runMarketSyncJob } from "./market-sync";
+
 export const runBookSyncJob = async (): Promise<void> => {
-  console.log("TODO: orderbook sync");
+  await runMarketSyncJob();
 };

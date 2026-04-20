@@ -1,5 +1,8 @@
+import { runMarketSyncJob } from "./jobs/market-sync";
+
 export const main = async (): Promise<void> => {
-  console.log("TODO: external sync worker bootstrap");
+  await runMarketSyncJob();
+  console.log("external sync worker: market sync completed");
 };
 
 if (process.env.NODE_ENV !== "test") {
