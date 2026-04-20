@@ -1,4 +1,5 @@
 import { createBaseChainMonitor } from "@bet/chain";
+import { readPositiveInteger } from "@bet/config";
 import { createDatabaseClient } from "@bet/db";
 import { logger } from "@bet/observability";
 
@@ -117,7 +118,7 @@ export const main = async (): Promise<void> => {
   const baseReport = await runBaseTreasuryReconciliation({
     db,
     chainMonitor: createBaseChainMonitor(),
-    minConfirmations: Number(process.env.BASE_RECON_MIN_CONFIRMATIONS ?? "12"),
+    minConfirmations: readPositiveInteger("BASE_RECON_MIN_CONFIRMATIONS", { defaultInLocal: 12 }),
   });
 
   const failures = [

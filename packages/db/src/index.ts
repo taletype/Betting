@@ -24,10 +24,38 @@ const createExecutor = (client: Pool | PoolClient): DatabaseExecutor => ({
   },
 });
 
-const getConnectionString = (): string =>
-  process.env.SUPABASE_DB_URL ??
-  process.env.DATABASE_URL ??
-  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const assertValidUrl = (name: string, value: string): string => {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return value;
+  } catch {
+    throw new Error(`${name} must be a valid URL. Received: ${value}`);
+  }
+};
+
+const isLocalEnvironment = (): boolean => {
+  const env = process.env.NODE_ENV ?? "";
+  return env === "" || env === "development" || env === "test" || env === "local";
+};
+
+const getConnectionString = (): string => {
+  const supabaseDbUrl = process.env.SUPABASE_DB_URL?.trim();
+  if (supabaseDbUrl) {
+    return assertValidUrl("SUPABASE_DB_URL", supabaseDbUrl);
+  }
+
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (databaseUrl) {
+    return assertValidUrl("DATABASE_URL", databaseUrl);
+  }
+
+  if (isLocalEnvironment()) {
+    return "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+  }
+
+  throw new Error("SUPABASE_DB_URL or DATABASE_URL is required. Set one in your deployment environment.");
+};
 
 export const getDatabaseConnectionString = (): string => getConnectionString();
 
