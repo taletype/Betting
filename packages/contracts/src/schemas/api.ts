@@ -4,11 +4,31 @@ const UuidSchema = z.string().uuid();
 const TimestampSchema = z.string().datetime();
 const BigIntStringSchema = z.string().regex(/^-?\d+$/);
 
-const MarketStatusSchema = z.enum(["draft", "open", "halted", "resolved", "cancelled"]);
-const OrderSideSchema = z.enum(["buy", "sell"]);
-const OrderTypeSchema = z.enum(["limit", "market"]);
-const OrderStatusSchema = z.enum(["pending", "open", "partially_filled", "filled", "cancelled", "rejected"]);
-const ClaimStatusSchema = z.enum(["pending", "claimable", "claimed", "blocked"]);
+export const MarketStatusSchema = z.enum(["draft", "open", "halted", "resolved", "cancelled"]);
+export const ExternalMarketStatusSchema = z.enum(["open", "closed", "resolved", "cancelled"]);
+export const OrderSideSchema = z.enum(["buy", "sell"]);
+export const OrderTypeSchema = z.enum(["limit", "market"]);
+export const OrderStatusSchema = z.enum(["pending", "open", "partially_filled", "filled", "cancelled", "rejected"]);
+export const ClaimStatusSchema = z.enum(["pending", "claimable", "claimed", "blocked"]);
+export const WithdrawalStatusSchema = z.enum(["requested", "completed", "failed"]);
+export const ApiExternalSourceSchema = z.enum(["polymarket", "kalshi"]);
+
+export const ApiErrorResponseSchema = z.object({
+  error: z.string().min(1),
+});
+
+export const ApiHealthResponseSchema = z.object({
+  ok: z.literal(true),
+  service: z.literal("api"),
+  checkedAt: TimestampSchema,
+});
+
+export const ApiReadyResponseSchema = z.object({
+  ok: z.literal(true),
+  service: z.literal("api"),
+  ready: z.literal(true),
+  checkedAt: TimestampSchema,
+});
 
 export const ApiOutcomeSchema = z.object({
   id: UuidSchema,
@@ -180,6 +200,16 @@ export const ApiDepositRecordSchema = z.object({
   verifiedAt: TimestampSchema,
 });
 
+export const ApiWithdrawalSchema = z.object({
+  id: UuidSchema,
+  amountAtoms: BigIntStringSchema,
+  destinationAddress: z.string().min(1),
+  status: WithdrawalStatusSchema,
+  requestedAt: TimestampSchema,
+  processedAt: TimestampSchema.nullable(),
+  txHash: z.string().nullable(),
+});
+
 export const GetPortfolioResponseSchema = z.object({
   balances: z.array(ApiPortfolioBalanceSchema),
   openOrders: z.array(ApiOrderSchema),
@@ -187,6 +217,33 @@ export const GetPortfolioResponseSchema = z.object({
   claims: z.array(ApiClaimSchema),
   linkedWallet: ApiLinkedWalletSchema.nullable(),
   deposits: z.array(ApiDepositRecordSchema),
+  withdrawals: z.array(ApiWithdrawalSchema),
+});
+
+export const GetClaimsResponseSchema = z.object({
+  claims: z.array(ApiClaimSchema),
+  states: z.array(
+    z.object({
+      marketId: UuidSchema,
+      resolutionId: UuidSchema.nullable(),
+      claimableAmount: BigIntStringSchema,
+      claimedAmount: BigIntStringSchema,
+      status: ClaimStatusSchema,
+    }),
+  ),
+});
+
+export const GetClaimStateByMarketResponseSchema = z.object({
+  marketId: UuidSchema,
+  resolutionId: UuidSchema.nullable(),
+  claimableAmount: BigIntStringSchema,
+  claimedAmount: BigIntStringSchema,
+  status: z.enum(["blocked", "claimable", "claimed"]),
+});
+
+export const PostClaimByMarketResponseSchema = z.object({
+  claim: ApiClaimSchema,
+  payoutJournalId: UuidSchema,
 });
 
 export const VerifyDepositRequestSchema = z.object({
@@ -202,6 +259,99 @@ export const GetDepositsResponseSchema = z.object({
   deposits: z.array(ApiDepositRecordSchema),
 });
 
+export const CreateWithdrawalRequestSchema = z.object({
+  amountAtoms: BigIntStringSchema,
+  destinationAddress: z.string().min(1),
+});
+
+export const GetWithdrawalsResponseSchema = z.object({
+  withdrawals: z.array(ApiWithdrawalSchema),
+});
+
+export const PostWithdrawalsResponseSchema = ApiWithdrawalSchema;
+
+export const AdminResolveMarketRequestSchema = z.object({
+  winningOutcomeId: UuidSchema,
+  evidenceText: z.string().min(1),
+  evidenceUrl: z.string().url().nullable().optional(),
+  resolverId: z.string().min(1),
+});
+
+export const AdminResolveMarketResponseSchema = z.object({
+  marketId: UuidSchema,
+  status: z.literal("resolved"),
+  resolution: z.object({
+    id: UuidSchema,
+    marketId: UuidSchema,
+    status: z.enum(["pending", "proposed", "finalized", "cancelled"]),
+    winningOutcomeId: UuidSchema.nullable(),
+    resolvedAt: TimestampSchema.nullable(),
+    evidenceUrl: z.string().url().nullable(),
+    notes: z.string(),
+  }),
+});
+
+export const AdminExecuteWithdrawalRequestSchema = z.object({
+  txHash: z.string().min(1),
+});
+
+export const AdminFailWithdrawalRequestSchema = z.object({
+  reason: z.string().min(1),
+});
+
+export const AdminWithdrawalActionResponseSchema = ApiWithdrawalSchema;
+
+export const ApiExternalOutcomeSchema = z.object({
+  externalOutcomeId: z.string().min(1),
+  title: z.string().min(1),
+  slug: z.string().min(1),
+  index: z.number().int().nonnegative(),
+  yesNo: z.enum(["yes", "no"]).nullable(),
+  bestBid: z.number().nullable(),
+  bestAsk: z.number().nullable(),
+  lastPrice: z.number().nullable(),
+  volume: z.number().nullable(),
+});
+
+export const ApiExternalTradeSchema = z.object({
+  externalTradeId: z.string().min(1),
+  externalOutcomeId: z.string().nullable(),
+  side: OrderSideSchema.nullable(),
+  price: z.number().nullable(),
+  size: z.number().nullable(),
+  tradedAt: TimestampSchema,
+});
+
+export const ApiExternalMarketSchema = z.object({
+  id: UuidSchema,
+  source: ApiExternalSourceSchema,
+  externalId: z.string().min(1),
+  slug: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string(),
+  status: ExternalMarketStatusSchema,
+  marketUrl: z.string().nullable(),
+  closeTime: TimestampSchema.nullable(),
+  endTime: TimestampSchema.nullable(),
+  resolvedAt: TimestampSchema.nullable(),
+  bestBid: z.number().nullable(),
+  bestAsk: z.number().nullable(),
+  lastTradePrice: z.number().nullable(),
+  volume24h: z.number().nullable(),
+  volumeTotal: z.number().nullable(),
+  lastSyncedAt: TimestampSchema.nullable(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+  outcomes: z.array(ApiExternalOutcomeSchema),
+  recentTrades: z.array(ApiExternalTradeSchema),
+});
+
+export const GetExternalMarketsResponseSchema = z.array(ApiExternalMarketSchema);
+export const GetExternalMarketBySourceAndIdResponseSchema = z.object({ market: ApiExternalMarketSchema.nullable() });
+
+export type ApiHealthResponse = z.infer<typeof ApiHealthResponseSchema>;
+export type ApiReadyResponse = z.infer<typeof ApiReadyResponseSchema>;
+export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>;
 export type GetMarketsResponse = z.infer<typeof GetMarketsResponseSchema>;
 export type GetMarketByIdResponse = z.infer<typeof GetMarketByIdResponseSchema>;
 export type GetOrderBookResponse = z.infer<typeof GetOrderBookResponseSchema>;
@@ -210,6 +360,19 @@ export type CreateOrderRequest = z.infer<typeof CreateOrderRequestSchema>;
 export type PostOrdersResponse = z.infer<typeof PostOrdersResponseSchema>;
 export type DeleteOrderResponse = z.infer<typeof DeleteOrderResponseSchema>;
 export type GetPortfolioResponse = z.infer<typeof GetPortfolioResponseSchema>;
+export type GetClaimsResponse = z.infer<typeof GetClaimsResponseSchema>;
+export type GetClaimStateByMarketResponse = z.infer<typeof GetClaimStateByMarketResponseSchema>;
+export type PostClaimByMarketResponse = z.infer<typeof PostClaimByMarketResponseSchema>;
 export type VerifyDepositRequest = z.infer<typeof VerifyDepositRequestSchema>;
 export type VerifyDepositResponse = z.infer<typeof VerifyDepositResponseSchema>;
 export type GetDepositsResponse = z.infer<typeof GetDepositsResponseSchema>;
+export type CreateWithdrawalRequest = z.infer<typeof CreateWithdrawalRequestSchema>;
+export type GetWithdrawalsResponse = z.infer<typeof GetWithdrawalsResponseSchema>;
+export type PostWithdrawalsResponse = z.infer<typeof PostWithdrawalsResponseSchema>;
+export type AdminResolveMarketRequest = z.infer<typeof AdminResolveMarketRequestSchema>;
+export type AdminResolveMarketResponse = z.infer<typeof AdminResolveMarketResponseSchema>;
+export type AdminExecuteWithdrawalRequest = z.infer<typeof AdminExecuteWithdrawalRequestSchema>;
+export type AdminFailWithdrawalRequest = z.infer<typeof AdminFailWithdrawalRequestSchema>;
+export type AdminWithdrawalActionResponse = z.infer<typeof AdminWithdrawalActionResponseSchema>;
+export type GetExternalMarketsResponse = z.infer<typeof GetExternalMarketsResponseSchema>;
+export type GetExternalMarketBySourceAndIdResponse = z.infer<typeof GetExternalMarketBySourceAndIdResponseSchema>;

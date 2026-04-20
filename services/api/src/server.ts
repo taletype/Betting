@@ -2,6 +2,11 @@ import { createServer } from "node:http";
 
 import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger } from "@bet/observability";
+import type {
+  ApiErrorResponse,
+  ApiHealthResponse,
+  ApiReadyResponse,
+} from "@bet/contracts";
 
 import { getExternalMarketBySourceAndId, listExternalMarkets } from "./modules/external-markets/handlers";
 import { getHealth } from "./modules/health/handlers";
@@ -16,6 +21,11 @@ import { getPortfolio } from "./modules/portfolio/handlers";
 import { resolveMarket } from "./modules/admin/handlers";
 import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
 import {
+  claimMarket,
+  getClaimableStateForMarket,
+  getClaims,
+} from "./modules/claims/handlers";
+import {
   executeWithdrawal,
   failWithdrawal,
   getRequestedWithdrawals,
@@ -24,6 +34,7 @@ import {
 } from "./modules/withdrawals/handlers";
 import { getLinkedWallet, linkBaseWallet } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
+import { DEMO_USER_ID } from "./modules/shared/constants";
 import { toJson } from "./presenters/json";
 
 const port = Number(process.env.PORT ?? 4000);
@@ -62,17 +73,20 @@ const handleRequest = async (request: Request): Promise<Response> => {
     const segments = url.pathname.split("/").filter(Boolean);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json(getHealth());
+      const payload = getHealth() as ApiHealthResponse;
+      return Response.json(payload);
     }
 
     if (request.method === "GET" && url.pathname === "/ready") {
       const db = createDatabaseClient();
       await db.query("select 1");
-      return Response.json({ ok: true, service: "api", ready: true, checkedAt: new Date().toISOString() });
+      const payload: ApiReadyResponse = { ok: true, service: "api", ready: true, checkedAt: new Date().toISOString() };
+      return Response.json(payload);
     }
 
     if (request.method === "GET" && url.pathname === "/external/markets") {
-      return new Response(toJson(await listExternalMarkets()), {
+      const payload = await listExternalMarkets();
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -81,14 +95,16 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const [, , , source, ...idParts] = url.pathname.split("/");
       const externalId = decodeURIComponent(idParts.join("/"));
       const market = await getExternalMarketBySourceAndId(source ?? "", externalId);
-      return new Response(toJson({ market }), {
+      const payload = { market };
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
         status: market ? 200 : 404,
       });
     }
 
     if (request.method === "GET" && url.pathname === "/markets") {
-      return new Response(toJson(await listMarkets()), {
+      const payload = await listMarkets();
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -99,7 +115,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[0] === "markets" &&
       segments[2] === "orderbook"
     ) {
-      return new Response(toJson(await getOrderBookByMarketId(segments[1] ?? "")), {
+      const payload = await getOrderBookByMarketId(segments[1] ?? "");
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -110,14 +127,16 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[0] === "markets" &&
       segments[2] === "trades"
     ) {
-      return new Response(toJson(await getTradesByMarketId(segments[1] ?? "")), {
+      const payload = await getTradesByMarketId(segments[1] ?? "");
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "GET" && segments.length === 2 && segments[0] === "markets") {
       const market = await getMarketById(segments[1] ?? "");
-      return new Response(toJson({ market }), {
+      const payload = { market };
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
         status: market ? 200 : 404,
       });
@@ -127,8 +146,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const rateLimit = checkRateLimit("orderPlacement", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "orders" });
+        const payload: ApiErrorResponse = { error: "rate limit exceeded" };
         return Response.json(
-          { error: "rate limit exceeded" },
+          payload,
           { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
         );
       }
@@ -145,7 +165,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
         idempotencyKey,
       });
 
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
         status: 202,
       });
@@ -155,21 +176,51 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const rateLimit = checkRateLimit("orderCancel", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "order_cancel" });
+        const payload: ApiErrorResponse = { error: "rate limit exceeded" };
         return Response.json(
-          { error: "rate limit exceeded" },
+          payload,
           { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
         );
       }
 
       const result = await cancelOrder({ orderId: segments[1] ?? "" });
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
         status: 200,
       });
     }
 
     if (request.method === "GET" && url.pathname === "/portfolio") {
-      return new Response(toJson(await getPortfolio(getRequestUserId(request))), {
+      const payload = await getPortfolio(getRequestUserId(request));
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/claims") {
+      const payload = await getClaims({ userId: getRequestUserId(request) });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "GET" && segments.length === 3 && segments[0] === "claims" && segments[2] === "state") {
+      const payload = await getClaimableStateForMarket({
+        marketId: segments[1] ?? "",
+        userId: getRequestUserId(request) ?? DEMO_USER_ID,
+      });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "POST" && segments.length === 2 && segments[0] === "claims") {
+      const payload = await claimMarket({
+        marketId: segments[1] ?? "",
+        userId: getRequestUserId(request),
+      });
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -195,7 +246,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/deposits") {
-      return new Response(toJson({ deposits: await getDepositHistory(getRequestUserId(request)) }), {
+      const payload = { deposits: await getDepositHistory(getRequestUserId(request)) };
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -206,13 +258,15 @@ const handleRequest = async (request: Request): Promise<Response> => {
         userId: getRequestUserId(request),
         txHash: String(body.txHash ?? ""),
       });
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "GET" && url.pathname === "/withdrawals") {
-      return new Response(toJson({ withdrawals: await getWithdrawalHistory(getRequestUserId(request)) }), {
+      const payload = { withdrawals: await getWithdrawalHistory(getRequestUserId(request)) };
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -224,7 +278,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
         amountAtoms: BigInt(String(body.amountAtoms ?? "0")),
         destinationAddress: String(body.destinationAddress ?? ""),
       });
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
         status: 201,
       });
@@ -246,7 +301,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
         resolverId: String(body.resolverId ?? ""),
         isAdmin: isAdminRequest(request),
       });
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -271,7 +327,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
         withdrawalId: segments[2] ?? "",
         txHash: String(body.txHash ?? ""),
       });
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -290,17 +347,20 @@ const handleRequest = async (request: Request): Promise<Response> => {
         withdrawalId: segments[2] ?? "",
         reason: String(body.reason ?? ""),
       });
-      return new Response(toJson(result), {
+      const payload = result;
+      return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
 
-    return Response.json({ error: "Not found" }, { status: 404 });
+    const payload: ApiErrorResponse = { error: "Not found" };
+    return Response.json(payload, { status: 404 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     logger.error("api request failed", { error: message });
-    return Response.json({ error: message }, { status: 400 });
+    const payload: ApiErrorResponse = { error: message };
+    return Response.json(payload, { status: 400 });
   }
 };
 
