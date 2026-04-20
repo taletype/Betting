@@ -109,8 +109,9 @@ pnpm smoke:local
 - API `/ready`
 - web route availability (`http://127.0.0.1:3000`)
 - WS boot (`http://127.0.0.1:4001/health`)
+- seed data presence (`public.markets` + `public.outcomes`)
 
-If a check fails, the script prints clear next steps.
+If a check fails, the script prints clear next steps and targeted remediation hints for each failed check.
 
 ## Root Scripts
 
