@@ -7,3 +7,5 @@ dist
 .pnpm-store
 coverage
 supabase/.temp
+.vercel
+.env*.local
