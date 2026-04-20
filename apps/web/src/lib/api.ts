@@ -20,6 +20,20 @@ const getApiBaseUrl = (): string => {
   return "/api";
 };
 
+const getAdminApiToken = (): string => {
+  const configuredToken = process.env.ADMIN_API_TOKEN?.trim();
+
+  if (configuredToken) {
+    return configuredToken;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ADMIN_API_TOKEN is required in production");
+  }
+
+  return "dev-admin-token";
+};
+
 export const apiRequest = async <T>(
   path: string,
   init?: RequestInit & { allowNotFound?: boolean },
@@ -129,7 +143,7 @@ export const listWithdrawals = async () => {
 export const listAdminRequestedWithdrawals = async () => {
   const payload = await readApiJson("/admin/withdrawals", {
     headers: {
-      "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
+      "x-admin-token": getAdminApiToken(),
     },
   });
 
@@ -140,7 +154,7 @@ export const executeAdminWithdrawal = async (withdrawalId: string, txHash: strin
   readApiJson(`/admin/withdrawals/${withdrawalId}/execute`, {
     method: "POST",
     headers: {
-      "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
+      "x-admin-token": getAdminApiToken(),
     },
     body: { txHash },
   });
@@ -149,7 +163,7 @@ export const failAdminWithdrawal = async (withdrawalId: string, reason: string) 
   readApiJson(`/admin/withdrawals/${withdrawalId}/fail`, {
     method: "POST",
     headers: {
-      "x-admin-token": process.env.ADMIN_API_TOKEN ?? "dev-admin-token",
+      "x-admin-token": getAdminApiToken(),
     },
     body: { reason },
   });

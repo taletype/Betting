@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { createBaseChainAdapter, type DepositVerificationAdapter } from "@bet/chain";
+import { readEthereumAddress, readPositiveInteger } from "@bet/config";
 import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger } from "@bet/observability";
 
@@ -26,21 +27,19 @@ export interface VerifyDepositResult {
   deposit: DepositRecord;
 }
 
-const normalizeAddress = (address: string): string => address.trim().toLowerCase();
 const normalizeTxHash = (txHash: string): string => txHash.trim().toLowerCase();
 
 const baseUsdcAddress = (): string =>
-  normalizeAddress(process.env.BASE_USDC_ADDRESS ?? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  readEthereumAddress("BASE_USDC_ADDRESS", {
+    defaultInLocal: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  });
 
-const baseTreasuryAddress = (): string => {
-  const value = process.env.BASE_TREASURY_ADDRESS;
-  if (!value) {
-    throw new Error("BASE_TREASURY_ADDRESS is required");
-  }
-  return normalizeAddress(value);
-};
+const baseTreasuryAddress = (): string => readEthereumAddress("BASE_TREASURY_ADDRESS");
 
-const minConfirmations = (): number => Number(process.env.BASE_MIN_CONFIRMATIONS ?? "3");
+const minConfirmations = (): number =>
+  readPositiveInteger("BASE_MIN_CONFIRMATIONS", {
+    defaultInLocal: 3,
+  });
 
 export const getDepositHistory = async (userId?: string) => {
   const db = createDatabaseClient();
