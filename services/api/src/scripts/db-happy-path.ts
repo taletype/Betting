@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import type { DepositVerificationAdapter } from "@bet/chain";
 import { createDatabaseClient } from "@bet/db";
@@ -511,78 +513,90 @@ const main = async () => {
   const openOrders = await listOpenOrders();
   const recentTrades = await listRecentTrades();
 
-  console.log("db-happy-path: ok");
-  console.log(
-    JSON.stringify(
-      {
-        runId,
-        marketId: MARKET_ID,
-        winningOutcomeId: WINNING_OUTCOME_ID,
-        deposit: {
-          txHash: depositResult.deposit.txHash,
-          amount: depositResult.deposit.amount.toString(),
-          status: depositResult.status,
-        },
-        trading: {
-          processedJobs,
-          tradeId: trade.id,
-          makerOrderId: restingOrder.order.id,
-          takerOrderId: crossingOrder.order.id,
-        },
-        openOrders: openOrders.map((row) => ({
-          id: row.id,
-          userId: row.user_id,
-          side: row.side,
-          status: row.status,
-          remainingQuantity: row.remaining_quantity.toString(),
-          reservedAmount: row.reserved_amount.toString(),
-        })),
-        trades: recentTrades.map((row) => ({
-          id: row.id,
-          makerUserId: row.maker_user_id,
-          takerUserId: row.taker_user_id,
-          price: row.price.toString(),
-          quantity: row.quantity.toString(),
-        })),
-        finalBalances: {
-          demoUser: {
-            available: finalBuyerFunds.available.toString(),
-            reserved: finalBuyerFunds.reserved.toString(),
-          },
-          integrationUser: {
-            available: finalSellerFunds.available.toString(),
-            reserved: finalSellerFunds.reserved.toString(),
-          },
-        },
-        finalPositions: {
-          demoUser: {
-            netQuantity: finalBuyerPosition.netQuantity.toString(),
-            averageEntryPrice: finalBuyerPosition.averageEntryPrice.toString(),
-          },
-          integrationUser: {
-            netQuantity: finalSellerPosition.netQuantity.toString(),
-            averageEntryPrice: finalSellerPosition.averageEntryPrice.toString(),
-          },
-        },
-        claim: claimSummary
-          ? {
-              id: claimSummary.id,
-              status: claimSummary.status,
-              claimableAmount: claimSummary.claimable_amount.toString(),
-              claimedAmount: claimSummary.claimed_amount.toString(),
-            }
-          : null,
-        withdrawalFlow: withdrawalSummary,
-        withdrawals,
+  const artifact = {
+    runId,
+    marketId: MARKET_ID,
+    winningOutcomeId: WINNING_OUTCOME_ID,
+    deposit: {
+      txHash: depositResult.deposit.txHash,
+      amount: depositResult.deposit.amount.toString(),
+      status: depositResult.status,
+    },
+    trading: {
+      processedJobs,
+      tradeId: trade.id,
+      makerOrderId: restingOrder.order.id,
+      takerOrderId: crossingOrder.order.id,
+    },
+    openOrders: openOrders.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      side: row.side,
+      status: row.status,
+      remainingQuantity: row.remaining_quantity.toString(),
+      reservedAmount: row.reserved_amount.toString(),
+    })),
+    trades: recentTrades.map((row) => ({
+      id: row.id,
+      makerUserId: row.maker_user_id,
+      takerUserId: row.taker_user_id,
+      price: row.price.toString(),
+      quantity: row.quantity.toString(),
+    })),
+    finalBalances: {
+      demoUser: {
+        available: finalBuyerFunds.available.toString(),
+        reserved: finalBuyerFunds.reserved.toString(),
       },
-      null,
-      2,
-    ),
-  );
+      integrationUser: {
+        available: finalSellerFunds.available.toString(),
+        reserved: finalSellerFunds.reserved.toString(),
+      },
+    },
+    finalPositions: {
+      demoUser: {
+        netQuantity: finalBuyerPosition.netQuantity.toString(),
+        averageEntryPrice: finalBuyerPosition.averageEntryPrice.toString(),
+      },
+      integrationUser: {
+        netQuantity: finalSellerPosition.netQuantity.toString(),
+        averageEntryPrice: finalSellerPosition.averageEntryPrice.toString(),
+      },
+    },
+    claim: claimSummary
+      ? {
+          id: claimSummary.id,
+          status: claimSummary.status,
+          claimableAmount: claimSummary.claimable_amount.toString(),
+          claimedAmount: claimSummary.claimed_amount.toString(),
+        }
+      : null,
+    withdrawalFlow: withdrawalSummary,
+    withdrawals: withdrawals.map((row) => ({
+      ...row,
+      amount: row.amount.toString(),
+    })),
+  };
+
+  const artifactJson = JSON.stringify(artifact, null, 2);
+
+  const artifactPath = process.env.DB_HAPPY_PATH_ARTIFACT;
+  if (artifactPath) {
+    const artifactDir = path.dirname(artifactPath);
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(artifactPath, `${artifactJson}\n`, "utf8");
+  }
+
+  console.log("db-happy-path: ok");
+  console.log(artifactJson);
 };
 
 main().catch((error) => {
-  console.error("db-happy-path: failed");
-  console.error(error instanceof Error ? error.stack : error);
+  const errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  console.error("db-happy-path: failed invariant/assertion");
+  console.error(errorMessage);
+  if (error instanceof Error && error.stack) {
+    console.error(error.stack);
+  }
   process.exitCode = 1;
 });
