@@ -72,8 +72,17 @@ export const toBigInt = (value: string | number | bigint | null | undefined): bi
   return BigInt(value);
 };
 
-export const listMarkets = async () =>
-  MarketSnapshotSchema.array().parse(await readApiJson("/markets"));
+export const listMarkets = async () => {
+  const data = await readApiJson("/markets");
+  if (!data || !Array.isArray(data)) {
+    return [];
+  }
+  try {
+    return MarketSnapshotSchema.array().parse(data);
+  } catch {
+    return data;
+  }
+};
 
 export const getMarket = async (marketId: string) => {
   const payload = await readApiJson(`/markets/${marketId}`, { allowNotFound: true });
