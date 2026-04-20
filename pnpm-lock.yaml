@@ -122,6 +122,9 @@ importers:
       '@bet/matching':
         specifier: workspace:*
         version: link:../../packages/matching
+      '@bet/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
 
   services/candles-worker: {}
 
@@ -130,6 +133,9 @@ importers:
       '@bet/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
+      '@bet/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
 
   services/matching-worker:
     dependencies:
@@ -142,15 +148,24 @@ importers:
 
   services/reconciliation-worker:
     dependencies:
+      '@bet/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@bet/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@bet/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
 
   services/settlement-worker:
     dependencies:
       '@bet/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@bet/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@bet/settlement':
         specifier: workspace:*
         version: link:../../packages/settlement

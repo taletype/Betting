@@ -13,6 +13,7 @@
     "test": "pnpm exec node -e \"console.log('external-sync-worker: no tests yet')\""
   },
   "dependencies": {
-    "@bet/integrations": "workspace:*"
+    "@bet/integrations": "workspace:*",
+    "@bet/observability": "workspace:*"
   }
 }

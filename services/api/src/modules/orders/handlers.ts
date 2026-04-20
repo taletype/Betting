@@ -1,5 +1,6 @@
 import type { Order } from "@bet/contracts";
 import { createDatabaseClient } from "@bet/db";
+import { incrementCounter, logger } from "@bet/observability";
 import {
   assertOrderCanCancel,
   assertOrderCanReserve,
@@ -34,6 +35,14 @@ import {
   updateCancelledOrder,
 } from "./repository";
 import { DEFAULT_COLLATERAL_CURRENCY, DEMO_USER_ID } from "../shared/constants";
+import { toJson } from "../../presenters/json";
+import {
+  hashRequestPayload,
+  markIdempotencyReplay,
+  persistIdempotencyResponse,
+  reserveIdempotencyKey,
+} from "../shared/idempotency";
+import { insertAuditRecord } from "../shared/audit";
 
 export interface CreateOrderInput {
   marketId: string;
@@ -43,6 +52,7 @@ export interface CreateOrderInput {
   price: bigint;
   quantity: bigint;
   clientOrderId?: string | null;
+  idempotencyKey?: string | null;
 }
 
 export interface CancelOrderInput {
@@ -230,8 +240,55 @@ export const createOrder = async (
 
   const reserveAmount = calculateRequiredReserveAmount(input);
   const db = createDatabaseClient();
+  const postCommitEvents: Array<{ type: string; metadata: Record<string, string> }> = [];
 
-  const { order, reserve, trades } = await db.transaction(async (transaction) => {
+  const { order, reserve, trades, replayResponse } = await db.transaction(async (transaction) => {
+    if (input.idempotencyKey) {
+      const idempotency = await reserveIdempotencyKey(transaction, {
+        scope: "orders:create",
+        key: input.idempotencyKey,
+        requestHash: hashRequestPayload({
+          marketId: input.marketId,
+          outcomeId: input.outcomeId,
+          side: input.side,
+          orderType: input.orderType,
+          price: input.price.toString(),
+          quantity: input.quantity.toString(),
+          clientOrderId: input.clientOrderId ?? null,
+        }),
+      });
+
+      if (idempotency.isReplay && idempotency.response) {
+        await markIdempotencyReplay(transaction, {
+          scope: "orders:create",
+          key: input.idempotencyKey,
+        });
+        await insertAuditRecord(transaction, {
+          actorUserId: DEMO_USER_ID,
+          action: "idempotency.replay",
+          entityType: "order",
+          entityId: input.marketId,
+          metadata: {
+            scope: "orders:create",
+            idempotencyKey: input.idempotencyKey,
+            replayCount: idempotency.response.replayCount,
+          },
+        });
+        logger.info("order create idempotency replay", {
+          marketId: input.marketId,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        const parsed = JSON.parse(idempotency.response.body) as CreateOrderResult;
+        return {
+          order: parsed.order,
+          reserve: parsed.reserve,
+          trades: parsed.trades,
+          replayResponse: idempotency.response,
+        };
+      }
+    }
+
     const marketSelection = await getMarketSelection(transaction, {
       marketId: input.marketId,
       outcomeId: input.outcomeId,
@@ -289,6 +346,25 @@ export const createOrder = async (
         nextTradeSequence += 1n;
 
         await insertTrade(transaction, trade);
+        postCommitEvents.push({
+          type: "order.matched",
+          metadata: {
+            marketId: fill.marketId,
+            outcomeId: fill.outcomeId,
+            quantity: fill.quantity.toString(),
+            price: fill.price.toString(),
+          },
+        });
+        postCommitEvents.push({
+          type: "trade.persisted",
+          metadata: {
+            tradeId: trade.id,
+            makerOrderId: trade.makerOrderId,
+            takerOrderId: trade.takerOrderId,
+            sequence: trade.sequence.toString(),
+            marketId: fill.marketId,
+          },
+        });
         tradeSummaries.push(buildTradeSummary(trade));
 
         const buyerOrder = ordersById.get(fill.buyOrderId);
@@ -390,6 +466,7 @@ export const createOrder = async (
         order: updatedIncomingOrder,
         reserve: nextReserve,
         trades: tradeSummaries,
+        replayResponse: null,
       };
     }
 
@@ -397,15 +474,56 @@ export const createOrder = async (
       order: nextOrder,
       reserve: nextReserve,
       trades: tradeSummaries,
+      replayResponse: null,
     };
   });
 
-  return {
+  if (replayResponse) {
+    return JSON.parse(replayResponse.body) as CreateOrderResult;
+  }
+
+  const response: CreateOrderResult = {
     order,
     reserve: buildJournalSummary(reserve),
     status: order.status,
     trades,
   };
+
+  logger.info("order accepted", {
+    orderId: order.id,
+    marketId: order.marketId,
+    outcomeId: order.outcomeId,
+    side: order.side,
+    quantity: order.quantity.toString(),
+    price: order.price.toString(),
+    status: order.status,
+  });
+  incrementCounter("orders_accepted_total", {
+    marketId: order.marketId,
+    outcomeId: order.outcomeId,
+  });
+  for (const event of postCommitEvents) {
+    logger.info(event.type, event.metadata);
+    if (event.type === "trade.persisted") {
+      incrementCounter("trades_persisted_total", {
+        marketId: event.metadata.marketId ?? order.marketId,
+      });
+    }
+  }
+
+  if (input.idempotencyKey) {
+    const mutationDb = createDatabaseClient();
+    await mutationDb.transaction(async (transaction) => {
+      await persistIdempotencyResponse(transaction, {
+        scope: "orders:create",
+        key: input.idempotencyKey ?? "",
+        responseStatus: 202,
+        responseBody: toJson(response),
+      });
+    });
+  }
+
+  return response;
 };
 
 export const cancelOrder = async (
@@ -450,9 +568,20 @@ export const cancelOrder = async (
     };
   });
 
-  return {
+  const response: CancelOrderResult = {
     order,
     release: buildJournalSummary(release),
     status: "cancelled",
   };
+
+  logger.info("order cancelled", {
+    orderId: order.id,
+    marketId: order.marketId,
+    releasedAmount: order.reservedAmount.toString(),
+  });
+  incrementCounter("orders_cancelled_total", {
+    marketId: order.marketId,
+  });
+
+  return response;
 };
