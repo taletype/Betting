@@ -1,102 +1,326 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createDatabaseClient } from "@bet/db";
+import { createSupabaseAdminClient } from "@bet/supabase";
+
+const DEFAULT_USER_ID = "00000000-0000-4000-8000-000000000001";
+
+const getUserId = (request: NextRequest): string => request.headers.get("x-user-id") ?? DEFAULT_USER_ID;
+const getAdminActorId = (request: NextRequest): string =>
+  request.headers.get("x-user-id") ?? process.env.ADMIN_USER_ID ?? DEFAULT_USER_ID;
+
+const toIso = (value: string | Date | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  return new Date(value).toISOString();
+};
+
+const toStringAmount = (value: string | number | bigint | null | undefined): string => {
+  if (value === null || value === undefined) {
+    return "0";
+  }
+
+  return String(value);
+};
 
 async function handleRequest(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ path: string[] }> },
 ): Promise<NextResponse> {
   const { path } = await params;
   const apiPath = path.join("/");
-  const url = new URL(request.url);
+  const supabase = createSupabaseAdminClient();
 
   try {
-    const db = createDatabaseClient();
+    if (apiPath === "health" && request.method === "GET") {
+      return NextResponse.json({ ok: true, service: "api", checkedAt: new Date().toISOString() });
+    }
 
-    // Handle specific endpoints directly from database
     if (apiPath === "markets" && request.method === "GET") {
-      const marketRows = await db.query(`
-        select id, slug, title, description, status, collateral_currency, min_price, max_price, tick_size, close_time, resolve_time, created_at
-        from public.markets
-        order by created_at desc, id asc
-      `);
-      const outcomeRows = await db.query(`
-        select id, market_id, slug, title, outcome_index, created_at
-        from public.outcomes
-        where market_id = any($1::uuid[])
-        order by market_id asc, outcome_index asc
-      `, [marketRows.map((m: any) => m.id)]);
+      const { data: marketRows, error: marketError } = await supabase
+        .from("markets")
+        .select("id, slug, title, description, status, collateral_currency, min_price, max_price, tick_size, close_time, resolve_time, created_at")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true });
 
-      const outcomesByMarketId = new Map<string, any[]>();
-      for (const row of outcomeRows) {
+      if (marketError) {
+        throw marketError;
+      }
+
+      if (!marketRows || marketRows.length === 0) {
+        return NextResponse.json([]);
+      }
+
+      const marketIds = marketRows.map((row) => row.id);
+      const { data: outcomeRows, error: outcomeError } = await supabase
+        .from("outcomes")
+        .select("id, market_id, slug, title, outcome_index, created_at")
+        .in("market_id", marketIds)
+        .order("market_id", { ascending: true })
+        .order("outcome_index", { ascending: true });
+
+      if (outcomeError) {
+        throw outcomeError;
+      }
+
+      const outcomesByMarketId = new Map<string, Array<Record<string, unknown>>>();
+      for (const row of outcomeRows ?? []) {
         const outcomes = outcomesByMarketId.get(row.market_id) ?? [];
         outcomes.push({
-          id: row.id, marketId: row.market_id, slug: row.slug, title: row.title,
-          index: row.outcome_index, createdAt: row.created_at,
+          id: row.id,
+          marketId: row.market_id,
+          slug: row.slug,
+          title: row.title,
+          index: row.outcome_index,
+          createdAt: toIso(row.created_at),
         });
         outcomesByMarketId.set(row.market_id, outcomes);
       }
 
-      const markets = marketRows.map((row: any) => ({
-        id: row.id, slug: row.slug, title: row.title, description: row.description,
-        status: row.status, collateralCurrency: row.collateral_currency,
-        minPrice: row.min_price, maxPrice: row.max_price, tickSize: row.tick_size,
-        createdAt: row.created_at, closesAt: row.close_time, resolvesAt: row.resolve_time,
-        outcomes: outcomesByMarketId.get(row.id) ?? [],
-        stats: { bestBid: null, bestAsk: null, lastTradePrice: null, volumeNotional: 0n },
-      }));
-
-      return NextResponse.json(markets);
+      return NextResponse.json(
+        marketRows.map((row) => ({
+          id: row.id,
+          slug: row.slug,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          collateralCurrency: row.collateral_currency,
+          minPrice: toStringAmount(row.min_price),
+          maxPrice: toStringAmount(row.max_price),
+          tickSize: toStringAmount(row.tick_size),
+          createdAt: toIso(row.created_at),
+          closesAt: toIso(row.close_time),
+          resolvesAt: toIso(row.resolve_time),
+          outcomes: outcomesByMarketId.get(row.id) ?? [],
+          stats: {
+            bestBid: null,
+            bestAsk: null,
+            lastTradePrice: null,
+            volumeNotional: "0",
+          },
+        })),
+      );
     }
 
-    // Handle market detail endpoint
-    if (apiPath.match(/^markets\/[^\/]+$/) && request.method === "GET") {
-      const marketId = apiPath.split("/")[1];
-      const [marketRow] = await db.query(`
-        select id, slug, title, description, status, collateral_currency, min_price, max_price, tick_size, close_time, resolve_time, created_at
-        from public.markets
-        where id = $1::uuid
-        limit 1
-      `, [marketId]);
+    if (apiPath.match(/^markets\/[^/]+$/) && request.method === "GET") {
+      const marketId = apiPath.split("/")[1] ?? "";
+
+      const { data: marketRow, error: marketError } = await supabase
+        .from("markets")
+        .select("id, slug, title, description, status, collateral_currency, min_price, max_price, tick_size, close_time, resolve_time, created_at")
+        .eq("id", marketId)
+        .maybeSingle();
+
+      if (marketError) {
+        throw marketError;
+      }
 
       if (!marketRow) {
         return NextResponse.json({ market: null }, { status: 404 });
       }
 
-      const outcomeRows = await db.query(`
-        select id, market_id, slug, title, outcome_index, created_at
-        from public.outcomes
-        where market_id = $1::uuid
-        order by outcome_index asc
-      `, [marketId]);
+      const { data: outcomeRows, error: outcomeError } = await supabase
+        .from("outcomes")
+        .select("id, market_id, slug, title, outcome_index, created_at")
+        .eq("market_id", marketId)
+        .order("outcome_index", { ascending: true });
 
-      const market = {
-        id: marketRow.id, slug: marketRow.slug, title: marketRow.title, description: marketRow.description,
-        status: marketRow.status, collateralCurrency: marketRow.collateral_currency,
-        minPrice: marketRow.min_price, maxPrice: marketRow.max_price, tickSize: marketRow.tick_size,
-        createdAt: marketRow.created_at, closesAt: marketRow.close_time, resolvesAt: marketRow.resolve_time,
-        outcomes: outcomeRows.map((r: any) => ({
-          id: r.id, marketId: r.market_id, slug: r.slug, title: r.title,
-          index: r.outcome_index, createdAt: r.created_at,
-        })),
-        stats: { bestBid: null, bestAsk: null, lastTradePrice: null, volumeNotional: 0n },
+      if (outcomeError) {
+        throw outcomeError;
+      }
+
+      return NextResponse.json({
+        market: {
+          id: marketRow.id,
+          slug: marketRow.slug,
+          title: marketRow.title,
+          description: marketRow.description,
+          status: marketRow.status,
+          collateralCurrency: marketRow.collateral_currency,
+          minPrice: toStringAmount(marketRow.min_price),
+          maxPrice: toStringAmount(marketRow.max_price),
+          tickSize: toStringAmount(marketRow.tick_size),
+          createdAt: toIso(marketRow.created_at),
+          closesAt: toIso(marketRow.close_time),
+          resolvesAt: toIso(marketRow.resolve_time),
+          outcomes: (outcomeRows ?? []).map((row) => ({
+            id: row.id,
+            marketId: row.market_id,
+            slug: row.slug,
+            title: row.title,
+            index: row.outcome_index,
+            createdAt: toIso(row.created_at),
+          })),
+          stats: {
+            bestBid: null,
+            bestAsk: null,
+            lastTradePrice: null,
+            volumeNotional: "0",
+          },
+        },
+      });
+    }
+
+    if (apiPath.match(/^markets\/[^/]+\/orderbook$/) && request.method === "GET") {
+      const marketId = apiPath.split("/")[1] ?? "";
+      const { data, error } = await supabase.rpc("rpc_get_market_orderbook", {
+        p_market_id: marketId,
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data ?? { marketId, levels: [] });
+    }
+
+    if (apiPath.match(/^markets\/[^/]+\/trades$/) && request.method === "GET") {
+      const marketId = apiPath.split("/")[1] ?? "";
+      const { data, error } = await supabase.rpc("rpc_get_recent_market_trades", {
+        p_market_id: marketId,
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data ?? { marketId, trades: [] });
+    }
+
+    if (apiPath === "portfolio" && request.method === "GET") {
+      const { data, error } = await supabase.rpc("rpc_get_portfolio_snapshot", {
+        p_user_id: getUserId(request),
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data);
+    }
+
+    if (apiPath === "withdrawals" && request.method === "GET") {
+      const { data, error } = await supabase.rpc("rpc_list_withdrawals", {
+        p_user_id: getUserId(request),
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json({ withdrawals: data ?? [] });
+    }
+
+    if (apiPath === "deposits/verify" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { txHash?: string };
+      const { data, error } = await supabase.rpc("rpc_verify_deposit", {
+        p_user_id: getUserId(request),
+        p_tx_hash: body.txHash ?? "",
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data);
+    }
+
+    if (apiPath === "withdrawals" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as {
+        amountAtoms?: string;
+        destinationAddress?: string;
       };
-
-      return NextResponse.json({ market });
+      const { data, error } = await supabase.rpc("rpc_request_withdrawal", {
+        p_user_id: getUserId(request),
+        p_amount_atoms: body.amountAtoms ?? "0",
+        p_destination_address: body.destinationAddress ?? "",
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data, { status: 201 });
     }
 
-    // Handle health check
-    if (apiPath === "health" && request.method === "GET") {
-      return NextResponse.json({ ok: true, service: "api", checkedAt: new Date().toISOString() });
+    if (apiPath === "orders" && request.method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const { data, error } = await supabase.rpc("rpc_place_order", {
+        p_user_id: getUserId(request),
+        p_payload: body,
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data, { status: 201 });
     }
 
-    // Return 404 for unhandled endpoints
+    if (apiPath.match(/^orders\/[^/]+$/) && request.method === "DELETE") {
+      const orderId = apiPath.split("/")[1] ?? "";
+      const { data, error } = await supabase.rpc("rpc_cancel_order", {
+        p_user_id: getUserId(request),
+        p_order_id: orderId,
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data);
+    }
+
+    if (apiPath.match(/^claims\/[^/]+$/) && request.method === "POST") {
+      const marketId = apiPath.split("/")[1] ?? "";
+      const { data, error } = await supabase.rpc("rpc_claim_payout", {
+        p_user_id: getUserId(request),
+        p_market_id: marketId,
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data, { status: 201 });
+    }
+
+    if (apiPath === "admin/withdrawals" && request.method === "GET") {
+      const { data, error } = await supabase.rpc("rpc_admin_list_requested_withdrawals");
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json({ withdrawals: data ?? [] });
+    }
+
+    if (apiPath.match(/^admin\/withdrawals\/[^/]+\/execute$/) && request.method === "POST") {
+      const withdrawalId = apiPath.split("/")[2] ?? "";
+      const body = (await request.json().catch(() => ({}))) as { txHash?: string };
+      const { data, error } = await supabase.rpc("rpc_admin_execute_withdrawal", {
+        p_admin_user_id: getAdminActorId(request),
+        p_withdrawal_id: withdrawalId,
+        p_tx_hash: body.txHash ?? "",
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data);
+    }
+
+    if (apiPath.match(/^admin\/withdrawals\/[^/]+\/fail$/) && request.method === "POST") {
+      const withdrawalId = apiPath.split("/")[2] ?? "";
+      const body = (await request.json().catch(() => ({}))) as { reason?: string };
+      const { data, error } = await supabase.rpc("rpc_admin_fail_withdrawal", {
+        p_admin_user_id: getAdminActorId(request),
+        p_withdrawal_id: withdrawalId,
+        p_reason: body.reason ?? "",
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data);
+    }
+
+    if (apiPath.match(/^admin\/markets\/[^/]+\/resolve$/) && request.method === "POST") {
+      const marketId = apiPath.split("/")[2] ?? "";
+      const body = await request.json().catch(() => ({}));
+      const { data, error } = await supabase.rpc("rpc_admin_resolve_market", {
+        p_admin_user_id: getAdminActorId(request),
+        p_market_id: marketId,
+        p_payload: body,
+      });
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json(data);
+    }
+
     return NextResponse.json({ error: "Endpoint not implemented" }, { status: 404 });
   } catch (error) {
     console.error(`Error handling /${apiPath}:`, error);
-    return NextResponse.json(
-      { error: "Failed to fetch data" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
   }
 }
 
