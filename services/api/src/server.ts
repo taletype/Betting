@@ -32,14 +32,14 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/markets") {
-      return new Response(toJson(listMarkets()), {
+      return new Response(toJson(await listMarkets()), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "GET" && url.pathname.startsWith("/markets/")) {
       const marketId = url.pathname.split("/").at(-1) ?? "";
-      const market = getMarketById(marketId);
+      const market = await getMarketById(marketId);
       return new Response(toJson({ market }), {
         headers: { "content-type": "application/json" },
         status: market ? 200 : 404,
@@ -74,7 +74,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/portfolio") {
-      return Response.json(getPortfolio());
+      return new Response(toJson(await getPortfolio()), {
+        headers: { "content-type": "application/json" },
+      });
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });

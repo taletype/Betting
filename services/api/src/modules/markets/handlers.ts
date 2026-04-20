@@ -1,6 +1,5 @@
-import { demoMarkets } from "./data";
+import { getMarketRecordById, listMarketRecords } from "./repository";
 
-export const listMarkets = () => demoMarkets;
+export const listMarkets = async () => listMarketRecords();
 
-export const getMarketById = (marketId: string) =>
-  demoMarkets.find((market) => market.id === marketId) ?? null;
+export const getMarketById = async (marketId: string) => getMarketRecordById(marketId);

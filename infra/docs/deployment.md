@@ -2,4 +2,6 @@
 
 - Deploy `apps/web` to Vercel.
 - Run Supabase separately for database, auth, storage, and realtime.
-- Schedule cron routes through `vercel.json`.
+- Configure cron routes in `apps/web/vercel.json` when the Vercel project root is `apps/web`.
+- Vercel Hobby only accepts cron jobs that run once per day, so higher-frequency schedules should be moved to an external scheduler later.
+- Set `CRON_SECRET` in Vercel and send the same secret from any external scheduler via `Authorization: Bearer <secret>` or `x-cron-secret`.

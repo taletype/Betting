@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@bet/contracts": "workspace:*",
+    "@bet/db": "workspace:*",
     "@bet/domain": "workspace:*",
-    "@bet/ledger": "workspace:*"
+    "@bet/ledger": "workspace:*",
+    "@bet/matching": "workspace:*"
   }
 }

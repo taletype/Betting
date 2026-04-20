@@ -5,6 +5,7 @@ import {
   assertBalancedJournalEntries,
   releaseOrderReserve,
   reserveForOrder,
+  settleMatchedTrade,
 } from "../index";
 
 test("reserveForOrder builds a balanced reserve journal", () => {
@@ -101,4 +102,61 @@ test("assertBalancedJournalEntries rejects an unbalanced journal", () => {
       ]),
     /must balance/,
   );
+});
+
+test("settleMatchedTrade builds a balanced settlement journal with buy-side price improvement release", () => {
+  const result = settleMatchedTrade({
+    journalId: "journal-settle-1",
+    createdAt: "2026-04-20T00:00:00.000Z",
+    reference: "trade:trd_1:settle",
+    tradeId: "trd_1",
+    outcomeId: "out_1",
+    currency: "USD",
+    price: 40n,
+    quantity: 5n,
+    buyer: {
+      orderId: "ord_buy",
+      userId: "user_buy",
+      orderPrice: 50n,
+    },
+    seller: {
+      orderId: "ord_sell",
+      userId: "user_sell",
+    },
+  });
+
+  assert.equal(result.journal.kind, "settle");
+  assert.equal(result.entries.length, 6);
+  assert.deepEqual(result.balanceDeltas, [
+    { accountCode: "user:user_buy:position:out_1:long", currency: "USD", delta: 200n },
+    { accountCode: "user:user_buy:funds:reserved", currency: "USD", delta: -200n },
+    { accountCode: "user:user_sell:position:out_1:short", currency: "USD", delta: 200n },
+    { accountCode: "user:user_sell:funds:reserved", currency: "USD", delta: -200n },
+    { accountCode: "user:user_buy:funds:available", currency: "USD", delta: 50n },
+    { accountCode: "user:user_buy:funds:reserved", currency: "USD", delta: -50n },
+  ]);
+});
+
+test("settleMatchedTrade omits price-improvement release when buyer limit equals trade price", () => {
+  const result = settleMatchedTrade({
+    journalId: "journal-settle-2",
+    createdAt: "2026-04-20T00:00:00.000Z",
+    reference: "trade:trd_2:settle",
+    tradeId: "trd_2",
+    outcomeId: "out_1",
+    currency: "USD",
+    price: 50n,
+    quantity: 5n,
+    buyer: {
+      orderId: "ord_buy",
+      userId: "user_buy",
+      orderPrice: 50n,
+    },
+    seller: {
+      orderId: "ord_sell",
+      userId: "user_sell",
+    },
+  });
+
+  assert.equal(result.entries.length, 4);
 });
