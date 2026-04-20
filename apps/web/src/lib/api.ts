@@ -4,6 +4,8 @@ import {
   OrderBookSchema,
   PortfolioSnapshotSchema,
   WithdrawalRecordSchema,
+  CreateOrderRequestSchema,
+  PostOrdersResponseSchema,
 } from "@bet/contracts";
 
 const getApiBaseUrl = (): string =>
@@ -135,3 +137,29 @@ export const failAdminWithdrawal = async (withdrawalId: string, reason: string) 
     },
     body: { reason },
   });
+
+export const createOrder = async (input: {
+  marketId: string;
+  outcomeId: string;
+  side: "buy" | "sell";
+  orderType: "limit" | "market";
+  price: string;
+  quantity: string;
+  clientOrderId?: string | null;
+}) => {
+  const validated = CreateOrderRequestSchema.parse({
+    marketId: input.marketId,
+    outcomeId: input.outcomeId,
+    side: input.side,
+    orderType: input.orderType,
+    price: input.price,
+    quantity: input.quantity,
+    clientOrderId: input.clientOrderId ?? null,
+  });
+  return PostOrdersResponseSchema.parse(
+    await readApiJson("/orders", {
+      method: "POST",
+      body: validated,
+    }),
+  );
+};

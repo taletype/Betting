@@ -124,8 +124,8 @@ export default async function PortfolioPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Market ID</th>
-                <th>Outcome ID</th>
+                <th>Market</th>
+                <th>Outcome</th>
                 <th>Shares</th>
                 <th>Avg Price</th>
                 <th>Realized PnL</th>
@@ -134,8 +134,8 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.positions.map((position) => (
                 <tr key={position.id}>
-                  <td>{position.marketId.slice(0, 8)}</td>
-                  <td>{position.outcomeId.slice(0, 8)}</td>
+                  <td className="muted">{position.marketId.slice(0, 8)}…</td>
+                  <td className="muted">{position.outcomeId.slice(0, 8)}…</td>
                   <td>{formatQuantity(position.netQuantity)}</td>
                   <td>{formatPrice(position.averageEntryPrice)}</td>
                   <td>{formatUsdc(position.realizedPnl)}</td>
@@ -154,18 +154,18 @@ export default async function PortfolioPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Market ID</th>
+                <th>Market</th>
                 <th>Side</th>
                 <th>Price</th>
                 <th>Shares</th>
-                <th>Filled</th>
+                <th>Remaining</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {portfolio.openOrders.map((order) => (
                 <tr key={order.id}>
-                  <td>{order.marketId.slice(0, 8)}</td>
+                  <td className="muted">{order.marketId.slice(0, 8)}…</td>
                   <td>{order.side.charAt(0).toUpperCase() + order.side.slice(1)}</td>
                   <td>{formatPrice(order.price)}</td>
                   <td>{formatQuantity(order.quantity)}</td>
@@ -190,7 +190,7 @@ export default async function PortfolioPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Market ID</th>
+                <th>Market</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -199,7 +199,7 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.claims.map((claim) => (
                 <tr key={claim.id}>
-                  <td>{claim.marketId.slice(0, 8)}</td>
+                  <td className="muted">{claim.marketId.slice(0, 8)}…</td>
                   <td>{formatUsdc(claim.claimableAmount)}</td>
                   <td>
                     <span className={`badge badge-${claim.status === "claimable" ? "success" : claim.status === "claimed" ? "neutral" : "warning"}`}>

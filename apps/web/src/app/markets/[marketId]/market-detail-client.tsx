@@ -10,6 +10,7 @@ import { startTransition, useEffect, useEffectEvent, useRef, useState } from "re
 
 import { getOrderBook, getRecentTrades } from "../../../lib/api";
 import { formatPrice, formatQuantity } from "../../../lib/format";
+import { OrderTicket } from "./order-ticket";
 import {
   applyMarketRealtimeMessage,
   createMarketRealtimeState,
@@ -242,6 +243,10 @@ export function MarketDetailClient({
           Realtime feed disconnected. Data shown may be stale while the app attempts to reconnect.
         </section>
       ) : null}
+
+      {market.status !== "resolved" && (
+        <OrderTicket marketId={market.id} outcomes={market.outcomes} />
+      )}
 
       <section className="grid">
         <div className="panel stack">

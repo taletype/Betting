@@ -91,7 +91,7 @@ export default async function AdminPage() {
             <article className="panel stack" key={market.id}>
               <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
               <strong>{market.title}</strong>
-              <div className="muted">Market ID: {market.id}</div>
+              <div className="muted">{market.id.slice(0, 8)}…</div>
 
               <form action={resolveMarketAction} className="stack">
                 <input type="hidden" name="marketId" value={market.id} />
