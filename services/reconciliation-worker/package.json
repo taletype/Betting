@@ -10,11 +10,12 @@
     "dev": "node --import tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('reconciliation-worker: no tests yet')\""
+    "test": "pnpm exec tsx --test src/baseTreasuryReconciliation.test.ts"
   },
   "dependencies": {
     "@bet/ledger": "workspace:*",
     "@bet/db": "workspace:*",
-    "@bet/observability": "workspace:*"
+    "@bet/observability": "workspace:*",
+    "@bet/chain": "workspace:*"
   }
 }

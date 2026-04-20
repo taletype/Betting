@@ -1,10 +1,8 @@
+import { createBaseChainMonitor } from "@bet/chain";
 import { createDatabaseClient } from "@bet/db";
 import { logger } from "@bet/observability";
 
-interface ReconciliationFailure {
-  check: string;
-  details: string;
-}
+import { runBaseTreasuryReconciliation, type ReconciliationFailure } from "./baseTreasuryReconciliation";
 
 const db = createDatabaseClient();
 
@@ -46,7 +44,13 @@ const runReserveExposureCheck = async (): Promise<ReconciliationFailure[]> => {
 };
 
 const runPositionTradeCheck = async (): Promise<ReconciliationFailure[]> => {
-  const rows = await db.query<{ user_id: string; market_id: string; outcome_id: string; net_quantity: bigint; expected_net_quantity: bigint }>(
+  const rows = await db.query<{
+    user_id: string;
+    market_id: string;
+    outcome_id: string;
+    net_quantity: bigint;
+    expected_net_quantity: bigint;
+  }>(
     `
       with trade_net as (
         select
@@ -110,30 +114,59 @@ const runPositionTradeCheck = async (): Promise<ReconciliationFailure[]> => {
 };
 
 export const main = async (): Promise<void> => {
+  const baseReport = await runBaseTreasuryReconciliation({
+    db,
+    chainMonitor: createBaseChainMonitor(),
+    minConfirmations: Number(process.env.BASE_RECON_MIN_CONFIRMATIONS ?? "12"),
+  });
+
   const failures = [
     ...(await runLedgerBalanceCheck()),
     ...(await runReserveExposureCheck()),
     ...(await runPositionTradeCheck()),
+    ...baseReport.failures,
   ];
 
+  const report = {
+    generatedAt: new Date().toISOString(),
+    checks: {
+      ledger: 3,
+      baseTreasury: {
+        depositsChecked: baseReport.counts.depositsChecked,
+        withdrawalsChecked: baseReport.counts.withdrawalsChecked,
+      },
+    },
+    treasury: baseReport.treasurySummary,
+    failures,
+  };
+
+  const reportJson = JSON.stringify(report, null, 2);
+  console.log(reportJson);
+
+  logger.info("reconciliation report generated", {
+    event: "reconciliation.report",
+    mismatchCount: failures.length,
+    depositsChecked: baseReport.counts.depositsChecked,
+    withdrawalsChecked: baseReport.counts.withdrawalsChecked,
+    treasuryInflowAmount: baseReport.treasurySummary.inflowAmount.toString(),
+    treasuryOutflowAmount: baseReport.treasurySummary.outflowAmount.toString(),
+  });
+
   if (failures.length === 0) {
-    logger.info("reconciliation checks passed", {
-      checks: 3,
-      checkedAt: new Date().toISOString(),
-    });
+    console.log(
+      `reconciliation summary: ok (deposits=${baseReport.counts.depositsChecked}, withdrawals=${baseReport.counts.withdrawalsChecked})`,
+    );
     return;
   }
 
   logger.error("reconciliation checks failed", {
+    event: "reconciliation.mismatch",
     count: failures.length,
     failures,
     checkedAt: new Date().toISOString(),
   });
 
-  for (const failure of failures) {
-    console.error(`[${failure.check}] ${failure.details}`);
-  }
-
+  console.error(`reconciliation summary: FAILED mismatches=${failures.length}`);
   process.exitCode = 1;
 };
 
