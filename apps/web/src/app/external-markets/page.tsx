@@ -27,6 +27,25 @@ const toNumber = (value: number | string | null): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const formatDate = (value: Date | string): string =>
+  new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Hong_Kong",
+  }).format(new Date(value));
+
+const statusTone = (status: string): "neutral" | "success" | "warning" => {
+  if (status === "resolved" || status === "closed") {
+    return "success";
+  }
+
+  if (status === "paused") {
+    return "warning";
+  }
+
+  return "neutral";
+};
+
 const loadMarkets = async (): Promise<ExternalMarketRow[]> =>
   db.query<ExternalMarketRow>(
     `
@@ -53,33 +72,37 @@ export default async function ExternalMarketsPage() {
     <main className="stack">
       <section className="hero">
         <h1>External Markets</h1>
-        <p>Read-only synced market discovery from Polymarket and Kalshi.</p>
+        <p>Read-only market snapshots synced from Polymarket and Kalshi.</p>
       </section>
       <section className="stack">
         {markets.length === 0 ? (
-          <div className="panel muted">No synced external markets yet. Run the external sync job.</div>
+          <div className="panel empty-state">No synced external markets yet. Run the external sync job, then refresh.</div>
         ) : (
           markets.map((market) => (
             <div key={market.id} className="panel stack">
-              <div className="muted">{market.source.toUpperCase()}</div>
-              <strong>{market.title}</strong>
               <div className="grid">
-                <div>
-                  <div className="muted">Best bid</div>
-                  <div className="metric-sm">{toNumber(market.best_bid) ?? "—"}</div>
+                <div className="stack">
+                  <div className="badge badge-neutral">{market.source}</div>
+                  <strong>{market.title}</strong>
+                  <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
+                  <div className="muted">External ID: {market.external_id}</div>
                 </div>
-                <div>
-                  <div className="muted">Best ask</div>
-                  <div className="metric-sm">{toNumber(market.best_ask) ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="muted">Last trade</div>
-                  <div className="metric-sm">{toNumber(market.last_trade_price) ?? "—"}</div>
+                <div className="stack">
+                  <div className="kv">
+                    <span className="kv-key">Best bid</span>
+                    <span className="kv-value">{toNumber(market.best_bid) ?? "—"}</span>
+                  </div>
+                  <div className="kv">
+                    <span className="kv-key">Best ask</span>
+                    <span className="kv-value">{toNumber(market.best_ask) ?? "—"}</span>
+                  </div>
+                  <div className="kv">
+                    <span className="kv-key">Last trade</span>
+                    <span className="kv-value">{toNumber(market.last_trade_price) ?? "—"}</span>
+                  </div>
                 </div>
               </div>
-              <div className="muted">
-                Synced: {market.last_synced_at ? new Date(market.last_synced_at).toISOString() : "never"}
-              </div>
+              <div className="muted">Last synced: {market.last_synced_at ? formatDate(market.last_synced_at) : "never"}</div>
             </div>
           ))
         )}

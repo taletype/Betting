@@ -23,6 +23,36 @@ a {
   text-decoration: none;
 }
 
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  background: rgba(9, 17, 31, 0.9);
+  color: #f4f7fb;
+  border: 1px solid rgba(168, 179, 199, 0.28);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+button {
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.2);
+  color: #e6f1ff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
 .shell {
   max-width: 1120px;
   margin: 0 auto;
@@ -86,6 +116,86 @@ a {
   font-weight: 700;
 }
 
+.metric-sm {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.section-title {
+  margin: 0;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.kv-key {
+  color: #a8b3c7;
+}
+
+.kv-value {
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 179, 199, 0.35);
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.badge-neutral {
+  color: #c7d2e4;
+  border-color: rgba(168, 179, 199, 0.35);
+  background: rgba(168, 179, 199, 0.1);
+}
+
+.badge-success {
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.badge-warning {
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.7);
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.badge-danger {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.7);
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.banner {
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(168, 179, 199, 0.4);
+  background: rgba(168, 179, 199, 0.1);
+}
+
+.banner-success {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.empty-state {
+  border: 1px dashed rgba(168, 179, 199, 0.36);
+  border-radius: 8px;
+  padding: 14px;
+  color: #a8b3c7;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -98,7 +208,16 @@ a {
   text-align: left;
 }
 
-.metric-sm {
-  font-size: 20px;
+.table th {
+  color: #a8b3c7;
   font-weight: 600;
+  font-size: 14px;
+}
+
+.error-state {
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+  border-radius: 8px;
+  padding: 12px 14px;
 }
