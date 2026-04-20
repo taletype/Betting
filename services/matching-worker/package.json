@@ -1,0 +1,19 @@
+{
+  "name": "@bet/matching-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "types": "src/main.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --import tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json",
+    "test": "pnpm exec node -e \"console.log('matching-worker: no tests yet')\""
+  },
+  "dependencies": {
+    "@bet/matching": "workspace:*",
+    "@bet/observability": "workspace:*"
+  }
+}

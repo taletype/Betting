@@ -1,0 +1,18 @@
+{
+  "name": "@bet/ws",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.ts",
+  "types": "src/server.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --import tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json",
+    "test": "pnpm exec node -e \"console.log('ws: no tests yet')\""
+  },
+  "dependencies": {
+    "@bet/contracts": "workspace:*"
+  }
+}
