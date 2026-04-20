@@ -36,6 +36,49 @@ const strip0x = (value: string): string => (value.startsWith("0x") ? value.slice
 const normalizeHex = (value: string): string => `0x${strip0x(value).toLowerCase()}`;
 const parseHexBigInt = (hex: string): bigint => BigInt(normalizeHex(hex));
 
+const isLocalEnvironment = (): boolean => {
+  const env = process.env.NODE_ENV ?? "";
+  return env === "" || env === "development" || env === "test" || env === "local";
+};
+
+const readBaseRpcUrl = (): string => {
+  const value = process.env.BASE_RPC_URL?.trim();
+  const candidate = value || (isLocalEnvironment() ? "https://mainnet.base.org" : "");
+
+  if (!candidate) {
+    throw new Error("BASE_RPC_URL is required. Set BASE_RPC_URL in your deployment environment.");
+  }
+
+  try {
+    // eslint-disable-next-line no-new
+    new URL(candidate);
+  } catch {
+    throw new Error(`BASE_RPC_URL must be a valid URL. Received: ${candidate}`);
+  }
+
+  return candidate;
+};
+
+const readBaseChainId = (): number => {
+  const raw = process.env.BASE_CHAIN_ID?.trim() || (isLocalEnvironment() ? "8453" : "");
+
+  if (!raw) {
+    throw new Error("BASE_CHAIN_ID is required. Set BASE_CHAIN_ID to 8453 or 84532.");
+  }
+
+  const chainId = Number(raw);
+
+  if (!Number.isInteger(chainId) || chainId <= 0) {
+    throw new Error(`BASE_CHAIN_ID must be a positive integer. Received: ${raw}`);
+  }
+
+  if (chainId !== 8453 && chainId !== 84532) {
+    throw new Error(`BASE_CHAIN_ID must be one of: 8453, 84532. Received: ${chainId}`);
+  }
+
+  return chainId;
+};
+
 export class BaseChainMonitor implements ChainTxMonitor {
   constructor(private readonly rpcUrl: string) {}
 
@@ -86,5 +129,9 @@ export class BaseChainMonitor implements ChainTxMonitor {
   }
 }
 
-export const createBaseChainMonitor = (): BaseChainMonitor =>
-  new BaseChainMonitor(process.env.BASE_RPC_URL ?? "https://mainnet.base.org");
+
+
+export const createBaseChainMonitor = (): BaseChainMonitor => {
+  readBaseChainId();
+  return new BaseChainMonitor(readBaseRpcUrl());
+};

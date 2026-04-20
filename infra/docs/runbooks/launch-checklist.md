@@ -14,7 +14,9 @@
   - `@bet/external-sync-worker`
 
 ## 2) Required env vars
-Minimum stack vars (validated by `./infra/scripts/check-env.sh`):
+Use the full matrix in `infra/docs/runbooks/environment-configuration.md`.
+
+Launch-minimum set (validated by `./infra/scripts/check-env.sh`):
 - `DATABASE_URL`
 - `SUPABASE_DB_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
@@ -24,11 +26,11 @@ Minimum stack vars (validated by `./infra/scripts/check-env.sh`):
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_JWT_SECRET`
 - `API_BASE_URL`
-
-Critical runtime vars:
+- `NEXT_PUBLIC_WS_URL`
 - `ADMIN_API_TOKEN`
-- `BASE_TREASURY_ADDRESS`
 - `BASE_RPC_URL`
+- `BASE_CHAIN_ID`
+- `BASE_TREASURY_ADDRESS`
 - `BASE_USDC_ADDRESS`
 - `BASE_MIN_CONFIRMATIONS`
 - `BASE_RECON_MIN_CONFIRMATIONS`
