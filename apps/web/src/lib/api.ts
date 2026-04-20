@@ -11,12 +11,12 @@ import {
 const getApiBaseUrl = (): string => {
   const configuredUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
   
-  // If configured URL is set and not localhost, use it directly
+  // If configured URL is set and not localhost, use it directly (for external API)
   if (configuredUrl && !configuredUrl.includes("127.0.0.1") && !configuredUrl.includes("localhost")) {
     return configuredUrl;
   }
   
-  // In production (Vercel) or when API is not available, use the proxy routes
+  // Use local Vercel Functions for all other cases
   if (typeof window !== "undefined") {
     // Browser-side: use relative /api path
     return "/api";
@@ -27,8 +27,8 @@ const getApiBaseUrl = (): string => {
     return `https://${process.env.VERCEL_URL}/api`;
   }
   
-  // Local development fallback
-  return configuredUrl ?? "http://127.0.0.1:4000";
+  // Local development: use /api
+  return "/api";
 };
 
 export const apiRequest = async <T>(
