@@ -40,8 +40,10 @@ Run `./infra/scripts/check-env.sh` to validate this minimum set:
 * `ADMIN_API_TOKEN`
 
 ### Blockchain (Base Network)
-* `BASE_RPC_URL`
 * `BASE_CHAIN_ID`
+* `BASE_RPC_URL`
+* `BASE_WS_URL`
+* `BASE_EXPLORER_URL`
 * `BASE_TREASURY_ADDRESS`
 * `BASE_USDC_ADDRESS`
 * `BASE_MIN_CONFIRMATIONS`

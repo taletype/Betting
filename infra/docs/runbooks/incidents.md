@@ -40,7 +40,7 @@ psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "select user_i
 ```
 ### Contain
 - Stop `/deposits/verify` requests.
-- Confirm API env (`BASE_TREASURY_ADDRESS`, `BASE_RPC_URL`, `BASE_USDC_ADDRESS`, `BASE_MIN_CONFIRMATIONS`).
+- Confirm API env (`BASE_TREASURY_ADDRESS`, `BASE_CHAIN_ID`, `BASE_RPC_URL`, `BASE_WS_URL`, `BASE_USDC_ADDRESS`, `BASE_MIN_CONFIRMATIONS`).
 - Communicate delayed crediting.
 ### Verify
 ```bash

@@ -1,5 +1,9 @@
 import {
   environment,
+  readBaseChainId,
+  readBaseExplorerUrl,
+  readBaseRpcUrl,
+  readBaseWsUrl,
   readEthereumAddress,
   readPositiveInteger,
   readRequiredUrl,
@@ -17,11 +21,12 @@ export const validateApiEnvironment = (): void => {
   readRequiredUrl("API_BASE_URL", { defaultInLocal: "http://localhost:4000" });
 
   readEthereumAddress("BASE_TREASURY_ADDRESS");
-  readEthereumAddress("BASE_USDC_ADDRESS", {
-    defaultInLocal: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  });
+  readEthereumAddress("BASE_USDC_ADDRESS");
 
-  readRequiredUrl("BASE_RPC_URL", { defaultInLocal: "https://mainnet.base.org" });
+  readBaseChainId();
+  readBaseRpcUrl();
+  readBaseWsUrl();
+  readBaseExplorerUrl();
 
   readPositiveInteger("BASE_MIN_CONFIRMATIONS", { defaultInLocal: 3 });
   readPositiveInteger("BASE_RECON_MIN_CONFIRMATIONS", { defaultInLocal: 12 });
