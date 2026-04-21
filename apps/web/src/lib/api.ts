@@ -32,20 +32,6 @@ const getAdminApiToken = (): string => {
   return "dev-admin-token";
 };
 
-const getAdminApiToken = (): string => {
-  const configuredToken = process.env.ADMIN_API_TOKEN?.trim();
-
-  if (configuredToken) {
-    return configuredToken;
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("ADMIN_API_TOKEN is required in production");
-  }
-
-  return "dev-admin-token";
-};
-
 export const apiRequest = async <T>(
   path: string,
   init?: RequestInit & { allowNotFound?: boolean },
