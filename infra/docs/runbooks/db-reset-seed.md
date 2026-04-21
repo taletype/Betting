@@ -65,3 +65,13 @@ Expected highlights after reseed:
 - recent trades in multiple markets,
 - linked wallet + deposits + withdrawals + claims for demo portfolio,
 - external market rows with outcomes and trade ticks.
+
+
+## Generate visual screenshot artifacts
+After reset/seed, generate the review pack:
+
+```bash
+pnpm screenshots:pack
+```
+
+See full workflow: `infra/docs/runbooks/screenshot-pack.md`.

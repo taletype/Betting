@@ -85,6 +85,16 @@ Expected artifacts from this command:
 - `infra/artifacts/smoke-db/latest-reconciliation.log`
 - `infra/artifacts/smoke-db/latest-launch-proof.json`
 
+
+### Optional visual artifact command
+
+```bash
+pnpm screenshots:pack
+```
+
+Output path:
+- `infra/artifacts/screenshot-pack/latest/`
+
 The JSON output includes chain/network info, linked wallet, deposit verification result, maker/taker order results, trades, positions, balances, resolution result, claim result, withdrawals, and tx/explorer links when present.
 
 ---
