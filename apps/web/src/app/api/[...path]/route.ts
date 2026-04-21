@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
 import { readMarketById, readMarketOrderBook, readMarkets, readMarketTrades } from "../_shared/market-read";
 
 import {
-  canUseDevHeaderOverride,
-  DEV_USER_HEADER,
   getAuthenticatedUser,
   getUserRole,
   isAdminRole,
-  resolveUserId,
 } from "../auth";
 
 async function handleRequest(
@@ -17,7 +14,7 @@ async function handleRequest(
 ): Promise<NextResponse> {
   const { path } = await params;
   const apiPath = path.join("/");
-  const supabase = createSupabaseAdminClient();
+  const adminSupabase = createSupabaseAdminClient();
 
   try {
     if (apiPath === "health" && request.method === "GET") {
@@ -25,13 +22,13 @@ async function handleRequest(
     }
 
     if (apiPath === "markets" && request.method === "GET") {
-      return NextResponse.json(await readMarkets(supabase));
+      return NextResponse.json(await readMarkets(adminSupabase));
     }
 
     if (apiPath.match(/^markets\/[^/]+$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
 
-      const market = await readMarketById(supabase, marketId);
+      const market = await readMarketById(adminSupabase, marketId);
       if (!market) {
         return NextResponse.json({ market: null }, { status: 404 });
       }
@@ -40,30 +37,27 @@ async function handleRequest(
 
     if (apiPath.match(/^markets\/[^/]+\/orderbook$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
-      return NextResponse.json(await readMarketOrderBook(supabase, marketId));
+      return NextResponse.json(await readMarketOrderBook(adminSupabase, marketId));
     }
 
     if (apiPath.match(/^markets\/[^/]+\/trades$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
-      return NextResponse.json(await readMarketTrades(supabase, marketId));
+      return NextResponse.json(await readMarketTrades(adminSupabase, marketId));
     }
 
     const user = await getAuthenticatedUser(request);
-    const userId = resolveUserId({
-      sessionUserId: user?.id,
-      requestHeaderUserId: request.headers.get(DEV_USER_HEADER),
-      allowDevHeaderOverride: canUseDevHeaderOverride({
-        nodeEnv: process.env.NODE_ENV,
-        allowDevIdentityHeader: process.env.ALLOW_DEV_IDENTITY_HEADER,
-      }),
-    });
+    const userId = user?.id ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
+    const userSupabase = createSupabaseServerClient({
+      get: (name) => request.cookies.get(name)?.value,
+    });
+
     if (apiPath === "portfolio" && request.method === "GET") {
-      const { data, error } = await supabase.rpc("rpc_get_portfolio_snapshot", {
+      const { data, error } = await userSupabase.rpc("rpc_get_portfolio_snapshot", {
         p_user_id: userId,
       });
       if (error) {
@@ -73,7 +67,7 @@ async function handleRequest(
     }
 
     if (apiPath === "withdrawals" && request.method === "GET") {
-      const { data, error } = await supabase.rpc("rpc_list_withdrawals", {
+      const { data, error } = await userSupabase.rpc("rpc_list_withdrawals", {
         p_user_id: userId,
       });
       if (error) {
@@ -84,7 +78,7 @@ async function handleRequest(
 
     if (apiPath === "deposits/verify" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { txHash?: string };
-      const { data, error } = await supabase.rpc("rpc_verify_deposit", {
+      const { data, error } = await userSupabase.rpc("rpc_verify_deposit", {
         p_user_id: userId,
         p_tx_hash: body.txHash ?? "",
       });
@@ -99,7 +93,7 @@ async function handleRequest(
         amountAtoms?: string;
         destinationAddress?: string;
       };
-      const { data, error } = await supabase.rpc("rpc_request_withdrawal", {
+      const { data, error } = await userSupabase.rpc("rpc_request_withdrawal", {
         p_user_id: userId,
         p_amount_atoms: body.amountAtoms ?? "0",
         p_destination_address: body.destinationAddress ?? "",
@@ -112,7 +106,7 @@ async function handleRequest(
 
     if (apiPath === "orders" && request.method === "POST") {
       const body = await request.json().catch(() => ({}));
-      const { data, error } = await supabase.rpc("rpc_place_order", {
+      const { data, error } = await userSupabase.rpc("rpc_place_order", {
         p_user_id: userId,
         p_payload: body,
       });
@@ -124,7 +118,7 @@ async function handleRequest(
 
     if (apiPath.match(/^orders\/[^/]+$/) && request.method === "DELETE") {
       const orderId = apiPath.split("/")[1] ?? "";
-      const { data, error } = await supabase.rpc("rpc_cancel_order", {
+      const { data, error } = await userSupabase.rpc("rpc_cancel_order", {
         p_user_id: userId,
         p_order_id: orderId,
       });
@@ -136,7 +130,7 @@ async function handleRequest(
 
     if (apiPath.match(/^claims\/[^/]+$/) && request.method === "POST") {
       const marketId = apiPath.split("/")[1] ?? "";
-      const { data, error } = await supabase.rpc("rpc_claim_payout", {
+      const { data, error } = await userSupabase.rpc("rpc_claim_payout", {
         p_user_id: userId,
         p_market_id: marketId,
       });
@@ -158,7 +152,7 @@ async function handleRequest(
       const adminActorId = user.id;
 
       if (apiPath === "admin/withdrawals" && request.method === "GET") {
-        const { data, error } = await supabase.rpc("rpc_admin_list_requested_withdrawals");
+        const { data, error } = await adminSupabase.rpc("rpc_admin_list_requested_withdrawals");
         if (error) {
           throw error;
         }
@@ -168,7 +162,7 @@ async function handleRequest(
       if (apiPath.match(/^admin\/withdrawals\/[^/]+\/execute$/) && request.method === "POST") {
         const withdrawalId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { txHash?: string };
-        const { data, error } = await supabase.rpc("rpc_admin_execute_withdrawal", {
+        const { data, error } = await adminSupabase.rpc("rpc_admin_execute_withdrawal", {
           p_admin_user_id: adminActorId,
           p_withdrawal_id: withdrawalId,
           p_tx_hash: body.txHash ?? "",
@@ -182,7 +176,7 @@ async function handleRequest(
       if (apiPath.match(/^admin\/withdrawals\/[^/]+\/fail$/) && request.method === "POST") {
         const withdrawalId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { reason?: string };
-        const { data, error } = await supabase.rpc("rpc_admin_fail_withdrawal", {
+        const { data, error } = await adminSupabase.rpc("rpc_admin_fail_withdrawal", {
           p_admin_user_id: adminActorId,
           p_withdrawal_id: withdrawalId,
           p_reason: body.reason ?? "",
@@ -196,7 +190,7 @@ async function handleRequest(
       if (apiPath.match(/^admin\/markets\/[^/]+\/resolve$/) && request.method === "POST") {
         const marketId = apiPath.split("/")[2] ?? "";
         const body = await request.json().catch(() => ({}));
-        const { data, error } = await supabase.rpc("rpc_admin_resolve_market", {
+        const { data, error } = await adminSupabase.rpc("rpc_admin_resolve_market", {
           p_admin_user_id: adminActorId,
           p_market_id: marketId,
           p_payload: body,

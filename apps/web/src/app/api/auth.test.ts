@@ -1,32 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canUseDevHeaderOverride, isAdminRole, resolveUserId } from "./auth";
+import { canUseDevHeaderOverride, getUserRole, isAdminRole, resolveAuthenticatedUser } from "./auth";
 
-test("spoofed header cannot override authenticated user", () => {
-  const userId = resolveUserId({
-    sessionUserId: "session-user-id",
+test("spoofed header cannot impersonate authenticated user", () => {
+  const user = resolveAuthenticatedUser({
+    sessionUser: { id: "session-user-id", role: "user" },
     requestHeaderUserId: "spoofed-user-id",
+    requestHeaderRole: "admin",
     allowDevHeaderOverride: true,
   });
 
-  assert.equal(userId, "session-user-id");
+  assert.deepEqual(user, { id: "session-user-id", role: "user" });
 });
 
-test("unauthenticated user without explicit dev override is rejected", () => {
-  const userId = resolveUserId({
-    sessionUserId: null,
+test("missing session is rejected when dev override is disabled", () => {
+  const user = resolveAuthenticatedUser({
+    sessionUser: null,
     requestHeaderUserId: "header-user-id",
+    requestHeaderRole: "admin",
     allowDevHeaderOverride: false,
   });
 
-  assert.equal(userId, null);
+  assert.equal(user, null);
 });
 
-test("non-admin role fails admin gate", () => {
+test("non-admin user fails admin gate", () => {
   assert.equal(isAdminRole("user"), false);
   assert.equal(isAdminRole("trader"), false);
   assert.equal(isAdminRole("admin"), true);
+});
+
+test("valid admin session is recognized", () => {
+  assert.equal(getUserRole({ id: "admin-id", role: "admin" }), "admin");
+  assert.equal(isAdminRole(getUserRole({ id: "admin-id", role: "admin" })), true);
 });
 
 test("dev header override is only enabled when explicitly gated", () => {
