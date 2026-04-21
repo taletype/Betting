@@ -5,9 +5,8 @@ import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
 
 import {
+  evaluateAdminAccess,
   getAuthenticatedUser,
-  getUserRole,
-  isAdminRole,
 } from "../auth";
 
 async function handleRequest(
@@ -143,15 +142,12 @@ async function handleRequest(
     }
 
     if (apiPath.startsWith("admin/")) {
-      if (!user) {
-        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      const adminAccess = evaluateAdminAccess(user);
+      if (!adminAccess.ok) {
+        return NextResponse.json({ error: adminAccess.error }, { status: adminAccess.status });
       }
 
-      if (!isAdminRole(getUserRole(user))) {
-        return NextResponse.json({ error: "Admin privileges required" }, { status: 403 });
-      }
-
-      const adminActorId = user.id;
+      const adminActorId = user!.id;
 
       if (apiPath === "admin/withdrawals" && request.method === "GET") {
         const { data, error } = await adminSupabase.rpc("rpc_admin_list_requested_withdrawals");
