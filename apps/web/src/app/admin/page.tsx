@@ -33,10 +33,14 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
 };
 
 export default async function AdminPage() {
-  const [markets, withdrawals] = await Promise.all([
+  const [marketsResult, withdrawalsResult] = await Promise.allSettled([
     apiRequest<MarketResponse[]>("/markets"),
     listAdminRequestedWithdrawals(),
   ]);
+
+  const markets = marketsResult.status === "fulfilled" ? marketsResult.value : [];
+  const withdrawals = withdrawalsResult.status === "fulfilled" ? withdrawalsResult.value : [];
+  const adminDataError = withdrawalsResult.status === "rejected" ? withdrawalsResult.reason : null;
 
   const openMarkets = (markets ?? []).filter((market) => market.status === "open");
   const resolvedMarkets = (markets ?? []).filter((market) => market.status === "resolved");
@@ -51,7 +55,9 @@ export default async function AdminPage() {
 
       <section className="stack">
         <h2 className="section-title">Requested Withdrawals</h2>
-        {withdrawals.length === 0 ? (
+        {adminDataError ? (
+          <div className="panel empty-state">Sign in as an admin to view and process withdrawal requests.</div>
+        ) : withdrawals.length === 0 ? (
           <div className="panel empty-state">No pending withdrawal requests.</div>
         ) : (
           withdrawals.map((withdrawal) => (

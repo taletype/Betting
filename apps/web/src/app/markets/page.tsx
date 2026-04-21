@@ -36,7 +36,10 @@ const getStatusLabel = (status: string): string => {
 };
 
 export default async function MarketsPage() {
-  const markets = await listMarkets();
+  const markets = await listMarkets().catch((error) => {
+    console.error("failed to load markets", error);
+    return [];
+  });
   const activeMarkets = markets.filter((market) => market.status === "open").length;
   const resolvedMarkets = markets.filter((market) => market.status === "resolved").length;
 

@@ -21,7 +21,21 @@ const claimTone = (status: string): "success" | "neutral" | "warning" => {
 };
 
 export default async function ClaimsPage() {
-  const [portfolio, markets] = await Promise.all([getPortfolio(), listMarkets()]);
+  const [portfolioResult, marketsResult] = await Promise.allSettled([getPortfolio(), listMarkets()]);
+  const portfolioUnavailable = portfolioResult.status === "rejected";
+  const portfolio =
+    portfolioResult.status === "fulfilled"
+      ? portfolioResult.value
+      : ({
+          balances: [],
+          linkedWallet: null,
+          positions: [],
+          openOrders: [],
+          claims: [],
+          deposits: [],
+          withdrawals: [],
+        } as Awaited<ReturnType<typeof getPortfolio>>);
+  const markets = marketsResult.status === "fulfilled" ? marketsResult.value : [];
   const marketTitleById = new Map(markets.map((market) => [market.id, market.title]));
 
   return (
@@ -30,6 +44,10 @@ export default async function ClaimsPage() {
         <h1>Claims & Payouts</h1>
         <p>Track claimable and claimed payout states for resolved markets in your portfolio.</p>
       </section>
+
+      {portfolioUnavailable ? (
+        <section className="panel empty-state">Sign in to load claim and payout history.</section>
+      ) : null}
 
       <section className="grid">
         <div className="panel stack">

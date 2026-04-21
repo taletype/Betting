@@ -8,9 +8,29 @@ import {
   PostOrdersResponseSchema,
 } from "@bet/contracts";
 
-const getOptionalProxyHeaders = (): HeadersInit => {
+const getServerCookieHeader = async (): Promise<string | null> => {
+  if (typeof window !== "undefined") {
+    return null;
+  }
+
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+
+    return cookieHeader || null;
+  } catch {
+    return null;
+  }
+};
+
+const getOptionalProxyHeaders = async (): Promise<HeadersInit> => {
   const forwardedUserId = process.env.API_REQUEST_USER_ID?.trim();
   const forwardedAdminToken = process.env.API_REQUEST_ADMIN_TOKEN?.trim();
+  const cookieHeader = await getServerCookieHeader();
 
   const headers: Record<string, string> = {};
   if (forwardedUserId) {
@@ -18,6 +38,9 @@ const getOptionalProxyHeaders = (): HeadersInit => {
   }
   if (forwardedAdminToken) {
     headers["x-admin-token"] = forwardedAdminToken;
+  }
+  if (cookieHeader) {
+    headers.cookie = cookieHeader;
   }
 
   return headers;
@@ -57,12 +80,9 @@ const getApiUrl = (path: string): string => {
     return `${base}${path}`;
   }
 
-  if (path.startsWith("/api/")) {
-    const localBase = getLocalWebBaseUrl();
-    return localBase ? `${localBase}${path}` : path;
-  }
-
-  return path;
+  const localPath = path.startsWith("/api/") ? path : `/api${path}`;
+  const localBase = getLocalWebBaseUrl();
+  return localBase ? `${localBase}${localPath}` : localPath;
 };
 
 export const apiRequest = async <T>(
@@ -75,7 +95,7 @@ export const apiRequest = async <T>(
     ...init,
     headers: {
       "content-type": "application/json",
-      ...getOptionalProxyHeaders(),
+      ...(await getOptionalProxyHeaders()),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -265,6 +285,6 @@ export interface ExternalMarketApiRecord {
 }
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
-  const payload = await readApiJson(getApiBaseUrl() ? "/external/markets" : "/api/external/markets");
+  const payload = await readApiJson("/external/markets");
   return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
 };

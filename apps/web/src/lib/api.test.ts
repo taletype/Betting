@@ -14,7 +14,7 @@ const createFetchMock = (payload: unknown, calls: FetchCall[]): typeof globalThi
     });
   }) as typeof globalThis.fetch;
 
-test("listMarkets uses relative /markets path when API base is not configured", async (t) => {
+test("listMarkets uses local Next API route when API base is not configured", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -42,7 +42,7 @@ test("listMarkets uses relative /markets path when API base is not configured", 
   await listMarkets();
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "/markets");
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/markets");
 });
 
 test("listMarkets uses configured absolute API base URL without trailing slash", async (t) => {

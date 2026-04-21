@@ -46,7 +46,10 @@ const statusLabel = (status: string): string => {
 };
 
 export default async function ExternalMarketsPage() {
-  const markets = await listExternalMarkets();
+  const markets = await listExternalMarkets().catch((error) => {
+    console.error("failed to load external markets", error);
+    return [];
+  });
 
   return (
     <main className="stack">

@@ -81,7 +81,21 @@ const withdrawalStatusLabel = (status: "requested" | "completed" | "failed"): st
   status === "requested" ? "Requested" : status === "completed" ? "Completed" : "Failed";
 
 export default async function PortfolioPage() {
-  const [portfolio, markets] = await Promise.all([getPortfolio(), listMarkets()]);
+  const [portfolioResult, marketsResult] = await Promise.allSettled([getPortfolio(), listMarkets()]);
+  const portfolioUnavailable = portfolioResult.status === "rejected";
+  const portfolio =
+    portfolioResult.status === "fulfilled"
+      ? portfolioResult.value
+      : ({
+          balances: [],
+          linkedWallet: null,
+          positions: [],
+          openOrders: [],
+          claims: [],
+          deposits: [],
+          withdrawals: [],
+        } as Awaited<ReturnType<typeof getPortfolio>>);
+  const markets = marketsResult.status === "fulfilled" ? marketsResult.value : [];
   const primaryBalance = portfolio.balances[0];
 
   const marketById = new Map(markets.map((market) => [market.id, market]));
@@ -117,6 +131,10 @@ export default async function PortfolioPage() {
         <h1>Portfolio</h1>
         <p>Review balances and transfer history, then verify deposits or request withdrawals.</p>
       </section>
+
+      {portfolioUnavailable ? (
+        <section className="panel empty-state">Sign in to load portfolio balances, orders, claims, deposits, and withdrawals.</section>
+      ) : null}
 
       <section className="grid">
         <div className="panel stack">
