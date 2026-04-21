@@ -1,3 +1,4 @@
+export * from "./baseNetwork";
 export * from "./env";
 
 export const config = {

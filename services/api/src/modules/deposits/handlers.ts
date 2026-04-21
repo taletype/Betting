@@ -29,10 +29,7 @@ export interface VerifyDepositResult {
 
 const normalizeTxHash = (txHash: string): string => txHash.trim().toLowerCase();
 
-const baseUsdcAddress = (): string =>
-  readEthereumAddress("BASE_USDC_ADDRESS", {
-    defaultInLocal: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  });
+const baseUsdcAddress = (): string => readEthereumAddress("BASE_USDC_ADDRESS");
 
 const baseTreasuryAddress = (): string => readEthereumAddress("BASE_TREASURY_ADDRESS");
 

@@ -309,7 +309,7 @@ const buildStubDepositAdapter = (walletAddress: string, txHash: string): Deposit
       txHash,
       from: walletAddress,
       to: process.env.BASE_TREASURY_ADDRESS ?? "0x00000000000000000000000000000000000000aa",
-      tokenAddress: (process.env.BASE_USDC_ADDRESS ?? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").toLowerCase(),
+      tokenAddress: (process.env.BASE_USDC_ADDRESS ?? "0x00000000000000000000000000000000000000bb").toLowerCase(),
       amount: DEPOSIT_AMOUNT,
       blockNumber: 12345678n,
       success: true,

@@ -7,11 +7,18 @@ const isLocalEnvironment = (): boolean => LOCAL_ENVIRONMENTS.has(readNodeEnv());
 const requiredEnvMessage = (name: string): string =>
   `${name} is required. Set ${name} in your deployment environment.`;
 
-export const readRequiredString = (name: string, options?: { defaultInLocal?: string }): string => {
+export const readRequiredString = (
+  name: string,
+  options?: { defaultInLocal?: string; defaultValue?: string },
+): string => {
   const value = process.env[name]?.trim();
 
   if (value) {
     return value;
+  }
+
+  if (options?.defaultValue !== undefined) {
+    return options.defaultValue;
   }
 
   if (options?.defaultInLocal !== undefined && isLocalEnvironment()) {
@@ -21,7 +28,10 @@ export const readRequiredString = (name: string, options?: { defaultInLocal?: st
   throw new Error(requiredEnvMessage(name));
 };
 
-export const readRequiredUrl = (name: string, options?: { defaultInLocal?: string }): string => {
+export const readRequiredUrl = (
+  name: string,
+  options?: { defaultInLocal?: string; defaultValue?: string },
+): string => {
   const value = readRequiredString(name, options);
 
   try {
@@ -73,9 +83,12 @@ export const readEthereumAddress = (name: string, options?: { defaultInLocal?: s
 
 export const readChainId = (
   name: string,
-  options?: { defaultInLocal?: number; supported?: readonly number[] },
+  options?: { defaultInLocal?: number; defaultValue?: number; supported?: readonly number[] },
 ): number => {
-  const chainId = readPositiveInteger(name, { defaultInLocal: options?.defaultInLocal });
+  const chainId = readPositiveInteger(name, {
+    defaultInLocal: options?.defaultInLocal,
+    defaultValue: options?.defaultValue,
+  });
 
   if (options?.supported && !options.supported.includes(chainId)) {
     throw new Error(
@@ -99,4 +112,5 @@ export const readSecret = (name: string): string => {
 export const environment = {
   nodeEnv: readNodeEnv(),
   isLocal: isLocalEnvironment(),
+  isProduction: readNodeEnv() === "production",
 };

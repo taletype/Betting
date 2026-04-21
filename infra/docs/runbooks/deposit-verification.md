@@ -2,9 +2,12 @@
 
 ## Required env vars (API process)
 - `BASE_TREASURY_ADDRESS` (**required**)
-- `BASE_USDC_ADDRESS` (defaults to Base USDC)
+- `BASE_USDC_ADDRESS` (**required**, must match configured Base network)
 - `BASE_MIN_CONFIRMATIONS` (default `3`)
-- `BASE_RPC_URL` (default `https://mainnet.base.org`)
+- `BASE_CHAIN_ID` (defaults to `84532` in non-production, `8453` in production)
+- `BASE_RPC_URL` (default follows `BASE_CHAIN_ID`; public RPC is rate-limited, prefer provider URL)
+- `BASE_WS_URL` (default follows `BASE_CHAIN_ID`)
+- `BASE_EXPLORER_URL` (default follows `BASE_CHAIN_ID`)
 
 ## Preconditions
 - User must have linked Base wallet (`POST /wallets/link`).
