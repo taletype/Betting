@@ -2,6 +2,8 @@ import { apiRequest, listAdminRequestedWithdrawals, toBigInt } from "../../lib/a
 
 import { executeWithdrawalAction, failWithdrawalAction, resolveMarketAction } from "./actions";
 
+export const dynamic = "force-dynamic";
+
 interface MarketResponse {
   id: string;
   title: string;
