@@ -7,37 +7,13 @@
   - execute: `POST /admin/withdrawals/:id/execute`
   - fail: `POST /admin/withdrawals/:id/fail`
 
-## Required headers
-- Admin endpoints require `x-admin-token`.
-- Execute/fail also require `x-user-id` (admin actor id for audit).
+## Authorization model (current behavior)
+- Admin endpoints are gated by authenticated Supabase session + admin role.
+- Do **not** rely on `x-admin-token` or `x-user-id` headers for authorization.
 
-## Status transitions
-- `requested` → `completed` (with `tx_hash`, `processed_at`, `processed_by`)
-- `requested` → `failed` (with `failure_reason`, `processed_at`, `processed_by`)
-
-## List pending withdrawals
-```bash
-curl -sS http://127.0.0.1:4000/admin/withdrawals \
-  -H 'x-admin-token: dev-admin-token'
-```
-
-## Mark withdrawal executed
-```bash
-curl -sS -X POST http://127.0.0.1:4000/admin/withdrawals/<withdrawal_id>/execute \
-  -H 'content-type: application/json' \
-  -H 'x-admin-token: dev-admin-token' \
-  -H 'x-user-id: 00000000-0000-4000-8000-000000000001' \
-  -d '{"txHash":"0x<base_withdrawal_tx_hash>"}'
-```
-
-## Mark withdrawal failed
-```bash
-curl -sS -X POST http://127.0.0.1:4000/admin/withdrawals/<withdrawal_id>/fail \
-  -H 'content-type: application/json' \
-  -H 'x-admin-token: dev-admin-token' \
-  -H 'x-user-id: 00000000-0000-4000-8000-000000000001' \
-  -d '{"reason":"compliance hold"}'
-```
+## Operator usage
+For staging/web flows, perform admin actions from an authenticated admin session in the Admin UI.
+If using API calls directly, ensure the request carries valid Supabase auth cookies for an admin user.
 
 ## Inspect records
 ```bash

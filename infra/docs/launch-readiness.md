@@ -35,34 +35,42 @@ Date: 2026-04-20
 - `pnpm --filter @bet/reconciliation-worker typecheck`
 - `pnpm --filter @bet/service-api test:db-happy-path`
 
-## DB-backed launch smoke command (CI/staging ready)
+## Base Sepolia launch smoke command (CI/staging ready)
 
-Use a single command for DB lifecycle smoke evidence:
+Use this single command for DB lifecycle smoke evidence on staging/prelaunch:
 
 ```bash
-pnpm smoke:db
+pnpm smoke:base-sepolia
 ```
 
 What it does:
 
-1. requires explicit DB URL env (`SUPABASE_DB_URL` or `DATABASE_URL`) and checks connectivity,
-2. optionally runs migrations/seed/reset based on `SMOKE_DB_PREP_MODE`,
-3. runs the DB happy-path smoke script,
-4. exits non-zero on any failure,
-5. stores launch artifacts.
+1. forces `BASE_CHAIN_ID=84532` (Base Sepolia) for the run,
+2. requires explicit DB URL env (`SUPABASE_DB_URL` or `DATABASE_URL`) and checks connectivity,
+3. runs the DB happy-path lifecycle (wallet link, deposit verify, resting + crossing orders, trade assertions, resolution, claim, withdrawal execute + fail),
+4. prints and persists launch evidence including chain/network info, balances, trades, positions, claims, withdrawals, and tx explorer links,
+5. exits non-zero on any failure.
 
-### Prerequisites by environment
+The command uses `SMOKE_DB_PREP_MODE=none` by default. Override prep mode only when you need reset/bootstrap behavior.
+
+### Optional direct command (advanced)
+
+`pnpm smoke:db` is still available for custom prep cases.
+
+## Prerequisites by environment
 
 - **Local Supabase**:
   1. `supabase start`
   2. `export SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`
-  3. `SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db`
+  3. `export BASE_TREASURY_ADDRESS=<base-sepolia-treasury>`
+  4. `export BASE_USDC_ADDRESS=<base-sepolia-usdc>`
+  5. `SMOKE_DB_PREP_MODE=reset-local pnpm smoke:base-sepolia`
 - **CI/staging ephemeral DB**:
   1. Provision DB and set `SUPABASE_DB_URL` (or `DATABASE_URL`) in the job env.
-  2. Set prep mode for that environment (`reset`, `command`, or `none`).
-  3. Run `pnpm smoke:db`.
+  2. Set Base Sepolia env values (`BASE_CHAIN_ID=84532`, `BASE_TREASURY_ADDRESS`, `BASE_USDC_ADDRESS`, optional `BASE_EXPLORER_URL`).
+  3. Run `pnpm smoke:base-sepolia`.
 
-### Prep controls
+### Prep controls (when using `pnpm smoke:db` directly)
 
 - `SMOKE_DB_PREP_MODE=none` (default): skip DB reset/migration step.
 - `SMOKE_DB_PREP_MODE=reset-local`: run `supabase db reset --local --yes`.
@@ -82,7 +90,21 @@ Files created per run:
 - `latest.log`
 - `latest.json`
 
-The JSON artifact includes final balances, trades, positions, claim state, and withdrawals when available.
+Launch evidence should be published from:
+
+- `infra/artifacts/smoke-db/latest.log`
+- `infra/artifacts/smoke-db/latest.json`
+
+The JSON artifact includes network/chain configuration, tx hashes + explorer links, final balances, trades, positions, claim state, and withdrawal outcomes.
+
+## Legacy generic smoke path
+
+`pnpm smoke:db` remains available and:
+
+1. requires explicit DB URL env (`SUPABASE_DB_URL` or `DATABASE_URL`) and checks connectivity,
+2. optionally runs migrations/seed/reset based on `SMOKE_DB_PREP_MODE`,
+3. runs the DB happy-path smoke script,
+4. exits non-zero on any failure.
 
 ## Manual-only / environment-limited
 
@@ -93,16 +115,16 @@ The JSON artifact includes final balances, trades, positions, claim state, and w
 
 ### Must fix before launch
 
-- Execute `pnpm smoke:db` in CI/staging DB-enabled environment and attach `infra/artifacts/smoke-db/latest.log` + `latest.json` to launch signoff.
+- Execute `pnpm smoke:base-sepolia` in CI/staging DB-enabled environment and attach `infra/artifacts/smoke-db/latest.log` + `latest.json` to launch signoff.
 - Publish those two files as CI job artifacts (for example: GitHub Actions artifact name `smoke-db`) and link that artifact in the launch signoff ticket.
 
 ### Should fix soon after launch
 
-- Add a dedicated CI workflow/job that runs `pnpm smoke:db` against an ephemeral DB and uploads the generated artifacts.
+- Add a dedicated CI workflow/job that runs `pnpm smoke:base-sepolia` against an ephemeral DB and uploads the generated artifacts.
 
 ### Acceptable to defer
 
-- Expand smoke harness to cover admin execute withdrawal path (currently fail path is covered to validate ledger reversal deterministically).
+- Add CI automation that uploads smoke evidence artifacts directly into the release signoff ticket/work item.
 
 ## Launch recommendation
 

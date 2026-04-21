@@ -50,13 +50,25 @@ const topicToAddress = (topic: string): string => `0x${strip0x(topic).slice(24).
 export class BaseChainAdapter implements DepositVerificationAdapter {
   readonly chain = "base" as const;
 
-  constructor(private readonly rpcUrl: string) {}
+  constructor(
+    private readonly rpcUrl: string,
+    private readonly expectedChainId: number,
+  ) {}
 
   async verifyUsdcTransfer(input: VerifyDepositTransferInput): Promise<VerifyDepositTransferResult> {
     const txHash = normalizeHex(input.txHash);
     const expectedFrom = normalizeHex(input.expectedFrom);
     const expectedTo = normalizeHex(input.expectedTo);
     const expectedToken = normalizeHex(input.tokenAddress);
+
+    const chainIdHex = await this.rpcCall<string>("eth_chainId", []);
+    const chainId = Number(parseHexBigInt(chainIdHex));
+    if (chainId !== this.expectedChainId) {
+      return {
+        status: "wrong_chain",
+        reason: `transaction was queried on chain ${chainId}, expected ${this.expectedChainId}`,
+      };
+    }
 
     const receipt = await this.rpcCall<HexTransactionReceipt | null>("eth_getTransactionReceipt", [txHash]);
     if (!receipt) {
@@ -158,6 +170,6 @@ export class BaseChainAdapter implements DepositVerificationAdapter {
 
 
 export const createBaseChainAdapter = (): BaseChainAdapter => {
-  readBaseChainId();
-  return new BaseChainAdapter(readBaseRpcUrl());
+  const expectedChainId = readBaseChainId();
+  return new BaseChainAdapter(readBaseRpcUrl(), expectedChainId);
 };

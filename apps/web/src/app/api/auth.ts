@@ -1,27 +1,20 @@
 import type { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@bet/supabase";
 
-export interface AuthContext {
-  userId: string;
-  role: string;
-}
-
 export interface AuthenticatedUser {
   id: string;
   role?: string | null;
 }
 
-export const DEV_USER_HEADER = "x-user-id";
-export const DEV_USER_ROLE_HEADER = "x-user-role";
+export interface AdminAccessDecision {
+  ok: boolean;
+  status?: 401 | 403;
+  error?: string;
+}
 
 export const isAdminRole = (role: string): boolean => role === "admin";
 
 export const getUserRole = (user: AuthenticatedUser | null | undefined): string => user?.role ?? "user";
-
-export const canUseDevHeaderOverride = (env: {
-  nodeEnv: string | undefined;
-  allowDevIdentityHeader: string | undefined;
-}): boolean => env.nodeEnv !== "production" && env.allowDevIdentityHeader === "true";
 
 const mapSupabaseUser = (user: { id: string; app_metadata?: Record<string, unknown> } | null): AuthenticatedUser | null => {
   if (!user) {
@@ -36,22 +29,18 @@ const mapSupabaseUser = (user: { id: string; app_metadata?: Record<string, unkno
 
 export const resolveAuthenticatedUser = (options: {
   sessionUser: AuthenticatedUser | null;
-  requestHeaderUserId: string | null | undefined;
-  requestHeaderRole: string | null | undefined;
-  allowDevHeaderOverride: boolean;
-}): AuthenticatedUser | null => {
-  if (options.sessionUser) {
-    return options.sessionUser;
+}): AuthenticatedUser | null => options.sessionUser;
+
+export const evaluateAdminAccess = (user: AuthenticatedUser | null): AdminAccessDecision => {
+  if (!user) {
+    return { ok: false, status: 401, error: "Authentication required" };
   }
 
-  if (options.allowDevHeaderOverride && options.requestHeaderUserId) {
-    return {
-      id: options.requestHeaderUserId,
-      role: options.requestHeaderRole,
-    };
+  if (!isAdminRole(getUserRole(user))) {
+    return { ok: false, status: 403, error: "Admin privileges required" };
   }
 
-  return null;
+  return { ok: true };
 };
 
 export const getAuthenticatedUser = async (request: NextRequest): Promise<AuthenticatedUser | null> => {
@@ -66,11 +55,5 @@ export const getAuthenticatedUser = async (request: NextRequest): Promise<Authen
 
   return resolveAuthenticatedUser({
     sessionUser: mapSupabaseUser(data.user),
-    requestHeaderUserId: request.headers.get(DEV_USER_HEADER),
-    requestHeaderRole: request.headers.get(DEV_USER_ROLE_HEADER),
-    allowDevHeaderOverride: canUseDevHeaderOverride({
-      nodeEnv: process.env.NODE_ENV,
-      allowDevIdentityHeader: process.env.ALLOW_DEV_IDENTITY_HEADER,
-    }),
   });
 };
