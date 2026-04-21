@@ -194,3 +194,54 @@ export const createOrder = async (input: {
     }),
   );
 };
+
+
+export interface ExternalMarketApiOutcome {
+  externalOutcomeId: string;
+  title: string;
+  slug: string;
+  index: number;
+  yesNo: "yes" | "no" | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+  lastPrice: number | null;
+  volume: number | null;
+}
+
+export interface ExternalMarketApiTrade {
+  externalTradeId: string;
+  externalOutcomeId: string | null;
+  side: "buy" | "sell" | null;
+  price: number | null;
+  size: number | null;
+  tradedAt: string;
+}
+
+export interface ExternalMarketApiRecord {
+  id: string;
+  source: "polymarket" | "kalshi";
+  externalId: string;
+  slug: string;
+  title: string;
+  description: string;
+  status: "open" | "closed" | "resolved" | "cancelled";
+  marketUrl: string | null;
+  closeTime: string | null;
+  endTime: string | null;
+  resolvedAt: string | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+  lastTradePrice: number | null;
+  volume24h: number | null;
+  volumeTotal: number | null;
+  lastSyncedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  outcomes: ExternalMarketApiOutcome[];
+  recentTrades: ExternalMarketApiTrade[];
+}
+
+export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
+  const payload = await readApiJson('/external/markets');
+  return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
+};

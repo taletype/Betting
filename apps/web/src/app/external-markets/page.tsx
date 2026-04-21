@@ -1,39 +1,14 @@
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { listExternalMarkets } from "../../lib/api";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-interface ExternalMarketRow {
-  id: string;
-  source: "polymarket" | "kalshi";
-  external_id: string;
-  title: string;
-  status: string;
-  best_bid: number | string | null;
-  best_ask: number | string | null;
-  last_trade_price: number | string | null;
-  last_synced_at: Date | string | null;
-}
+const toDisplay = (value: number | null): string => (value === null ? "—" : String(value));
 
-const supabase = createSupabaseAdminClient();
-
-const toNumber = (value: number | string | null): number | null => {
-  if (value === null) {
-    return null;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const formatDate = (value: Date | string): string =>
+const formatDate = (value: string): string =>
   new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: "Asia/Hong_Kong",
+    timeZone: "UTC",
   }).format(new Date(value));
 
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
@@ -41,30 +16,15 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
     return "success";
   }
 
-  if (status === "paused") {
+  if (status === "cancelled") {
     return "warning";
   }
 
   return "neutral";
 };
 
-const loadMarkets = async (): Promise<ExternalMarketRow[]> => {
-  const { data, error } = await supabase
-    .from("external_markets")
-    .select("id, source, external_id, title, status, best_bid, best_ask, last_trade_price, last_synced_at")
-    .order("last_synced_at", { ascending: false, nullsFirst: false })
-    .order("updated_at", { ascending: false })
-    .limit(100);
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []) as ExternalMarketRow[];
-};
-
 export default async function ExternalMarketsPage() {
-  const markets = await loadMarkets();
+  const markets = await listExternalMarkets();
 
   return (
     <main className="stack">
@@ -77,30 +37,33 @@ export default async function ExternalMarketsPage() {
           <div className="panel empty-state">No market data yet. Run the external sync job, then refresh this page.</div>
         ) : (
           markets.map((market) => (
-            <div key={market.id} className="panel stack">
+            <div key={`${market.source}:${market.externalId}`} className="panel stack">
               <div className="grid">
                 <div className="stack">
                   <div className="badge badge-neutral">{market.source}</div>
                   <strong>{market.title}</strong>
                   <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
-                  <div className="muted">External ID: {market.external_id}</div>
+                  <div className="muted">External ID: {market.externalId}</div>
                 </div>
                 <div className="stack">
                   <div className="kv">
                     <span className="kv-key">Best bid</span>
-                    <span className="kv-value">{toNumber(market.best_bid) ?? "—"}</span>
+                    <span className="kv-value">{toDisplay(market.bestBid)}</span>
                   </div>
                   <div className="kv">
                     <span className="kv-key">Best ask</span>
-                    <span className="kv-value">{toNumber(market.best_ask) ?? "—"}</span>
+                    <span className="kv-value">{toDisplay(market.bestAsk)}</span>
                   </div>
                   <div className="kv">
                     <span className="kv-key">Last trade</span>
-                    <span className="kv-value">{toNumber(market.last_trade_price) ?? "—"}</span>
+                    <span className="kv-value">{toDisplay(market.lastTradePrice)}</span>
                   </div>
                 </div>
               </div>
-              <div className="muted">Last synced: {market.last_synced_at ? formatDate(market.last_synced_at) : "never"}</div>
+              {market.outcomes.length > 0 ? (
+                <div className="muted">Outcomes: {market.outcomes.map((outcome) => outcome.title).join(" • ")}</div>
+              ) : null}
+              <div className="muted">Last synced: {market.lastSyncedAt ? formatDate(market.lastSyncedAt) : "never"}</div>
             </div>
           ))
         )}

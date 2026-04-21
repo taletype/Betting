@@ -1,4 +1,4 @@
-import { createDatabaseClient } from "@bet/db";
+import { createDatabaseClient, type DatabaseExecutor } from "@bet/db";
 
 interface ExternalMarketRow {
   id: string;
@@ -45,7 +45,7 @@ interface ExternalTradeRow {
   traded_at: Date | string;
 }
 
-const db = createDatabaseClient();
+const defaultDb = createDatabaseClient();
 
 const toIsoString = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -156,138 +156,150 @@ const mapTrade = (row: ExternalTradeRow): ExternalTradeView => ({
   tradedAt: toIsoString(row.traded_at),
 });
 
-const attachChildren = async (marketRecords: ExternalMarketView[]): Promise<ExternalMarketView[]> => {
-  if (marketRecords.length === 0) {
+export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
+  const attachChildren = async (marketRecords: ExternalMarketView[]): Promise<ExternalMarketView[]> => {
+    if (marketRecords.length === 0) {
+      return marketRecords;
+    }
+
+    const ids = marketRecords.map((market) => market.id);
+
+    const [outcomeRows, tradeRows] = await Promise.all([
+      database.query<ExternalOutcomeRow>(
+        `
+          select
+            external_market_id,
+            external_outcome_id,
+            title,
+            slug,
+            outcome_index,
+            yes_no,
+            best_bid,
+            best_ask,
+            last_price,
+            volume
+          from public.external_outcomes
+          where external_market_id = any($1::uuid[])
+          order by external_market_id asc, outcome_index asc
+        `,
+        [ids],
+      ),
+      database.query<ExternalTradeRow>(
+        `
+          select
+            external_market_id,
+            external_trade_id,
+            external_outcome_id,
+            side,
+            price,
+            size,
+            traded_at
+          from public.external_trade_ticks
+          where external_market_id = any($1::uuid[])
+          order by external_market_id asc, traded_at desc
+        `,
+        [ids],
+      ),
+    ]);
+
+    const byMarket = new Map(marketRecords.map((market) => [market.id, market]));
+
+    for (const row of outcomeRows) {
+      byMarket.get(row.external_market_id)?.outcomes.push(mapOutcome(row));
+    }
+
+    const tradeCountByMarket = new Map<string, number>();
+    for (const row of tradeRows) {
+      const current = tradeCountByMarket.get(row.external_market_id) ?? 0;
+      if (current < 20) {
+        byMarket.get(row.external_market_id)?.recentTrades.push(mapTrade(row));
+        tradeCountByMarket.set(row.external_market_id, current + 1);
+      }
+    }
+
     return marketRecords;
-  }
+  };
 
-  const ids = marketRecords.map((market) => market.id);
-
-  const [outcomeRows, tradeRows] = await Promise.all([
-    db.query<ExternalOutcomeRow>(
+  const listExternalMarketRecords = async (): Promise<ExternalMarketView[]> => {
+    const rows = await database.query<ExternalMarketRow>(
       `
         select
-          external_market_id,
-          external_outcome_id,
-          title,
+          id,
+          source,
+          external_id,
           slug,
-          outcome_index,
-          yes_no,
+          title,
+          description,
+          status,
+          market_url,
+          close_time,
+          end_time,
+          resolved_at,
           best_bid,
           best_ask,
-          last_price,
-          volume
-        from public.external_outcomes
-        where external_market_id = any($1::uuid[])
-        order by external_market_id asc, outcome_index asc
+          last_trade_price,
+          volume_24h,
+          volume_total,
+          last_synced_at,
+          created_at,
+          updated_at
+        from public.external_markets
+        order by last_synced_at desc nulls last, updated_at desc, id asc
+        limit 500
       `,
-      [ids],
-    ),
-    db.query<ExternalTradeRow>(
+    );
+
+    return attachChildren(rows.map(mapMarket));
+  };
+
+  const getExternalMarketRecord = async (source: string, externalId: string): Promise<ExternalMarketView | null> => {
+    const [row] = await database.query<ExternalMarketRow>(
       `
         select
-          external_market_id,
-          external_trade_id,
-          external_outcome_id,
-          side,
-          price,
-          size,
-          traded_at
-        from public.external_trade_ticks
-        where external_market_id = any($1::uuid[])
-        order by external_market_id asc, traded_at desc
+          id,
+          source,
+          external_id,
+          slug,
+          title,
+          description,
+          status,
+          market_url,
+          close_time,
+          end_time,
+          resolved_at,
+          best_bid,
+          best_ask,
+          last_trade_price,
+          volume_24h,
+          volume_total,
+          last_synced_at,
+          created_at,
+          updated_at
+        from public.external_markets
+        where source = $1 and external_id = $2
+        limit 1
       `,
-      [ids],
-    ),
-  ]);
+      [source, externalId],
+    );
 
-  const byMarket = new Map(marketRecords.map((market) => [market.id, market]));
-
-  for (const row of outcomeRows) {
-    byMarket.get(row.external_market_id)?.outcomes.push(mapOutcome(row));
-  }
-
-  const tradeCountByMarket = new Map<string, number>();
-  for (const row of tradeRows) {
-    const current = tradeCountByMarket.get(row.external_market_id) ?? 0;
-    if (current < 20) {
-      byMarket.get(row.external_market_id)?.recentTrades.push(mapTrade(row));
-      tradeCountByMarket.set(row.external_market_id, current + 1);
+    if (!row) {
+      return null;
     }
-  }
 
-  return marketRecords;
+    const [market] = await attachChildren([mapMarket(row)]);
+    return market;
+  };
+
+  return {
+    listExternalMarketRecords,
+    getExternalMarketRecord,
+  };
 };
 
-export const listExternalMarketRecords = async (): Promise<ExternalMarketView[]> => {
-  const rows = await db.query<ExternalMarketRow>(
-    `
-      select
-        id,
-        source,
-        external_id,
-        slug,
-        title,
-        description,
-        status,
-        market_url,
-        close_time,
-        end_time,
-        resolved_at,
-        best_bid,
-        best_ask,
-        last_trade_price,
-        volume_24h,
-        volume_total,
-        last_synced_at,
-        created_at,
-        updated_at
-      from public.external_markets
-      order by last_synced_at desc nulls last, updated_at desc, id asc
-      limit 500
-    `,
-  );
+const repository = createExternalMarketsRepository(defaultDb);
 
-  return attachChildren(rows.map(mapMarket));
-};
+export const listExternalMarketRecords = async (): Promise<ExternalMarketView[]> =>
+  repository.listExternalMarketRecords();
 
-export const getExternalMarketRecord = async (
-  source: string,
-  externalId: string,
-): Promise<ExternalMarketView | null> => {
-  const [row] = await db.query<ExternalMarketRow>(
-    `
-      select
-        id,
-        source,
-        external_id,
-        slug,
-        title,
-        description,
-        status,
-        market_url,
-        close_time,
-        end_time,
-        resolved_at,
-        best_bid,
-        best_ask,
-        last_trade_price,
-        volume_24h,
-        volume_total,
-        last_synced_at,
-        created_at,
-        updated_at
-      from public.external_markets
-      where source = $1 and external_id = $2
-      limit 1
-    `,
-    [source, externalId],
-  );
-
-  if (!row) {
-    return null;
-  }
-
-  const [market] = await attachChildren([mapMarket(row)]);
-  return market;
-};
+export const getExternalMarketRecord = async (source: string, externalId: string): Promise<ExternalMarketView | null> =>
+  repository.getExternalMarketRecord(source, externalId);
