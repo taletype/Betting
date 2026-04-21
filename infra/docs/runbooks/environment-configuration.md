@@ -21,8 +21,10 @@ This matrix defines the minimum env contract for local, staging, and production.
 - `SUPABASE_URL`
 - `SUPABASE_DB_URL` (preferred) or `DATABASE_URL`
 - `API_BASE_URL`
-- `BASE_RPC_URL`
-- `BASE_CHAIN_ID` (`8453` mainnet or `84532` base sepolia)
+- `BASE_CHAIN_ID` (`84532` Base Sepolia for non-production; `8453` Base mainnet for production)
+- `BASE_RPC_URL` (defaults by chain; use private/provider endpoint in shared environments)
+- `BASE_WS_URL` (defaults by chain; use private/provider endpoint in shared environments)
+- `BASE_EXPLORER_URL` (defaults by chain)
 - `BASE_TREASURY_ADDRESS` (0x-prefixed, 20-byte address)
 - `BASE_USDC_ADDRESS` (0x-prefixed, 20-byte address)
 - `BASE_MIN_CONFIRMATIONS` (positive integer)
@@ -35,7 +37,7 @@ Required:
 - Supabase URLs/keys: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`
 - DB: `SUPABASE_DB_URL` or `DATABASE_URL`
 - API/runtime: `API_BASE_URL`, `NEXT_PUBLIC_WS_URL`, `ADMIN_API_TOKEN`
-- Base: `BASE_RPC_URL`, `BASE_CHAIN_ID`, `BASE_TREASURY_ADDRESS`, `BASE_USDC_ADDRESS`, `BASE_MIN_CONFIRMATIONS`, `BASE_RECON_MIN_CONFIRMATIONS`
+- Base: `BASE_CHAIN_ID`, `BASE_RPC_URL`, `BASE_WS_URL`, `BASE_EXPLORER_URL`, `BASE_TREASURY_ADDRESS`, `BASE_USDC_ADDRESS`, `BASE_MIN_CONFIRMATIONS`, `BASE_RECON_MIN_CONFIRMATIONS`
 
 ### Staging
 Required (no placeholders):
@@ -55,7 +57,7 @@ Required (no placeholders, rotation-ready):
 - `SUPABASE_DB_URL` or `DATABASE_URL`
 - `API_BASE_URL`
 - `ADMIN_API_TOKEN`
-- `BASE_RPC_URL`, `BASE_CHAIN_ID`
+- `BASE_CHAIN_ID`, `BASE_RPC_URL`, `BASE_WS_URL`, `BASE_EXPLORER_URL`
 - `BASE_TREASURY_ADDRESS`, `BASE_USDC_ADDRESS`
 - `BASE_MIN_CONFIRMATIONS`, `BASE_RECON_MIN_CONFIRMATIONS`
 
@@ -69,7 +71,7 @@ Required (no placeholders, rotation-ready):
 
 ### Workers
 - `SUPABASE_DB_URL` or `DATABASE_URL`
-- Base-aware workers additionally require `BASE_RPC_URL`, `BASE_CHAIN_ID`, and relevant confirmation values
+- Base-aware workers additionally require `BASE_CHAIN_ID`, `BASE_RPC_URL`, and relevant confirmation values (`BASE_WS_URL` / `BASE_EXPLORER_URL` recommended for tooling and dashboards)
 
 ## Secret rotation notes
 
@@ -85,5 +87,6 @@ Required (no placeholders, rotation-ready):
 1. Populate envs in Vercel/Railway (staging first, then production).
 2. Confirm no value is `replace-me` / `changeme`.
 3. Confirm Base addresses and chain ID match the target network.
-4. Confirm `BASE_RPC_URL` points to the intended provider endpoint.
-5. Run readiness + smoke checks.
+4. Confirm `BASE_CHAIN_ID` matches target network (`84532` for staging/smoke/prelaunch, `8453` for production).
+5. Confirm `BASE_RPC_URL`/`BASE_WS_URL` point to intended provider endpoints (public endpoints are rate-limited).
+6. Run readiness + smoke checks.
