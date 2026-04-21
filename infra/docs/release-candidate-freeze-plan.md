@@ -37,6 +37,17 @@ Scope: `taletype/betting` launch RC freeze pass (docs + release planning only).
 ---
 
 ## 2) Short RC checklist (authoritative)
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm db:reset`
+- `pnpm smoke:db`
+- `pnpm smoke:local`
+- `pnpm load:launch`
+
+Operational note:
+
+- `pnpm smoke:db` is the canonical DB-backed lifecycle evidence command (local/CI/staging), including artifact capture.
 
 Mark all items complete before RC cut:
 
@@ -52,6 +63,118 @@ Mark all items complete before RC cut:
 - [ ] **Staging drill completed:** `pnpm drill:staging` artifacts stored under timestamped drill directory
 
 ---
+- `0019_base_deposit_flow.sql`
+- `0020_base_withdrawals.sql`
+
+Recent history also shows a same-day migration renumbering fix to remove duplicate version conflicts. That indicates schema churn has stabilized but was active very recently.
+
+### 1.3 Launch-readiness docs and runbooks present
+
+Present and useful for RC + launch:
+
+- `infra/docs/launch-readiness.md` (hardening report snapshot)
+- `infra/docs/runbooks/launch-checklist.md` (short launch-day checklist)
+- `infra/docs/runbooks/operations.md` (runbook index)
+- Focused operational runbooks (`deposit-verification`, `withdrawals-admin`, `reconciliation-worker`, `external-sync-worker`, `incidents`, etc.)
+
+### 1.4 Drift observed between code and docs
+
+Drift/open items identified during freeze pass:
+
+1. Launch docs are split between a dated hardening report and a short checklist; this document is now the operational RC source of truth.
+2. DB-backed verification is documented, but RC evidence requirements were not previously explicit (what exact logs/screenshots/artifacts must be captured).
+3. Migration churn happened on 2026-04-20; explicit schema-freeze gate was not previously documented.
+
+## 2) RC checklist (authoritative)
+
+Run in order from repo root.
+
+### 2.1 Exact commands to run before RC
+
+1. Environment validation
+
+```bash
+./infra/scripts/check-env.sh
+```
+
+2. Dependency and workspace baseline
+
+```bash
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test
+```
+
+3. Bring up DB and apply full schema/seed + DB happy path artifact run
+
+```bash
+supabase start
+SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db
+```
+
+4. Bring up launch-path services
+
+```bash
+pnpm dev:api
+pnpm dev:workers
+pnpm dev:web
+```
+
+5. Full local smoke
+
+```bash
+pnpm smoke:local
+```
+
+6. Optional-but-recommended launch load sanity pass
+
+```bash
+pnpm load:launch
+```
+
+### 2.2 Exact evidence to capture
+
+Capture and attach to RC ticket/release notes:
+
+1. Terminal output (or CI artifact) for:
+   - `pnpm lint`
+   - `pnpm typecheck`
+   - `pnpm test`
+2. Terminal output for `pnpm smoke:db` showing:
+   - connectivity check passes,
+   - prep step succeeds (if enabled),
+   - DB happy-path passes.
+3. Artifact files from `infra/artifacts/smoke-db/`:
+   - `latest.log`
+   - `latest.json`
+4. Terminal output for `pnpm smoke:local` showing all checks pass.
+5. Health endpoint responses:
+   - `GET /health` (API)
+   - `GET /ready` (API)
+   - `GET /health` (WS)
+6. One reconciliation worker run log without invariant failures.
+7. Migration inventory snapshot (`ls -1 supabase/migrations | sort`) attached with RC artifact.
+
+### 2.3 Launch blockers (must resolve before RC/launch)
+
+Any of the following is a launch blocker:
+
+1. `pnpm lint`, `pnpm typecheck`, or `pnpm test` failure on RC commit.
+2. `pnpm smoke:db` failure (including any prep failure or `test:db-happy-path` failure).
+3. `pnpm smoke:local` failure.
+4. Missing health/readiness response for API/WS.
+5. Any schema change PR proposed after freeze start without explicit launch captain approval.
+6. Any reconciliation invariant mismatch affecting ledger/funds correctness.
+
+### 2.4 Can wait until after launch (explicit deferrals)
+
+Allowed post-launch if blocker list above is green:
+
+1. CI enhancement to automatically run DB-backed happy-path in ephemeral DB.
+2. Expansion of load scenarios beyond current launch-path harness.
+3. Non-critical documentation cleanup beyond this freeze plan + checklist alignment.
+4. Additional runbook ergonomics/formatting improvements.
 
 ## 3) Schema freeze recommendation
 
@@ -117,3 +240,6 @@ Apply remaining merge candidates in this exact order:
 - Architectural refactors.
 - Non-launch-critical performance tuning.
 - Any non-break/fix migration after freeze point.
+1. Added explicit cross-link in launch checklist to this RC freeze plan to avoid split source-of-truth during launch week.
+2. Added runbook index link to this RC freeze plan.
+3. Added note in launch-readiness hardening report that it is a historical verification snapshot, while this RC freeze plan is the active operational checklist.

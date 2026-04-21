@@ -14,6 +14,14 @@ pnpm db:reset
 1) `supabase db reset --local --yes`
 2) `pnpm --filter @bet/service-api test:db-happy-path`
 
+For launch signoff artifacts (recommended command path):
+
+```bash
+SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db
+```
+
+This command writes `infra/artifacts/smoke-db/latest.log` and `infra/artifacts/smoke-db/latest.json`.
+
 ## Verify key seeded records
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "select id, username from public.profiles order by created_at;"
