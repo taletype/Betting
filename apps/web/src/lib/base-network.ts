@@ -21,10 +21,17 @@ const resolveExplorer = (chainId: number): string => {
 
 const chainId = readChainId();
 
+export const baseChainId = chainId;
 export const baseNetworkLabel = chainId === BASE_MAINNET_CHAIN_ID ? "Base Mainnet" : "Base Sepolia";
 
 export const baseExplorerUrl =
   process.env.NEXT_PUBLIC_BASE_EXPLORER_URL?.trim() || resolveExplorer(chainId);
+
+export const baseSettlementAsset = process.env.NEXT_PUBLIC_BASE_SETTLEMENT_ASSET?.trim() || "USDC";
+
+export const baseTreasuryAddress = process.env.NEXT_PUBLIC_BASE_TREASURY_ADDRESS?.trim() || "";
+
+export const baseUsdcAddress = process.env.NEXT_PUBLIC_BASE_USDC_ADDRESS?.trim() || "";
 
 export const formatBaseExplorerTxUrl = (txHash: string): string =>
   `${baseExplorerUrl.replace(/\/$/, "")}/tx/${txHash}`;

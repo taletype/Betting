@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 
 import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger } from "@bet/observability";
+import { createSupabaseAdminClient } from "@bet/supabase";
 import type {
   ApiErrorResponse,
   ApiHealthResponse,
@@ -67,16 +68,62 @@ const getRequestUserId = (request: Request): string | undefined => {
   return userId ?? undefined;
 };
 
+let supabaseAdminClient: ReturnType<typeof createSupabaseAdminClient> | null = null;
+
+const getBearerToken = (request: Request): string | null => {
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = authorization.slice("Bearer ".length).trim();
+  return token || null;
+};
+
+const resolveRequestUserId = async (request: Request): Promise<string | undefined> => {
+  const bearerToken = getBearerToken(request);
+  if (bearerToken) {
+    try {
+      if (!supabaseAdminClient) {
+        supabaseAdminClient = createSupabaseAdminClient();
+      }
+
+      const { data, error } = await supabaseAdminClient.auth.getUser(bearerToken);
+      if (!error && data.user?.id) {
+        return data.user.id;
+      }
+    } catch {
+      // Fall through to non-production shortcuts.
+    }
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return undefined;
+  }
+
+  return getRequestUserId(request) ?? DEMO_USER_ID;
+};
+
 const isAdminRequest = (request: Request): boolean => {
   const incoming = request.headers.get("x-admin-token");
   const expected = getAdminApiToken();
   return Boolean(incoming) && incoming === expected;
 };
 
+const requireAuthenticatedUser = (requestUserId: string | undefined): Response | null => {
+  if (requestUserId) {
+    return null;
+  }
+
+  const payload: ApiErrorResponse = { error: "authentication required" };
+  return Response.json(payload, { status: 401 });
+};
+
 const handleRequest = async (request: Request): Promise<Response> => {
   try {
     const url = new URL(request.url);
-    const actorIdentity = request.headers.get("x-user-id") ?? "anonymous";
+    const requestUserId = await resolveRequestUserId(request);
+    const actorIdentity = requestUserId ?? "anonymous";
     const idempotencyKey = request.headers.get("idempotency-key");
     const segments = url.pathname.split("/").filter(Boolean);
 
@@ -164,6 +211,11 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/orders") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       const body = await parseBody(request);
       const marketId = String(body.marketId ?? "");
 
@@ -210,6 +262,11 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "DELETE" && segments.length === 2 && segments[0] === "orders") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       const rateLimit = checkRateLimit("orderCancel", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "order_cancel" });
@@ -229,23 +286,38 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/portfolio") {
-      const payload = await getPortfolio(getRequestUserId(request));
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const payload = await getPortfolio(requestUserId);
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "GET" && url.pathname === "/claims") {
-      const payload = await getClaims({ userId: getRequestUserId(request) });
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const payload = await getClaims({ userId: requestUserId });
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "GET" && segments.length === 3 && segments[0] === "claims" && segments[2] === "state") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       const payload = await getClaimableStateForMarket({
         marketId: segments[1] ?? "",
-        userId: getRequestUserId(request) ?? DEMO_USER_ID,
+        userId: requestUserId!,
       });
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
@@ -253,9 +325,14 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && segments.length === 2 && segments[0] === "claims") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       const payload = await claimMarket({
         marketId: segments[1] ?? "",
-        userId: getRequestUserId(request),
+        userId: requestUserId,
       });
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
@@ -263,15 +340,25 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/wallets/linked") {
-      return new Response(toJson({ wallet: await getLinkedWallet(getRequestUserId(request)) }), {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      return new Response(toJson({ wallet: await getLinkedWallet(requestUserId) }), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "POST" && url.pathname === "/wallets/link") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       const body = await parseBody(request);
       const linkedWallet = await linkBaseWallet({
-        userId: getRequestUserId(request),
+        userId: requestUserId,
         walletAddress: String(body.walletAddress ?? ""),
         signature: String(body.signature ?? ""),
         signedMessage: String(body.signedMessage ?? ""),
@@ -283,13 +370,23 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/deposits") {
-      const payload = { deposits: await getDepositHistory(getRequestUserId(request)) };
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const payload = { deposits: await getDepositHistory(requestUserId) };
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "POST" && url.pathname === "/deposits/verify") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       if (isDepositVerificationDisabled()) {
         const payload: ApiErrorResponse = {
           error: "deposit verification is temporarily disabled",
@@ -299,7 +396,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
       const body = await parseBody(request);
       const result = await verifyDeposit({
-        userId: getRequestUserId(request),
+        userId: requestUserId,
         txHash: String(body.txHash ?? ""),
       });
       const payload = result;
@@ -309,13 +406,23 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/withdrawals") {
-      const payload = { withdrawals: await getWithdrawalHistory(getRequestUserId(request)) };
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const payload = { withdrawals: await getWithdrawalHistory(requestUserId) };
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "POST" && url.pathname === "/withdrawals") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       if (isWithdrawalRequestDisabled()) {
         const payload: ApiErrorResponse = {
           error: "withdrawal requests are temporarily disabled",
@@ -325,7 +432,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
       const body = await parseBody(request);
       const result = await requestWithdrawal({
-        userId: getRequestUserId(request),
+        userId: requestUserId,
         amountAtoms: BigInt(String(body.amountAtoms ?? "0")),
         destinationAddress: String(body.destinationAddress ?? ""),
       });
@@ -373,7 +480,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
     ) {
       const body = await parseBody(request);
       const result = await executeWithdrawal({
-        adminUserId: getRequestUserId(request),
+        adminUserId: requestUserId,
         isAdmin: isAdminRequest(request),
         withdrawalId: segments[2] ?? "",
         txHash: String(body.txHash ?? ""),
@@ -385,12 +492,22 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/withdrawals") {
-      return new Response(toJson({ withdrawals: await getWithdrawalHistory(getRequestUserId(request)) }), {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      return new Response(toJson({ withdrawals: await getWithdrawalHistory(requestUserId) }), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "POST" && url.pathname === "/withdrawals") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       if (isWithdrawalRequestDisabled()) {
         const payload: ApiErrorResponse = {
           error: "withdrawal requests are temporarily disabled",
@@ -400,7 +517,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
       const body = await parseBody(request);
       const result = await requestWithdrawal({
-        userId: getRequestUserId(request),
+        userId: requestUserId,
         amountAtoms: BigInt(String(body.amountAtoms ?? "0")),
         destinationAddress: String(body.destinationAddress ?? ""),
       });
@@ -446,7 +563,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
     ) {
       const body = await parseBody(request);
       const result = await executeWithdrawal({
-        adminUserId: getRequestUserId(request),
+        adminUserId: requestUserId,
         isAdmin: isAdminRequest(request),
         withdrawalId: segments[2] ?? "",
         txHash: String(body.txHash ?? ""),
@@ -465,7 +582,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
     ) {
       const body = await parseBody(request);
       const result = await failWithdrawal({
-        adminUserId: getRequestUserId(request),
+        adminUserId: requestUserId,
         isAdmin: isAdminRequest(request),
         withdrawalId: segments[2] ?? "",
         reason: String(body.reason ?? ""),
