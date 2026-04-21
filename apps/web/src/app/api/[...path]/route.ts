@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
-import { readMarketById, readMarketOrderBook, readMarkets, readMarketTrades } from "../_shared/market-read";
+import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
+import { normalizeApiPayload } from "../_shared/api-serialization";
+import { getMarketsResponse } from "../_shared/market-route-response";
 
 import {
   getAuthenticatedUser,
@@ -22,7 +24,7 @@ async function handleRequest(
     }
 
     if (apiPath === "markets" && request.method === "GET") {
-      return NextResponse.json(await readMarkets(adminSupabase));
+      return await getMarketsResponse();
     }
 
     if (apiPath.match(/^markets\/[^/]+$/) && request.method === "GET") {
@@ -63,7 +65,7 @@ async function handleRequest(
       if (error) {
         throw error;
       }
-      return NextResponse.json(data);
+      return NextResponse.json(normalizeApiPayload(data));
     }
 
     if (apiPath === "withdrawals" && request.method === "GET") {

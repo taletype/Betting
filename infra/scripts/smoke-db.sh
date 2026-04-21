@@ -42,6 +42,19 @@ run_or_fail() {
 note "DB smoke artifact directory: $ARTIFACT_DIR"
 note "Run log: $LOG_FILE"
 note "Run json artifact: $JSON_FILE"
+note "Prep mode: ${SMOKE_DB_PREP_MODE:-none}"
+
+DB_URL_SOURCE=""
+if [[ -n "${SUPABASE_DB_URL:-}" ]]; then
+  DB_URL_SOURCE="SUPABASE_DB_URL"
+elif [[ -n "${DATABASE_URL:-}" ]]; then
+  DB_URL_SOURCE="DATABASE_URL"
+else
+  fail "Set SUPABASE_DB_URL or DATABASE_URL explicitly before running smoke:db."
+  exit 1
+fi
+
+note "Using DB connection from: $DB_URL_SOURCE"
 
 run_or_fail "Checking DB connectivity" \
   pnpm --filter @bet/service-api exec node --import tsx -e "import { createDatabaseClient, getDatabaseConnectionString } from '@bet/db'; const db = createDatabaseClient(); await db.query('select 1 as ok'); console.log('db ok', getDatabaseConnectionString());"
@@ -104,3 +117,4 @@ pass "Artifact log saved: $LOG_FILE"
 pass "Artifact json saved: $JSON_FILE"
 note "Latest log symlink/copy: $LATEST_LOG"
 note "Latest json symlink/copy: $LATEST_JSON"
+note "Signoff artifact bundle: $LATEST_LOG + $LATEST_JSON"
