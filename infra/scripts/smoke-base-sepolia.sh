@@ -5,12 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 export SMOKE_DB_PREP_MODE="${SMOKE_DB_PREP_MODE:-none}"
-export BASE_CHAIN_ID="${BASE_CHAIN_ID:-84532}"
-
-if [[ "${BASE_CHAIN_ID}" != "84532" ]]; then
-  echo "❌ BASE_CHAIN_ID must be 84532 for Base Sepolia smoke runs. Received: ${BASE_CHAIN_ID}"
-  exit 1
+if [[ -n "${BASE_CHAIN_ID:-}" && "${BASE_CHAIN_ID}" != "84532" ]]; then
+  echo "ℹ️ Overriding BASE_CHAIN_ID=${BASE_CHAIN_ID} -> 84532 for Base Sepolia smoke run."
 fi
+export BASE_CHAIN_ID="84532"
 
 echo "ℹ️ Running Base Sepolia DB smoke with BASE_CHAIN_ID=${BASE_CHAIN_ID} and SMOKE_DB_PREP_MODE=${SMOKE_DB_PREP_MODE}"
 

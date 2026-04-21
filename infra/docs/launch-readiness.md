@@ -45,7 +45,7 @@ pnpm smoke:base-sepolia
 
 What it does:
 
-1. enforces `BASE_CHAIN_ID=84532` (Base Sepolia),
+1. forces `BASE_CHAIN_ID=84532` (Base Sepolia) for the run,
 2. requires explicit DB URL env (`SUPABASE_DB_URL` or `DATABASE_URL`) and checks connectivity,
 3. runs the DB happy-path lifecycle (wallet link, deposit verify, resting + crossing orders, trade assertions, resolution, claim, withdrawal execute + fail),
 4. prints and persists launch evidence including chain/network info, balances, trades, positions, claims, withdrawals, and tx explorer links,
