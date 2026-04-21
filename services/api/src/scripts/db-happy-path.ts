@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { DepositVerificationAdapter } from "@bet/chain";
+import { BASE_SEPOLIA_CHAIN_ID, readBaseChainId, readBaseExplorerUrl, readEthereumAddress } from "@bet/config";
 import { createDatabaseClient } from "@bet/db";
 import { Wallet } from "ethers";
 import { createOrder, drainSubmittedOrderMatchingQueue } from "@bet/trading";
@@ -11,7 +12,7 @@ import { resolveMarket } from "../modules/admin/handlers";
 import { claimMarket, getClaimableStateForMarket } from "../modules/claims/handlers";
 import { verifyDepositWithDependencies } from "../modules/deposits/handlers";
 import { DEMO_USER_ID, INTEGRATION_FLOW_USER_ID } from "../modules/shared/constants";
-import { failWithdrawal, requestWithdrawal } from "../modules/withdrawals/handlers";
+import { executeWithdrawal, failWithdrawal, requestWithdrawal } from "../modules/withdrawals/handlers";
 import { getLinkedWallet, linkBaseWallet } from "../modules/wallets/handlers";
 
 const db = createDatabaseClient();
@@ -91,6 +92,7 @@ interface WithdrawalSummaryRow {
   status: string;
   amount: bigint;
   currency: string;
+  tx_hash: string | null;
 }
 
 function assertCondition(
@@ -105,6 +107,8 @@ function assertCondition(
 
 const buildAvailableFundsAccountCode = (userId: string): string => `user:${userId}:funds:available`;
 const buildReservedFundsAccountCode = (userId: string): string => `user:${userId}:funds:reserved`;
+const toTxExplorerUrl = (explorerBaseUrl: string, txHash: string): string =>
+  `${explorerBaseUrl.replace(/\/$/, "")}/tx/${txHash}`;
 
 const getFundsSnapshot = async (userId: string) => {
   const [row] = await db.query<FundsSnapshotRow>(
@@ -227,7 +231,8 @@ const listWithdrawalsIfTableExists = async (userId: string): Promise<WithdrawalS
         id,
         status,
         amount,
-        currency
+        currency,
+        tx_hash
       from public.withdrawals
       where user_id = $1::uuid
       order by created_at desc
@@ -301,23 +306,56 @@ const cleanupScenarioOrders = async (userId: string) => {
   }
 };
 
-const buildStubDepositAdapter = (walletAddress: string, txHash: string): DepositVerificationAdapter => ({
-  verifyUsdcTransfer: async () => ({
-    status: "confirmed",
-    confirmations: 99,
-    transfer: {
-      txHash,
-      from: walletAddress,
-      to: process.env.BASE_TREASURY_ADDRESS ?? "0x00000000000000000000000000000000000000aa",
-      tokenAddress: (process.env.BASE_USDC_ADDRESS ?? "0x00000000000000000000000000000000000000bb").toLowerCase(),
-      amount: DEPOSIT_AMOUNT,
-      blockNumber: 12345678n,
-      success: true,
-    },
-  }),
+const buildStubDepositAdapter = (input: {
+  walletAddress: string;
+  txHash: string;
+  treasuryAddress: string;
+  tokenAddress: string;
+}): DepositVerificationAdapter => ({
+  verifyUsdcTransfer: async (verificationInput) => {
+    assertCondition(
+      verificationInput.txHash === input.txHash,
+      "deposit verification should use the expected tx hash",
+    );
+    assertCondition(
+      verificationInput.expectedFrom.toLowerCase() === input.walletAddress,
+      "deposit verification should bind sender to linked wallet",
+    );
+    assertCondition(
+      verificationInput.expectedTo.toLowerCase() === input.treasuryAddress,
+      "deposit verification should target configured treasury address",
+    );
+    assertCondition(
+      verificationInput.tokenAddress.toLowerCase() === input.tokenAddress,
+      "deposit verification should target configured Base token address",
+    );
+
+    return {
+      status: "confirmed",
+      confirmations: 99,
+      transfer: {
+        txHash: input.txHash,
+        from: input.walletAddress,
+        to: input.treasuryAddress,
+        tokenAddress: input.tokenAddress,
+        amount: DEPOSIT_AMOUNT,
+        blockNumber: 12345678n,
+        success: true,
+      },
+    };
+  },
 });
 
 const main = async () => {
+  const chainId = readBaseChainId();
+  assertCondition(chainId === BASE_SEPOLIA_CHAIN_ID, "db happy-path must run against Base Sepolia", {
+    chainId,
+    expectedChainId: BASE_SEPOLIA_CHAIN_ID,
+  });
+  const explorerUrl = readBaseExplorerUrl();
+  const treasuryAddress = readEthereumAddress("BASE_TREASURY_ADDRESS");
+  const tokenAddress = readEthereumAddress("BASE_USDC_ADDRESS");
+
   await cleanupScenarioOrders(DEMO_USER_ID);
   await cleanupScenarioOrders(INTEGRATION_FLOW_USER_ID);
 
@@ -341,11 +379,17 @@ const main = async () => {
   assertCondition(linkedWallet.walletAddress === walletAddress, "linked wallet should be persisted");
   assertCondition(fetchedWallet?.walletAddress === walletAddress, "linked wallet should be fetchable");
 
-  process.env.BASE_TREASURY_ADDRESS ||= "0x00000000000000000000000000000000000000aa";
   const depositTxHash = `0x${runId.padEnd(64, "a")}`;
   const depositResult = await verifyDepositWithDependencies(
     { userId: DEMO_USER_ID, txHash: depositTxHash },
-    { adapter: buildStubDepositAdapter(walletAddress, depositTxHash) },
+    {
+      adapter: buildStubDepositAdapter({
+        walletAddress,
+        txHash: depositTxHash,
+        treasuryAddress,
+        tokenAddress,
+      }),
+    },
   );
 
   assertCondition(depositResult.status === "accepted", "deposit verification should accept stubbed transfer");
@@ -503,39 +547,65 @@ const main = async () => {
   const claimSummary = await getClaimSummary(DEMO_USER_ID, MARKET_ID);
   assertCondition(claimSummary?.status === "claimed", "claim row should be persisted as claimed");
 
-  let withdrawalSummary: { requestedId: string; failedId: string; finalStatus: string } | null = null;
+  let withdrawalSummary:
+    | {
+        executed: { id: string; status: string; txHash: string; explorerUrl: string };
+        failed: { id: string; status: string };
+      }
+    | null = null;
   if (await isWithdrawalsTableAvailable()) {
     const beforeWithdrawalFunds = await getFundsSnapshot(DEMO_USER_ID);
 
-    const requestedWithdrawal = await requestWithdrawal({
+    const executableWithdrawal = await requestWithdrawal({
       userId: DEMO_USER_ID,
       amountAtoms: WITHDRAWAL_TEST_AMOUNT,
       destinationAddress: "0x00000000000000000000000000000000000000bb",
     });
+    const executeTxHash = `0x${runId.padEnd(64, "e")}`;
+    const completedWithdrawal = await executeWithdrawal({
+      adminUserId: INTEGRATION_FLOW_USER_ID,
+      isAdmin: true,
+      withdrawalId: executableWithdrawal.id,
+      txHash: executeTxHash,
+    });
+    assertCondition(completedWithdrawal.status === "completed", "admin execute should mark withdrawal completed");
+    assertCondition(completedWithdrawal.txHash === executeTxHash, "completed withdrawal should persist tx hash");
 
+    const secondRequest = await requestWithdrawal({
+      userId: DEMO_USER_ID,
+      amountAtoms: WITHDRAWAL_TEST_AMOUNT,
+      destinationAddress: "0x00000000000000000000000000000000000000bb",
+    });
     const afterRequestFunds = await getFundsSnapshot(DEMO_USER_ID);
     assertCondition(
-      beforeWithdrawalFunds.available - afterRequestFunds.available === WITHDRAWAL_TEST_AMOUNT,
-      "requested withdrawal should move available funds into pending withdrawal",
+      beforeWithdrawalFunds.available - afterRequestFunds.available === WITHDRAWAL_TEST_AMOUNT * 2n,
+      "two requested withdrawals should move available funds into pending withdrawal",
     );
 
     const failedWithdrawal = await failWithdrawal({
       adminUserId: INTEGRATION_FLOW_USER_ID,
       isAdmin: true,
-      withdrawalId: requestedWithdrawal.id,
+      withdrawalId: secondRequest.id,
       reason: `db-happy-path rollback ${runId}`,
     });
 
     const afterFailureFunds = await getFundsSnapshot(DEMO_USER_ID);
     assertCondition(
-      afterFailureFunds.available - beforeWithdrawalFunds.available === 0n,
-      "failed withdrawal should restore available funds",
+      afterFailureFunds.available - beforeWithdrawalFunds.available === -WITHDRAWAL_TEST_AMOUNT,
+      "executed withdrawal should keep one net debit after failed rollback request restores",
     );
 
     withdrawalSummary = {
-      requestedId: requestedWithdrawal.id,
-      failedId: failedWithdrawal.id,
-      finalStatus: failedWithdrawal.status,
+      executed: {
+        id: completedWithdrawal.id,
+        status: completedWithdrawal.status,
+        txHash: executeTxHash,
+        explorerUrl: toTxExplorerUrl(explorerUrl, executeTxHash),
+      },
+      failed: {
+        id: failedWithdrawal.id,
+        status: failedWithdrawal.status,
+      },
     };
   }
 
@@ -553,11 +623,19 @@ const main = async () => {
     config: {
       marketId: MARKET_ID,
       winningOutcomeId: WINNING_OUTCOME_ID,
+      chain: {
+        id: chainId,
+        network: "base-sepolia",
+        explorerUrl,
+        treasuryAddress,
+        tokenAddress,
+      },
     },
     marketId: MARKET_ID,
     winningOutcomeId: WINNING_OUTCOME_ID,
     deposit: {
       txHash: depositResult.deposit.txHash,
+      txExplorerUrl: toTxExplorerUrl(explorerUrl, depositResult.deposit.txHash),
       amount: depositResult.deposit.amount.toString(),
       status: depositResult.status,
     },
@@ -612,8 +690,12 @@ const main = async () => {
       : null,
     withdrawalFlow: withdrawalSummary,
     withdrawals: withdrawals.map((row) => ({
-      ...row,
+      id: row.id,
+      status: row.status,
       amount: row.amount.toString(),
+      currency: row.currency,
+      txHash: row.tx_hash,
+      txExplorerUrl: row.tx_hash ? toTxExplorerUrl(explorerUrl, row.tx_hash) : null,
     })),
   };
 
