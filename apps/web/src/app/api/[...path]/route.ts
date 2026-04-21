@@ -3,6 +3,7 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supa
 import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
+import { readExternalMarkets } from "../_shared/external-market-read";
 
 import {
   evaluateAdminAccess,
@@ -44,6 +45,10 @@ async function handleRequest(
     if (apiPath.match(/^markets\/[^/]+\/trades$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
       return NextResponse.json(await readMarketTrades(adminSupabase, marketId));
+    }
+
+    if (apiPath === "external/markets" && request.method === "GET") {
+      return NextResponse.json(await readExternalMarkets(adminSupabase));
     }
 
     const user = await getAuthenticatedUser(request);

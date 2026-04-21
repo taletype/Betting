@@ -33,12 +33,43 @@ const getApiBaseUrl = (): string => {
   return "";
 };
 
+const getLocalWebBaseUrl = (): string => {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (siteUrl?.trim()) {
+    return siteUrl.startsWith("http") ? siteUrl.replace(/\/+$/, "") : `https://${siteUrl.replace(/\/+$/, "")}`;
+  }
+
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl?.trim()) {
+    return `https://${vercelUrl.replace(/\/+$/, "")}`;
+  }
+
+  return `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
+};
+
+const getApiUrl = (path: string): string => {
+  const base = getApiBaseUrl();
+  if (base) {
+    return `${base}${path}`;
+  }
+
+  if (path.startsWith("/api/")) {
+    const localBase = getLocalWebBaseUrl();
+    return localBase ? `${localBase}${path}` : path;
+  }
+
+  return path;
+};
+
 export const apiRequest = async <T>(
   path: string,
   init?: RequestInit & { allowNotFound?: boolean },
 ): Promise<T | null> => {
-  const base = getApiBaseUrl();
-  const url = base ? `${base}${path}` : path;
+  const url = getApiUrl(path);
 
   const response = await fetch(url, {
     ...init,
@@ -234,6 +265,6 @@ export interface ExternalMarketApiRecord {
 }
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
-  const payload = await readApiJson('/external/markets');
+  const payload = await readApiJson(getApiBaseUrl() ? "/external/markets" : "/api/external/markets");
   return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
 };
