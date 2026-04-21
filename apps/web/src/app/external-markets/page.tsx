@@ -2,7 +2,7 @@ import { listExternalMarkets } from "../../lib/api";
 
 export const dynamic = "force-dynamic";
 
-const toDisplay = (value: number | null): string => (value === null ? "—" : String(value));
+const toDisplay = (value: number | null): string => (value === null ? "—" : value.toFixed(2));
 
 const formatDate = (value: string): string =>
   new Intl.DateTimeFormat("en-US", {
@@ -23,6 +23,26 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
   return "neutral";
 };
 
+const statusLabel = (status: string): string => {
+  if (status === "open") {
+    return "Active";
+  }
+
+  if (status === "resolved") {
+    return "Resolved";
+  }
+
+  if (status === "closed") {
+    return "Closed";
+  }
+
+  if (status === "cancelled") {
+    return "Cancelled";
+  }
+
+  return status;
+};
+
 export default async function ExternalMarketsPage() {
   const markets = await listExternalMarkets();
 
@@ -30,7 +50,7 @@ export default async function ExternalMarketsPage() {
     <main className="stack">
       <section className="hero">
         <h1>Market Research</h1>
-        <p>Price data from Polymarket and Kalshi for research. Trade these markets on their native platforms.</p>
+        <p>Reference pricing from Polymarket and Kalshi for market context. Trading remains on each native venue.</p>
       </section>
       <section className="stack">
         {markets.length === 0 ? (
@@ -42,7 +62,7 @@ export default async function ExternalMarketsPage() {
                 <div className="stack">
                   <div className="badge badge-neutral">{market.source}</div>
                   <strong>{market.title}</strong>
-                  <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
+                  <div className={`badge badge-${statusTone(market.status)}`}>{statusLabel(market.status)}</div>
                   <div className="muted">External ID: {market.externalId}</div>
                 </div>
                 <div className="stack">

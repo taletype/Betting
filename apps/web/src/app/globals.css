@@ -227,3 +227,18 @@ button:hover {
   padding: 8px 0;
   font-size: 13px;
 }
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table td a {
+  color: #93c5fd;
+  text-decoration: underline;
+  text-decoration-color: rgba(147, 197, 253, 0.45);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}

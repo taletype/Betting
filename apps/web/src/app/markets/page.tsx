@@ -15,6 +15,26 @@ const getStatusTone = (status: string): "neutral" | "success" | "warning" => {
   return "neutral";
 };
 
+const getStatusLabel = (status: string): string => {
+  if (status === "open") {
+    return "Active";
+  }
+
+  if (status === "resolved") {
+    return "Resolved";
+  }
+
+  if (status === "halted") {
+    return "Halted";
+  }
+
+  if (status === "cancelled") {
+    return "Cancelled";
+  }
+
+  return status;
+};
+
 export default async function MarketsPage() {
   const markets = await listMarkets();
   const activeMarkets = markets.filter((market) => market.status === "open").length;
@@ -54,10 +74,11 @@ export default async function MarketsPage() {
         <section className="grid">
           {markets.map((market) => (
             <Link className="panel stack" key={market.id} href={`/markets/${market.id}`}>
-              <div className={`badge badge-${getStatusTone(market.status)}`}>{market.status}</div>
+              <div className={`badge badge-${getStatusTone(market.status)}`}>{getStatusLabel(market.status)}</div>
               <strong>{market.title}</strong>
               <div className="muted">{market.description.length > 100 ? market.description.slice(0, 100) + "…" : market.description}</div>
               <div className="muted">Outcomes: {market.outcomes.map((outcome: { title: string }) => outcome.title).join(" • ") || "None"}</div>
+              <div className="muted">Status: {getStatusLabel(market.status)}</div>
               <div className="grid">
                 <div>
                   <div className="muted">Best bid</div>

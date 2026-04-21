@@ -1,4 +1,5 @@
-import { apiRequest, listAdminRequestedWithdrawals, toBigInt } from "../../lib/api";
+import { apiRequest, listAdminRequestedWithdrawals } from "../../lib/api";
+import { formatUsdc } from "../../lib/format";
 import { baseNetworkLabel } from "../../lib/base-network";
 
 import { executeWithdrawalAction, failWithdrawalAction, resolveMarketAction } from "./actions";
@@ -45,6 +46,7 @@ export default async function AdminPage() {
       <section className="hero">
         <h1>Admin</h1>
         <p>Resolve markets and process {baseNetworkLabel} withdrawal requests.</p>
+        <div className="badge badge-neutral">Network: {baseNetworkLabel}</div>
       </section>
 
       <section className="stack">
@@ -58,7 +60,7 @@ export default async function AdminPage() {
               <strong>{withdrawal.id}</strong>
               <div className="kv">
                 <span className="kv-key">Amount</span>
-                <span className="kv-value">{toBigInt(withdrawal.amountAtoms).toString()}</span>
+                <span className="kv-value">{formatUsdc(withdrawal.amountAtoms)}</span>
               </div>
               <div className="kv">
                 <span className="kv-key">Destination</span>
@@ -95,7 +97,7 @@ export default async function AdminPage() {
         ) : (
           openMarkets.map((market) => (
             <article className="panel stack" key={market.id}>
-              <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
+              <div className={`badge badge-${statusTone(market.status)}`}>{market.status === "open" ? "Active" : market.status}</div>
               <strong>{market.title}</strong>
               <div className="muted">{market.id.slice(0, 8)}…</div>
 
@@ -138,7 +140,7 @@ export default async function AdminPage() {
           <div className="grid">
             {resolvedMarkets.map((market) => (
               <article className="panel stack" key={market.id}>
-                <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
+                <div className={`badge badge-${statusTone(market.status)}`}>{market.status === "open" ? "Active" : market.status}</div>
                 <strong>{market.title}</strong>
                 <div className="muted">{market.id.slice(0, 8)}…</div>
               </article>

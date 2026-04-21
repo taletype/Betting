@@ -28,7 +28,7 @@ export default async function ClaimsPage() {
     <main className="stack">
       <section className="hero">
         <h1>Claims & Payouts</h1>
-        <p>Track resolved-market claim states and payout history for your account.</p>
+        <p>Track claimable and claimed payout states for resolved markets in your portfolio.</p>
       </section>
 
       <section className="grid">
@@ -72,7 +72,7 @@ export default async function ClaimsPage() {
                 <tr key={claim.id}>
                   <td>{marketTitleById.get(claim.marketId) ?? `${claim.marketId.slice(0, 8)}…`}</td>
                   <td>
-                    <span className={`badge badge-${claimTone(claim.status)}`}>{claim.status}</span>
+                    <span className={`badge badge-${claimTone(claim.status)}`}>{claim.status === "claimable" ? "Claimable" : claim.status === "claimed" ? "Claimed" : claim.status}</span>
                   </td>
                   <td>{formatUsdc(claim.claimableAmount)}</td>
                   <td>{formatUsdc(claim.claimedAmount)}</td>

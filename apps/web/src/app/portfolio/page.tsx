@@ -37,6 +37,49 @@ const depositTone = (status: string): "success" | "warning" | "danger" | "neutra
   return "neutral";
 };
 
+const orderStatusTone = (status: string): "success" | "warning" | "neutral" => {
+  if (status === "open") {
+    return "success";
+  }
+
+  if (status === "partially_filled") {
+    return "warning";
+  }
+
+  return "neutral";
+};
+
+const orderStatusLabel = (status: string): string => {
+  if (status === "partially_filled") {
+    return "Partially filled";
+  }
+
+  if (status === "filled") {
+    return "Filled";
+  }
+
+  if (status === "cancelled") {
+    return "Cancelled";
+  }
+
+  return status.charAt(0).toUpperCase() + status.slice(1);
+};
+
+const claimStatusLabel = (status: string): string => {
+  if (status === "claimable") {
+    return "Claimable";
+  }
+
+  if (status === "claimed") {
+    return "Claimed";
+  }
+
+  return status;
+};
+
+const withdrawalStatusLabel = (status: "requested" | "completed" | "failed"): string =>
+  status === "requested" ? "Requested" : status === "completed" ? "Completed" : "Failed";
+
 export default async function PortfolioPage() {
   const [portfolio, markets] = await Promise.all([getPortfolio(), listMarkets()]);
   const primaryBalance = portfolio.balances[0];
@@ -177,8 +220,8 @@ export default async function PortfolioPage() {
                   <td>{formatQuantity(order.quantity)}</td>
                   <td>{formatQuantity(order.remainingQuantity)}</td>
                   <td>
-                    <span className={`badge badge-${order.status === "open" ? "success" : order.status === "filled" ? "neutral" : "warning"}`}>
-                      {order.status}
+                    <span className={`badge badge-${orderStatusTone(order.status)}`}>
+                      {orderStatusLabel(order.status)}
                     </span>
                   </td>
                 </tr>
@@ -211,7 +254,7 @@ export default async function PortfolioPage() {
                   <td>{formatUsdc(claim.claimedAmount)}</td>
                   <td>
                     <span className={`badge badge-${claim.status === "claimable" ? "success" : claim.status === "claimed" ? "neutral" : "warning"}`}>
-                      {claim.status}
+                      {claimStatusLabel(claim.status)}
                     </span>
                   </td>
                   <td>{claim.status === "claimable" ? "Claim" : "—"}</td>
@@ -247,6 +290,7 @@ export default async function PortfolioPage() {
 
       <section className="panel stack">
         <h2 className="section-title">Deposit History</h2>
+        <div className="badge badge-neutral">{baseNetworkLabel}</div>
         {portfolio.deposits.length === 0 ? (
           <div className="empty-state">No deposits credited yet.</div>
         ) : (
@@ -262,7 +306,7 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.deposits.map((deposit) => (
                 <tr key={deposit.id}>
-                  <td><a href={formatBaseExplorerTxUrl(deposit.txHash)} target="_blank" rel="noreferrer">{deposit.txHash}</a></td>
+                  <td><a className="mono" href={formatBaseExplorerTxUrl(deposit.txHash)} target="_blank" rel="noreferrer">{deposit.txHash.slice(0, 10)}…{deposit.txHash.slice(-8)}</a></td>
                   <td>{formatUsdc(deposit.amount)} {deposit.currency}</td>
                   <td>
                     <span className={`badge badge-${depositTone(deposit.txStatus)}`}>{deposit.txStatus}</span>
@@ -277,6 +321,7 @@ export default async function PortfolioPage() {
 
       <section className="panel stack">
         <h2 className="section-title">Withdrawal History</h2>
+        <div className="badge badge-neutral">{baseNetworkLabel}</div>
         {portfolio.withdrawals.length === 0 ? (
           <div className="empty-state">No withdrawals requested yet.</div>
         ) : (
@@ -292,10 +337,10 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.withdrawals.map((withdrawal) => (
                 <tr key={withdrawal.id}>
-                  <td>{withdrawal.destinationAddress}</td>
+                  <td className="mono">{withdrawal.destinationAddress}</td>
                   <td>{formatUsdc(withdrawal.amountAtoms)}</td>
                   <td>
-                    <span className={`badge badge-${withdrawalTone(withdrawal.status)}`}>{withdrawal.status}</span>
+                    <span className={`badge badge-${withdrawalTone(withdrawal.status)}`}>{withdrawalStatusLabel(withdrawal.status)}</span>
                   </td>
                   <td>
                     Requested: {formatDate(withdrawal.requestedAt)}
@@ -303,8 +348,8 @@ export default async function PortfolioPage() {
                     {withdrawal.txHash ? (
                       <>
                         {" · Tx: "}
-                        <a href={formatBaseExplorerTxUrl(withdrawal.txHash)} target="_blank" rel="noreferrer">
-                          {withdrawal.txHash}
+                        <a className="mono" href={formatBaseExplorerTxUrl(withdrawal.txHash)} target="_blank" rel="noreferrer">
+                          {withdrawal.txHash.slice(0, 10)}…{withdrawal.txHash.slice(-8)}
                         </a>
                       </>
                     ) : null}

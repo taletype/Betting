@@ -3,10 +3,10 @@ export default function PortfolioLoading() {
     <main className="stack">
       <section className="hero">
         <h1>Portfolio</h1>
-        <p>Loading portfolio data…</p>
+        <p>Loading balances, positions, and transfer history…</p>
       </section>
       <section className="panel">
-        <div className="empty-state">Fetching balances, positions, orders, and transfer history.</div>
+        <div className="empty-state">Fetching Base Sepolia wallet, deposits, withdrawals, and claim states.</div>
       </section>
     </main>
   );
