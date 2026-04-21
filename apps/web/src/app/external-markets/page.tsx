@@ -34,7 +34,7 @@ export default async function ExternalMarketsPage() {
       </section>
       <section className="stack">
         {markets.length === 0 ? (
-          <div className="panel empty-state">No market data yet. Run the external sync job, then refresh this page.</div>
+          <div className="panel empty-state">No synced market data yet. Run the external sync worker, then refresh this page.</div>
         ) : (
           markets.map((market) => (
             <div key={`${market.source}:${market.externalId}`} className="panel stack">
@@ -62,8 +62,35 @@ export default async function ExternalMarketsPage() {
               </div>
               {market.outcomes.length > 0 ? (
                 <div className="muted">Outcomes: {market.outcomes.map((outcome) => outcome.title).join(" • ")}</div>
-              ) : null}
+              ) : (
+                <div className="muted">Outcomes not available in latest sync payload.</div>
+              )}
+              <div className="muted">24h volume: {toDisplay(market.volume24h)} · Total volume: {toDisplay(market.volumeTotal)}</div>
               <div className="muted">Last synced: {market.lastSyncedAt ? formatDate(market.lastSyncedAt) : "never"}</div>
+              {market.recentTrades.length > 0 ? (
+                <table className="table compact-table">
+                  <thead>
+                    <tr>
+                      <th>Trade time</th>
+                      <th>Side</th>
+                      <th>Price</th>
+                      <th>Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {market.recentTrades.slice(0, 3).map((trade) => (
+                      <tr key={trade.externalTradeId}>
+                        <td>{formatDate(trade.tradedAt)}</td>
+                        <td>{trade.side ?? "—"}</td>
+                        <td>{toDisplay(trade.price)}</td>
+                        <td>{toDisplay(trade.size)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="muted">No recent external trades captured for this market yet.</div>
+              )}
             </div>
           ))
         )}

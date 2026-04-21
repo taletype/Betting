@@ -1,4 +1,4 @@
-import { getPortfolio, linkWallet, requestWithdrawal, toBigInt, verifyDepositTx } from "../../lib/api";
+import { getPortfolio, linkWallet, listMarkets, requestWithdrawal, verifyDepositTx } from "../../lib/api";
 import { baseNetworkLabel, formatBaseExplorerTxUrl } from "../../lib/base-network";
 import { formatUsdc, formatPrice, formatQuantity } from "../../lib/format";
 
@@ -38,8 +38,13 @@ const depositTone = (status: string): "success" | "warning" | "danger" | "neutra
 };
 
 export default async function PortfolioPage() {
-  const portfolio = await getPortfolio();
+  const [portfolio, markets] = await Promise.all([getPortfolio(), listMarkets()]);
   const primaryBalance = portfolio.balances[0];
+
+  const marketById = new Map(markets.map((market) => [market.id, market]));
+  const getMarketTitle = (marketId: string): string => marketById.get(marketId)?.title ?? `${marketId.slice(0, 8)}…`;
+  const getOutcomeTitle = (marketId: string, outcomeId: string): string =>
+    marketById.get(marketId)?.outcomes.find((outcome: { id: string; title: string }) => outcome.id === outcomeId)?.title ?? `${outcomeId.slice(0, 8)}…`;
 
   const linkWalletAction = async (formData: FormData) => {
     "use server";
@@ -135,8 +140,8 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.positions.map((position) => (
                 <tr key={position.id}>
-                  <td className="muted">{position.marketId.slice(0, 8)}…</td>
-                  <td className="muted">{position.outcomeId.slice(0, 8)}…</td>
+                  <td className="muted">{getMarketTitle(position.marketId)}</td>
+                  <td className="muted">{getOutcomeTitle(position.marketId, position.outcomeId)}</td>
                   <td>{formatQuantity(position.netQuantity)}</td>
                   <td>{formatPrice(position.averageEntryPrice)}</td>
                   <td>{formatUsdc(position.realizedPnl)}</td>
@@ -166,7 +171,7 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.openOrders.map((order) => (
                 <tr key={order.id}>
-                  <td className="muted">{order.marketId.slice(0, 8)}…</td>
+                  <td className="muted">{getMarketTitle(order.marketId)}</td>
                   <td>{order.side.charAt(0).toUpperCase() + order.side.slice(1)}</td>
                   <td>{formatPrice(order.price)}</td>
                   <td>{formatQuantity(order.quantity)}</td>
@@ -184,7 +189,7 @@ export default async function PortfolioPage() {
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Claimable Winnings</h2>
+        <h2 className="section-title">Claims</h2>
         {portfolio.claims.length === 0 ? (
           <div className="empty-state">No winnings to claim.</div>
         ) : (
@@ -192,7 +197,8 @@ export default async function PortfolioPage() {
             <thead>
               <tr>
                 <th>Market</th>
-                <th>Amount</th>
+                <th>Claimable</th>
+                <th>Claimed</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -200,8 +206,9 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.claims.map((claim) => (
                 <tr key={claim.id}>
-                  <td className="muted">{claim.marketId.slice(0, 8)}…</td>
+                  <td className="muted">{getMarketTitle(claim.marketId)}</td>
                   <td>{formatUsdc(claim.claimableAmount)}</td>
+                  <td>{formatUsdc(claim.claimedAmount)}</td>
                   <td>
                     <span className={`badge badge-${claim.status === "claimable" ? "success" : claim.status === "claimed" ? "neutral" : "warning"}`}>
                       {claim.status}

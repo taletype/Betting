@@ -221,3 +221,9 @@ button:hover {
   border-radius: 8px;
   padding: 12px 14px;
 }
+
+.compact-table td,
+.compact-table th {
+  padding: 8px 0;
+  font-size: 13px;
+}

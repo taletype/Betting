@@ -24,7 +24,7 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
     return "success";
   }
 
-  if (status === "paused") {
+  if (status === "halted" || status === "cancelled") {
     return "warning";
   }
 
@@ -36,6 +36,9 @@ export default async function AdminPage() {
     apiRequest<MarketResponse[]>("/markets"),
     listAdminRequestedWithdrawals(),
   ]);
+
+  const openMarkets = (markets ?? []).filter((market) => market.status === "open");
+  const resolvedMarkets = (markets ?? []).filter((market) => market.status === "resolved");
 
   return (
     <main className="stack">
@@ -90,7 +93,7 @@ export default async function AdminPage() {
         {(markets ?? []).length === 0 ? (
           <div className="panel empty-state">No markets available for resolution actions.</div>
         ) : (
-          (markets ?? []).filter((market) => market.status === "open").map((market) => (
+          openMarkets.map((market) => (
             <article className="panel stack" key={market.id}>
               <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
               <strong>{market.title}</strong>
@@ -124,6 +127,23 @@ export default async function AdminPage() {
               </form>
             </article>
           ))
+        )}
+      </section>
+
+      <section className="stack">
+        <h2 className="section-title">Recently Resolved Markets</h2>
+        {resolvedMarkets.length === 0 ? (
+          <div className="panel empty-state">No resolved markets yet.</div>
+        ) : (
+          <div className="grid">
+            {resolvedMarkets.map((market) => (
+              <article className="panel stack" key={market.id}>
+                <div className={`badge badge-${statusTone(market.status)}`}>{market.status}</div>
+                <strong>{market.title}</strong>
+                <div className="muted">{market.id.slice(0, 8)}…</div>
+              </article>
+            ))}
+          </div>
         )}
       </section>
     </main>

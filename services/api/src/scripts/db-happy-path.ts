@@ -547,6 +547,14 @@ const main = async () => {
   const claimSummary = await getClaimSummary(DEMO_USER_ID, MARKET_ID);
   assertCondition(claimSummary?.status === "claimed", "claim row should be persisted as claimed");
 
+  const resolutionSummary = {
+    status: resolutionResult.status,
+    marketId: resolutionResult.resolution.marketId,
+    winningOutcomeId: resolutionResult.resolution.winningOutcomeId,
+    resolvedAt: resolutionResult.resolution.resolvedAt,
+    notes: resolutionResult.resolution.notes,
+  };
+
   let withdrawalSummary:
     | {
         executed: { id: string; status: string; txHash: string; explorerUrl: string };
@@ -633,17 +641,44 @@ const main = async () => {
     },
     marketId: MARKET_ID,
     winningOutcomeId: WINNING_OUTCOME_ID,
+    linkedWallet: {
+      userId: DEMO_USER_ID,
+      walletAddress: linkedWallet.walletAddress,
+      verifiedAt: linkedWallet.verifiedAt,
+      signature,
+    },
     deposit: {
       txHash: depositResult.deposit.txHash,
       txExplorerUrl: toTxExplorerUrl(explorerUrl, depositResult.deposit.txHash),
       amount: depositResult.deposit.amount.toString(),
       status: depositResult.status,
+      from: depositResult.deposit.txSender,
+      to: depositResult.deposit.txRecipient,
+      txStatus: depositResult.deposit.txStatus,
+      tokenAddress: depositResult.deposit.tokenAddress,
+      blockNumber: depositResult.deposit.blockNumber.toString(),
     },
     trading: {
       processedJobs,
       tradeId: trade.id,
       makerOrderId: restingOrder.order.id,
       takerOrderId: crossingOrder.order.id,
+      makerOrderResult: persistedRestingOrder
+        ? {
+            id: persistedRestingOrder.id,
+            status: persistedRestingOrder.status,
+            remainingQuantity: persistedRestingOrder.remaining_quantity.toString(),
+            reservedAmount: persistedRestingOrder.reserved_amount.toString(),
+          }
+        : null,
+      takerOrderResult: persistedCrossingOrder
+        ? {
+            id: persistedCrossingOrder.id,
+            status: persistedCrossingOrder.status,
+            remainingQuantity: persistedCrossingOrder.remaining_quantity.toString(),
+            reservedAmount: persistedCrossingOrder.reserved_amount.toString(),
+          }
+        : null,
     },
     openOrders: openOrders.map((row) => ({
       id: row.id,
@@ -680,12 +715,14 @@ const main = async () => {
         averageEntryPrice: finalSellerPosition.averageEntryPrice.toString(),
       },
     },
+    resolution: resolutionSummary,
     claim: claimSummary
       ? {
           id: claimSummary.id,
           status: claimSummary.status,
           claimableAmount: claimSummary.claimable_amount.toString(),
           claimedAmount: claimSummary.claimed_amount.toString(),
+          payoutJournalId: claimResult.payoutJournalId,
         }
       : null,
     withdrawalFlow: withdrawalSummary,
@@ -697,6 +734,10 @@ const main = async () => {
       txHash: row.tx_hash,
       txExplorerUrl: row.tx_hash ? toTxExplorerUrl(explorerUrl, row.tx_hash) : null,
     })),
+    reconciliation: {
+      status: "not-run",
+      note: "Use pnpm smoke:launch-proof to include reconciliation worker evidence in the artifact set.",
+    },
   };
 
   const artifactJson = JSON.stringify(artifact, null, 2);

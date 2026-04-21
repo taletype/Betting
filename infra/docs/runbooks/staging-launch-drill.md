@@ -65,7 +65,7 @@ Record faucet/funding tx hashes in artifacts.
 ## 4) Run the Base Sepolia lifecycle smoke (single command)
 
 ```bash
-pnpm smoke:base-sepolia
+pnpm smoke:launch-proof
 ```
 
 This is the required drill command. It runs the DB happy-path lifecycle and emits evidence for:
@@ -82,8 +82,10 @@ This is the required drill command. It runs the DB happy-path lifecycle and emit
 Expected artifacts from this command:
 - `infra/artifacts/smoke-db/latest.log`
 - `infra/artifacts/smoke-db/latest.json`
+- `infra/artifacts/smoke-db/latest-reconciliation.log`
+- `infra/artifacts/smoke-db/latest-launch-proof.json`
 
-The JSON output includes chain/network info, balances, trades, positions, claims, withdrawals, and tx/explorer links when present.
+The JSON output includes chain/network info, linked wallet, deposit verification result, maker/taker order results, trades, positions, balances, resolution result, claim result, withdrawals, and tx/explorer links when present.
 
 ---
 
@@ -140,7 +142,7 @@ Save to `infra/artifacts/launch-drill/<UTC timestamp>/`:
 Mark each item PASS/FAIL:
 
 - [ ] Typecheck/tests green (`pnpm typecheck`, `pnpm test` or equivalent release validation run)
-- [ ] Base Sepolia smoke passed (`pnpm smoke:base-sepolia`) with `latest.log` + `latest.json`
+- [ ] Base Sepolia launch-proof passed (`pnpm smoke:launch-proof`) with `latest.log`, `latest.json`, `latest-reconciliation.log`, and `latest-launch-proof.json`
 - [ ] Auth/admin gating fix verified (no header-based impersonation path; admin endpoints session-role gated)
 - [ ] Reconciliation clean (no critical failures)
 - [ ] Runbooks current (this file + related ops runbooks match shipped behavior)

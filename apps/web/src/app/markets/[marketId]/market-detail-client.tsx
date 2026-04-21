@@ -9,7 +9,7 @@ import {
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { getOrderBook, getRecentTrades } from "../../../lib/api";
-import { formatPrice, formatQuantity } from "../../../lib/format";
+import { formatPrice, formatQuantity, formatUsdc } from "../../../lib/format";
 import { OrderTicket } from "./order-ticket";
 import {
   applyMarketRealtimeMessage,
@@ -53,7 +53,7 @@ const getMarketStatusTone = (status: string): "success" | "warning" | "neutral" 
     return "success";
   }
 
-  if (status === "paused") {
+  if (status === "halted" || status === "cancelled") {
     return "warning";
   }
 
@@ -294,7 +294,7 @@ export function MarketDetailClient({
           </div>
           <div className="kv">
             <span className="kv-key">Total volume</span>
-            <span className="kv-value">{market.stats.volumeNotional.toString()}</span>
+            <span className="kv-value">{formatUsdc(market.stats.volumeNotional)}</span>
           </div>
         </div>
 

@@ -19,7 +19,8 @@
     "smoke:base-sepolia": "./infra/scripts/smoke-base-sepolia.sh",
     "ci:smoke:db": "SMOKE_DB_PREP_MODE=none ./infra/scripts/smoke-db.sh",
     "drill:staging": "./infra/scripts/staging-launch-drill.sh",
-    "sync:external": "pnpm --filter @bet/external-sync-worker run run"
+    "sync:external": "pnpm --filter @bet/external-sync-worker run run",
+    "smoke:launch-proof": "./infra/scripts/smoke-launch-proof.sh"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
