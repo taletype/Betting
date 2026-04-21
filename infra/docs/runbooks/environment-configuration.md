@@ -9,6 +9,11 @@ This matrix defines the minimum env contract for local, staging, and production.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_WS_URL`
 - `NEXT_PUBLIC_API_BASE_URL` (optional; used for explicit external API routing)
+- `NEXT_PUBLIC_BASE_CHAIN_ID` (84532 for non-production smoke)
+- `NEXT_PUBLIC_BASE_EXPLORER_URL`
+- `NEXT_PUBLIC_BASE_TREASURY_ADDRESS`
+- `NEXT_PUBLIC_BASE_USDC_ADDRESS`
+- `NEXT_PUBLIC_BASE_SETTLEMENT_ASSET` (default `USDC`)
 
 ### Server-only secrets
 - `SUPABASE_SERVICE_ROLE_KEY`

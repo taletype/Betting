@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyMessage } from "ethers";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
 import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
 import { normalizeApiPayload } from "../_shared/api-serialization";
@@ -9,6 +10,18 @@ import {
   evaluateAdminAccess,
   getAuthenticatedUser,
 } from "../auth";
+
+const normalizeAddress = (value: string): string => value.trim().toLowerCase();
+
+const assertWalletLinkMessage = (message: string, userId: string): void => {
+  if (!message.includes("Bet wallet link")) {
+    throw new Error("invalid signed message prefix");
+  }
+
+  if (!message.includes(`user:${userId}`) && !message.includes("user:self")) {
+    throw new Error("signed message user mismatch");
+  }
+};
 
 async function handleRequest(
   request: NextRequest,
@@ -61,6 +74,77 @@ async function handleRequest(
     const userSupabase = createSupabaseServerClient({
       get: (name) => request.cookies.get(name)?.value,
     });
+
+    if (apiPath === "wallets/linked" && request.method === "GET") {
+      const { data, error } = await adminSupabase
+        .from("linked_wallets")
+        .select("id, chain, wallet_address, verified_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) {
+        throw error;
+      }
+      return NextResponse.json({
+        wallet: data
+          ? {
+              id: data.id,
+              chain: data.chain,
+              walletAddress: data.wallet_address,
+              verifiedAt: data.verified_at,
+            }
+          : null,
+      });
+    }
+
+    if (apiPath === "wallets/link" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as {
+        walletAddress?: string;
+        signedMessage?: string;
+        signature?: string;
+      };
+
+      const walletAddress = normalizeAddress(body.walletAddress ?? "");
+      const signedMessage = String(body.signedMessage ?? "");
+      const signature = String(body.signature ?? "");
+
+      assertWalletLinkMessage(signedMessage, userId);
+
+      const recoveredAddress = normalizeAddress(verifyMessage(signedMessage, signature));
+      if (recoveredAddress !== walletAddress) {
+        return NextResponse.json({ error: "signature does not match wallet address" }, { status: 400 });
+      }
+
+      const { data, error } = await adminSupabase
+        .from("linked_wallets")
+        .upsert(
+          {
+            user_id: userId,
+            chain: "base",
+            wallet_address: walletAddress,
+            signature,
+            signed_message: signedMessage,
+            verified_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        )
+        .select("id, chain, wallet_address, verified_at")
+        .single();
+      if (error) {
+        throw error;
+      }
+
+      return NextResponse.json(
+        {
+          wallet: {
+            id: data.id,
+            chain: data.chain,
+            walletAddress: data.wallet_address,
+            verifiedAt: data.verified_at,
+          },
+        },
+        { status: 201 },
+      );
+    }
 
     if (apiPath === "portfolio" && request.method === "GET") {
       const { data, error } = await userSupabase.rpc("rpc_get_portfolio_snapshot", {

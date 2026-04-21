@@ -17,9 +17,11 @@
 ```bash
 curl -sS -X POST http://127.0.0.1:4000/deposits/verify \
   -H 'content-type: application/json' \
-  -H 'x-user-id: 00000000-0000-4000-8000-000000000001' \
+  -H "authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -d '{"txHash":"0x<base_tx_hash>"}'
 ```
+
+> For local non-production testing only, the API still accepts `x-user-id` fallback identity. Production must use verified bearer auth/session identity.
 
 ## Expected result/status transitions
 - API response status field:
