@@ -14,3 +14,4 @@ Direct links:
 - `infra/docs/runbooks/websocket-recovery.md`
 - `infra/docs/runbooks/incidents.md`
 - `infra/docs/runbooks/launch-checklist.md`
+- `infra/docs/runbooks/screenshot-pack.md`

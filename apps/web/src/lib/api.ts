@@ -8,6 +8,21 @@ import {
   PostOrdersResponseSchema,
 } from "@bet/contracts";
 
+const getOptionalProxyHeaders = (): HeadersInit => {
+  const forwardedUserId = process.env.API_REQUEST_USER_ID?.trim();
+  const forwardedAdminToken = process.env.API_REQUEST_ADMIN_TOKEN?.trim();
+
+  const headers: Record<string, string> = {};
+  if (forwardedUserId) {
+    headers["x-user-id"] = forwardedUserId;
+  }
+  if (forwardedAdminToken) {
+    headers["x-admin-token"] = forwardedAdminToken;
+  }
+
+  return headers;
+};
+
 const getApiBaseUrl = (): string => {
   const configuredUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -29,6 +44,7 @@ export const apiRequest = async <T>(
     ...init,
     headers: {
       "content-type": "application/json",
+      ...getOptionalProxyHeaders(),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",

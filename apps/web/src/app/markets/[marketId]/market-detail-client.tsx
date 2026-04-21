@@ -9,7 +9,8 @@ import {
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { getOrderBook, getRecentTrades } from "../../../lib/api";
-import { formatPrice, formatQuantity } from "../../../lib/format";
+import { baseNetworkLabel } from "../../../lib/base-network";
+import { formatPrice, formatQuantity, formatUsdc } from "../../../lib/format";
 import { OrderTicket } from "./order-ticket";
 import {
   applyMarketRealtimeMessage,
@@ -53,11 +54,31 @@ const getMarketStatusTone = (status: string): "success" | "warning" | "neutral" 
     return "success";
   }
 
-  if (status === "paused") {
+  if (status === "halted" || status === "cancelled") {
     return "warning";
   }
 
   return "neutral";
+};
+
+const getMarketStatusLabel = (status: string): string => {
+  if (status === "open") {
+    return "Active";
+  }
+
+  if (status === "resolved") {
+    return "Resolved";
+  }
+
+  if (status === "halted") {
+    return "Halted";
+  }
+
+  if (status === "cancelled") {
+    return "Cancelled";
+  }
+
+  return status;
 };
 
 export function MarketDetailClient({
@@ -244,6 +265,14 @@ export function MarketDetailClient({
         <p>{market.description}</p>
       </section>
 
+      <section className="grid">
+        <div className="panel stack">
+          <strong>Feed & Network</strong>
+          <div className={`badge badge-${getConnectionStatusTone(connectionStatus)}`}>Realtime {connectionStatus}</div>
+          <div className="badge badge-neutral">{baseNetworkLabel}</div>
+        </div>
+      </section>
+
       {market.status === "resolved" ? (
         <section className="banner banner-success">
           This market is resolved. Trading is closed and payouts can now be claimed from your portfolio.
@@ -263,7 +292,7 @@ export function MarketDetailClient({
       <section className="grid">
         <div className="panel stack">
           <strong>Market Details</strong>
-          <div className={`badge badge-${getMarketStatusTone(market.status)}`}>Market {market.status}</div>
+          <div className={`badge badge-${getMarketStatusTone(market.status)}`}>Market {getMarketStatusLabel(market.status)}</div>
           <div className="kv">
             <span className="kv-key">Collateral</span>
             <span className="kv-value">{market.collateralCurrency}</span>
@@ -294,7 +323,7 @@ export function MarketDetailClient({
           </div>
           <div className="kv">
             <span className="kv-key">Total volume</span>
-            <span className="kv-value">{market.stats.volumeNotional.toString()}</span>
+            <span className="kv-value">{formatUsdc(market.stats.volumeNotional)}</span>
           </div>
         </div>
 

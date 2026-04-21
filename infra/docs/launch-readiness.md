@@ -35,27 +35,28 @@ Date: 2026-04-20
 - `pnpm --filter @bet/reconciliation-worker typecheck`
 - `pnpm --filter @bet/service-api test:db-happy-path`
 
-## Base Sepolia launch smoke command (CI/staging ready)
+## Base Sepolia launch-proof command (CI/staging ready)
 
 Use this single command for DB lifecycle smoke evidence on staging/prelaunch:
 
 ```bash
-pnpm smoke:base-sepolia
+pnpm smoke:launch-proof
 ```
 
 What it does:
 
 1. forces `BASE_CHAIN_ID=84532` (Base Sepolia) for the run,
 2. requires explicit DB URL env (`SUPABASE_DB_URL` or `DATABASE_URL`) and checks connectivity,
-3. runs the DB happy-path lifecycle (wallet link, deposit verify, resting + crossing orders, trade assertions, resolution, claim, withdrawal execute + fail),
-4. prints and persists launch evidence including chain/network info, balances, trades, positions, claims, withdrawals, and tx explorer links,
-5. exits non-zero on any failure.
+3. runs the DB happy-path lifecycle (wallet link, deposit verify, maker/taker order assertions, trade rows, resolution, claim, withdrawal execute + fail),
+4. runs reconciliation checks and writes reconciliation output alongside smoke logs,
+5. persists launch-proof evidence in one canonical directory and exits non-zero on any failure.
 
 The command uses `SMOKE_DB_PREP_MODE=none` by default. Override prep mode only when you need reset/bootstrap behavior.
 
-### Optional direct command (advanced)
+### Optional direct commands (advanced)
 
-`pnpm smoke:db` is still available for custom prep cases.
+- `pnpm smoke:base-sepolia` runs lifecycle smoke only.
+- `pnpm smoke:db` is still available for custom prep cases.
 
 ## Prerequisites by environment
 
@@ -64,11 +65,11 @@ The command uses `SMOKE_DB_PREP_MODE=none` by default. Override prep mode only w
   2. `export SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`
   3. `export BASE_TREASURY_ADDRESS=<base-sepolia-treasury>`
   4. `export BASE_USDC_ADDRESS=<base-sepolia-usdc>`
-  5. `SMOKE_DB_PREP_MODE=reset-local pnpm smoke:base-sepolia`
+  5. `SMOKE_DB_PREP_MODE=reset-local pnpm smoke:launch-proof`
 - **CI/staging ephemeral DB**:
   1. Provision DB and set `SUPABASE_DB_URL` (or `DATABASE_URL`) in the job env.
   2. Set Base Sepolia env values (`BASE_CHAIN_ID=84532`, `BASE_TREASURY_ADDRESS`, `BASE_USDC_ADDRESS`, optional `BASE_EXPLORER_URL`).
-  3. Run `pnpm smoke:base-sepolia`.
+  3. Run `pnpm smoke:launch-proof`.
 
 ### Prep controls (when using `pnpm smoke:db` directly)
 
@@ -89,13 +90,17 @@ Files created per run:
 - `db-happy-path-<UTC timestamp>.json`
 - `latest.log`
 - `latest.json`
+- `latest-reconciliation.log`
+- `latest-launch-proof.json`
 
 Launch evidence should be published from:
 
 - `infra/artifacts/smoke-db/latest.log`
 - `infra/artifacts/smoke-db/latest.json`
+- `infra/artifacts/smoke-db/latest-reconciliation.log`
+- `infra/artifacts/smoke-db/latest-launch-proof.json`
 
-The JSON artifact includes network/chain configuration, tx hashes + explorer links, final balances, trades, positions, claim state, and withdrawal outcomes.
+`latest.json` includes chain/network configuration, linked wallet, deposit verification result, maker/taker order results, trade rows, balances, positions, resolution result, claim result, and withdrawal outcomes. `latest-launch-proof.json` records the canonical artifact pointers and reconciliation result status.
 
 ## Legacy generic smoke path
 
@@ -115,12 +120,12 @@ The JSON artifact includes network/chain configuration, tx hashes + explorer lin
 
 ### Must fix before launch
 
-- Execute `pnpm smoke:base-sepolia` in CI/staging DB-enabled environment and attach `infra/artifacts/smoke-db/latest.log` + `latest.json` to launch signoff.
-- Publish those two files as CI job artifacts (for example: GitHub Actions artifact name `smoke-db`) and link that artifact in the launch signoff ticket.
+- Execute `pnpm smoke:launch-proof` in CI/staging DB-enabled environment and attach `infra/artifacts/smoke-db/latest.log`, `latest.json`, `latest-reconciliation.log`, and `latest-launch-proof.json` to launch signoff.
+- Publish those four files as CI job artifacts (for example: GitHub Actions artifact name `smoke-db`) and link that artifact in the launch signoff ticket.
 
 ### Should fix soon after launch
 
-- Add a dedicated CI workflow/job that runs `pnpm smoke:base-sepolia` against an ephemeral DB and uploads the generated artifacts.
+- Add a dedicated CI workflow/job that runs `pnpm smoke:launch-proof` against an ephemeral DB and uploads the generated artifacts.
 
 ### Acceptable to defer
 
