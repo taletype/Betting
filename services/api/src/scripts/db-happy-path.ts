@@ -16,14 +16,24 @@ import { getLinkedWallet, linkBaseWallet } from "../modules/wallets/handlers";
 
 const db = createDatabaseClient();
 
-const MARKET_ID = "77777777-7777-4777-8777-777777777777";
-const WINNING_OUTCOME_ID = "88888888-8888-4888-8888-888888888888";
+const MARKET_ID = process.env.DB_HAPPY_PATH_MARKET_ID ?? "77777777-7777-4777-8777-777777777777";
+const WINNING_OUTCOME_ID = process.env.DB_HAPPY_PATH_WINNING_OUTCOME_ID ?? "88888888-8888-4888-8888-888888888888";
 const ORDER_PREFIX = "db-happy-path";
 const PRICE_TICKS = 44n;
 const RESTING_QUANTITY = 10n;
 const CROSSING_QUANTITY = 6n;
 const DEPOSIT_AMOUNT = 5000n;
 const WITHDRAWAL_TEST_AMOUNT = 50n;
+
+class InvariantError extends Error {
+  constructor(
+    message: string,
+    readonly context?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "InvariantError";
+  }
+}
 
 interface FundsSnapshotRow {
   available: bigint;
@@ -83,9 +93,13 @@ interface WithdrawalSummaryRow {
   currency: string;
 }
 
-function assertCondition(condition: unknown, message: string): asserts condition {
+function assertCondition(
+  condition: unknown,
+  message: string,
+  context?: Record<string, unknown>,
+): asserts condition {
   if (!condition) {
-    throw new Error(message);
+    throw new InvariantError(message, context);
   }
 }
 
@@ -341,6 +355,11 @@ const main = async () => {
   assertCondition(
     demoFundsAfterDeposit.available - demoFundsBeforeDeposit.available === DEPOSIT_AMOUNT,
     "verified deposit should credit demo available balance",
+    {
+      beforeAvailable: demoFundsBeforeDeposit.available.toString(),
+      afterAvailable: demoFundsAfterDeposit.available.toString(),
+      expectedDelta: DEPOSIT_AMOUNT.toString(),
+    },
   );
 
   const buyerFundsBeforeTrade = demoFundsAfterDeposit;
@@ -396,7 +415,10 @@ const main = async () => {
   const persistedRestingOrder = await getOrderState(restingOrder.order.id);
   const persistedCrossingOrder = await getOrderState(crossingOrder.order.id);
 
-  assertCondition(trade, "trade row should be persisted");
+  assertCondition(trade, "trade row should be persisted", {
+    makerOrderId: restingOrder.order.id,
+    takerOrderId: crossingOrder.order.id,
+  });
   assertCondition(trade.market_id === MARKET_ID, "trade should belong to seeded market");
   assertCondition(trade.outcome_id === WINNING_OUTCOME_ID, "trade should belong to seeded outcome");
   assertCondition(trade.quantity === CROSSING_QUANTITY, "trade quantity should match crossing quantity");
@@ -405,6 +427,10 @@ const main = async () => {
   assertCondition(
     persistedRestingOrder.remaining_quantity === RESTING_QUANTITY - CROSSING_QUANTITY,
     "resting order remaining quantity should shrink",
+    {
+      remainingQuantity: persistedRestingOrder.remaining_quantity.toString(),
+      expectedRemainingQuantity: (RESTING_QUANTITY - CROSSING_QUANTITY).toString(),
+    },
   );
   assertCondition(persistedCrossingOrder?.status === "filled", "crossing order should be filled");
   assertCondition(persistedCrossingOrder.remaining_quantity === 0n, "crossing order should have zero remaining quantity");
@@ -415,6 +441,11 @@ const main = async () => {
   assertCondition(
     buyerPositionAfterTrade.netQuantity - buyerPositionBeforeTrade.netQuantity === CROSSING_QUANTITY,
     "buyer position should increase by traded quantity",
+    {
+      beforeNetQuantity: buyerPositionBeforeTrade.netQuantity.toString(),
+      afterNetQuantity: buyerPositionAfterTrade.netQuantity.toString(),
+      expectedDelta: CROSSING_QUANTITY.toString(),
+    },
   );
   assertCondition(
     sellerPositionAfterTrade.netQuantity - sellerPositionBeforeTrade.netQuantity === -CROSSING_QUANTITY,
@@ -456,7 +487,11 @@ const main = async () => {
     userId: DEMO_USER_ID,
     marketId: MARKET_ID,
   });
-  assertCondition(claimableBeforeClaim.claimableAmount > 0n, "demo user should have positive claimable amount");
+  assertCondition(claimableBeforeClaim.claimableAmount > 0n, "demo user should have positive claimable amount", {
+    claimableAmount: claimableBeforeClaim.claimableAmount.toString(),
+    marketId: MARKET_ID,
+    userId: DEMO_USER_ID,
+  });
 
   const claimResult = await claimMarket({
     marketId: MARKET_ID,
@@ -515,6 +550,10 @@ const main = async () => {
 
   const artifact = {
     runId,
+    config: {
+      marketId: MARKET_ID,
+      winningOutcomeId: WINNING_OUTCOME_ID,
+    },
     marketId: MARKET_ID,
     winningOutcomeId: WINNING_OUTCOME_ID,
     deposit: {
@@ -595,6 +634,10 @@ main().catch((error) => {
   const errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   console.error("db-happy-path: failed invariant/assertion");
   console.error(errorMessage);
+  if (error instanceof InvariantError && error.context) {
+    console.error("db-happy-path: invariant context");
+    console.error(JSON.stringify(error.context, null, 2));
+  }
   if (error instanceof Error && error.stack) {
     console.error(error.stack);
   }

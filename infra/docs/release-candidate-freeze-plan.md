@@ -14,16 +14,13 @@ Root launch/verification scripts currently available:
 - `pnpm typecheck`
 - `pnpm test`
 - `pnpm db:reset`
+- `pnpm smoke:db`
 - `pnpm smoke:local`
 - `pnpm load:launch`
 
-Service-specific launch-critical script:
-
-- `pnpm --filter @bet/service-api test:db-happy-path`
-
 Operational note:
 
-- `pnpm db:reset` already includes DB reset and `test:db-happy-path` execution, so this is the canonical DB-backed pre-RC command.
+- `pnpm smoke:db` is the canonical DB-backed lifecycle evidence command (local/CI/staging), including artifact capture.
 
 ### 1.2 Migrations status (recent churn)
 
@@ -72,11 +69,11 @@ pnpm typecheck
 pnpm test
 ```
 
-3. Bring up DB and apply full schema/seed + DB happy path
+3. Bring up DB and apply full schema/seed + DB happy path artifact run
 
 ```bash
 supabase start
-pnpm db:reset
+SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db
 ```
 
 4. Bring up launch-path services
@@ -107,23 +104,27 @@ Capture and attach to RC ticket/release notes:
    - `pnpm lint`
    - `pnpm typecheck`
    - `pnpm test`
-2. Terminal output for `pnpm db:reset` showing:
-   - migrations applied cleanly,
-   - `test:db-happy-path` passes.
-3. Terminal output for `pnpm smoke:local` showing all checks pass.
-4. Health endpoint responses:
+2. Terminal output for `pnpm smoke:db` showing:
+   - connectivity check passes,
+   - prep step succeeds (if enabled),
+   - DB happy-path passes.
+3. Artifact files from `infra/artifacts/smoke-db/`:
+   - `latest.log`
+   - `latest.json`
+4. Terminal output for `pnpm smoke:local` showing all checks pass.
+5. Health endpoint responses:
    - `GET /health` (API)
    - `GET /ready` (API)
    - `GET /health` (WS)
-5. One reconciliation worker run log without invariant failures.
-6. Migration inventory snapshot (`ls -1 supabase/migrations | sort`) attached with RC artifact.
+6. One reconciliation worker run log without invariant failures.
+7. Migration inventory snapshot (`ls -1 supabase/migrations | sort`) attached with RC artifact.
 
 ### 2.3 Launch blockers (must resolve before RC/launch)
 
 Any of the following is a launch blocker:
 
 1. `pnpm lint`, `pnpm typecheck`, or `pnpm test` failure on RC commit.
-2. `pnpm db:reset` failure (including any migration failure or `test:db-happy-path` failure).
+2. `pnpm smoke:db` failure (including any prep failure or `test:db-happy-path` failure).
 3. `pnpm smoke:local` failure.
 4. Missing health/readiness response for API/WS.
 5. Any schema change PR proposed after freeze start without explicit launch captain approval.
@@ -197,4 +198,3 @@ Use this ordering for open work streams.
 1. Added explicit cross-link in launch checklist to this RC freeze plan to avoid split source-of-truth during launch week.
 2. Added runbook index link to this RC freeze plan.
 3. Added note in launch-readiness hardening report that it is a historical verification snapshot, while this RC freeze plan is the active operational checklist.
-

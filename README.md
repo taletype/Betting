@@ -78,6 +78,12 @@ pnpm db:reset
 
 This runs `supabase db reset --local --yes` and the API happy-path DB script (`services/api/src/scripts/db-happy-path.ts`).
 
+For launch-readiness DB evidence artifacts, use:
+
+```bash
+SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db
+```
+
 ### 4) Startup order
 
 Recommended startup order for debugging:
@@ -131,6 +137,7 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - `pnpm dev:ws` → ws only
 - `pnpm dev:workers` → matching + external-sync + settlement + reconciliation workers
 - `pnpm db:reset` → local Supabase reset + happy-path DB verification
+- `pnpm smoke:db` → DB-backed lifecycle smoke + artifact capture (`infra/artifacts/smoke-db`)
 - `pnpm smoke:local` → local environment smoke checks
 - `pnpm load:launch` → narrow launch-path load harness (reads, order burst, ws fan-in)
 
