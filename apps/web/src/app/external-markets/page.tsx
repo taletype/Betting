@@ -1,3 +1,5 @@
+import React from "react";
+
 import { listExternalMarkets } from "../../lib/api";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +56,7 @@ export default async function ExternalMarketsPage() {
       </section>
       <section className="stack">
         {markets.length === 0 ? (
-          <div className="panel empty-state">No synced market data yet. Run the external sync worker, then refresh this page.</div>
+          <div className="panel empty-state">No synced market data yet. Run <code>pnpm sync:external</code>, then refresh this page.</div>
         ) : (
           markets.map((market) => (
             <div key={`${market.source}:${market.externalId}`} className="panel stack">

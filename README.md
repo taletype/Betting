@@ -138,10 +138,34 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - `pnpm dev:api` → api + ws
 - `pnpm dev:ws` → ws only
 - `pnpm dev:workers` → matching + external-sync + settlement + reconciliation workers
+- `pnpm sync:external` → one-shot read-only sync from public Polymarket + Kalshi APIs into `external_markets`, `external_outcomes`, `external_trade_ticks`, and `external_sync_checkpoints`
 - `pnpm db:reset` → local Supabase reset + happy-path DB verification
 - `pnpm smoke:db` → DB-backed lifecycle smoke + artifact capture (`infra/artifacts/smoke-db`)
 - `pnpm smoke:local` → local environment smoke checks
 - `pnpm load:launch` → narrow launch-path load harness (reads, order burst, ws fan-in)
+
+## External Market Research Sync
+
+Run the default one-shot sync:
+
+```bash
+pnpm sync:external
+```
+
+This path is read-only and uses public Polymarket and Kalshi APIs only. It upserts:
+
+- `public.external_markets`
+- `public.external_outcomes`
+- `public.external_trade_ticks`
+- `public.external_sync_checkpoints`
+
+Verify success with:
+
+```bash
+curl "http://127.0.0.1:4000/external/markets"
+```
+
+Then refresh the Market Research page at `/external-markets`.
 
 ## Notes
 

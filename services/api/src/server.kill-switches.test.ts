@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleRequest } from "./server";
+process.env.NODE_ENV = "test";
+
+const getHandleRequest = async () => (await import("./server")).handleRequest;
 
 const withEnv = async (vars: Record<string, string | undefined>, run: () => Promise<void>) => {
   const prior = new Map<string, string | undefined>();
@@ -29,6 +31,8 @@ const withEnv = async (vars: Record<string, string | undefined>, run: () => Prom
 };
 
 test("rejects order placement when global kill switch is enabled", async () => {
+  const handleRequest = await getHandleRequest();
+
   await withEnv({ OP_DISABLE_ORDER_PLACEMENT: "true", OP_DISABLED_ORDER_MARKET_IDS: undefined }, async () => {
     const response = await handleRequest(
       new Request("http://localhost/orders", {
@@ -50,6 +54,8 @@ test("rejects order placement when global kill switch is enabled", async () => {
 });
 
 test("rejects order placement for a halted market", async () => {
+  const handleRequest = await getHandleRequest();
+
   await withEnv(
     {
       OP_DISABLE_ORDER_PLACEMENT: "false",
@@ -79,6 +85,8 @@ test("rejects order placement for a halted market", async () => {
 });
 
 test("rejects withdrawal requests when kill switch is enabled", async () => {
+  const handleRequest = await getHandleRequest();
+
   await withEnv({ OP_DISABLE_WITHDRAWAL_REQUEST: "true" }, async () => {
     const response = await handleRequest(
       new Request("http://localhost/withdrawals", {
@@ -98,6 +106,8 @@ test("rejects withdrawal requests when kill switch is enabled", async () => {
 });
 
 test("rejects deposit verification when kill switch is enabled", async () => {
+  const handleRequest = await getHandleRequest();
+
   await withEnv({ OP_DISABLE_DEPOSIT_VERIFY: "true" }, async () => {
     const response = await handleRequest(
       new Request("http://localhost/deposits/verify", {

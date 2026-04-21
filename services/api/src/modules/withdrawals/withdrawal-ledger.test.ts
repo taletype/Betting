@@ -45,7 +45,7 @@ test("completed withdrawal journal remains balanced", () => {
 });
 
 test("withdrawal migration adds statuses and journal kinds", () => {
-  const migration = readFileSync(resolve(process.cwd(), "../../supabase/migrations/0017_base_withdrawals.sql"), "utf8");
+  const migration = readFileSync(resolve(process.cwd(), "../../supabase/migrations/0020_base_withdrawals.sql"), "utf8");
   assert.match(migration, /create table if not exists public\.withdrawals/i);
   assert.match(migration, /status in \('requested', 'completed', 'failed'\)/i);
   assert.match(migration, /'withdrawal_requested'/i);

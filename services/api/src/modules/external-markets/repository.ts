@@ -297,9 +297,16 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
 };
 
 const repository = createExternalMarketsRepository(defaultDb);
+let repositoryOverride: ReturnType<typeof createExternalMarketsRepository> | null = null;
+
+export const setExternalMarketsRepositoryForTests = (
+  override: ReturnType<typeof createExternalMarketsRepository> | null,
+): void => {
+  repositoryOverride = override;
+};
 
 export const listExternalMarketRecords = async (): Promise<ExternalMarketView[]> =>
-  repository.listExternalMarketRecords();
+  (repositoryOverride ?? repository).listExternalMarketRecords();
 
 export const getExternalMarketRecord = async (source: string, externalId: string): Promise<ExternalMarketView | null> =>
-  repository.getExternalMarketRecord(source, externalId);
+  (repositoryOverride ?? repository).getExternalMarketRecord(source, externalId);

@@ -4,8 +4,8 @@ import { runMarketSyncJob } from "./jobs/market-sync";
 
 export const main = async (): Promise<void> => {
   try {
-    await runMarketSyncJob();
-    console.log("external sync worker: market sync completed");
+    const summary = await runMarketSyncJob();
+    console.log("external sync worker: market sync completed", JSON.stringify(summary));
   } catch (error) {
     incrementCounter("worker_loop_failures_total", {
       worker: "external-sync-worker",

@@ -242,7 +242,34 @@ export interface MarketSyncDependencies {
   adapters: ExternalMarketAdapter[];
 }
 
-export const runMarketSyncJobWithDependencies = async ({ db: database, adapters }: MarketSyncDependencies): Promise<void> => {
+export interface ExternalSyncSourceSummary {
+  source: string;
+  marketsSynced: number;
+  outcomesSynced: number;
+  tradesSynced: number;
+  checkpointRecordedAt: string;
+  durationMs: number;
+  previousLagMs: number | null;
+}
+
+export interface ExternalSyncRunSummary {
+  startedAt: string;
+  completedAt: string;
+  sources: ExternalSyncSourceSummary[];
+  totals: {
+    marketsSynced: number;
+    outcomesSynced: number;
+    tradesSynced: number;
+  };
+}
+
+export const runMarketSyncJobWithDependencies = async ({
+  db: database,
+  adapters,
+}: MarketSyncDependencies): Promise<ExternalSyncRunSummary> => {
+  const startedAt = new Date().toISOString();
+  const sources: ExternalSyncSourceSummary[] = [];
+
   for (const adapter of adapters) {
     const syncStartedAt = Date.now();
     logger.info("external sync started", { source: adapter.source });
@@ -260,8 +287,10 @@ export const runMarketSyncJobWithDependencies = async ({ db: database, adapters 
       }
 
       await recordCheckpoint(database, adapter.source, markets.length);
+      const durationMs = Date.now() - syncStartedAt;
+      const checkpointRecordedAt = new Date().toISOString();
 
-      observeDuration("external_sync_duration_ms", Date.now() - syncStartedAt, {
+      observeDuration("external_sync_duration_ms", durationMs, {
         source: adapter.source,
       });
       incrementCounter("external_sync_runs_total", {
@@ -288,6 +317,18 @@ export const runMarketSyncJobWithDependencies = async ({ db: database, adapters 
         syncedCount: markets.length,
         outcomesSynced,
         tradesSynced,
+        durationMs,
+        checkpointRecordedAt,
+        previousLagMs,
+      });
+
+      sources.push({
+        source: adapter.source,
+        marketsSynced: markets.length,
+        outcomesSynced,
+        tradesSynced,
+        checkpointRecordedAt,
+        durationMs,
         previousLagMs,
       });
     } catch (error) {
@@ -302,15 +343,45 @@ export const runMarketSyncJobWithDependencies = async ({ db: database, adapters 
       throw error;
     }
   }
+
+  const totals = sources.reduce(
+    (accumulator, source) => ({
+      marketsSynced: accumulator.marketsSynced + source.marketsSynced,
+      outcomesSynced: accumulator.outcomesSynced + source.outcomesSynced,
+      tradesSynced: accumulator.tradesSynced + source.tradesSynced,
+    }),
+    {
+      marketsSynced: 0,
+      outcomesSynced: 0,
+      tradesSynced: 0,
+    },
+  );
+
+  return {
+    startedAt,
+    completedAt: new Date().toISOString(),
+    sources,
+    totals,
+  };
 };
 
-export const runMarketSyncJob = async (): Promise<void> => {
+export const runMarketSyncJob = async (): Promise<ExternalSyncRunSummary> => {
   if (isExternalSyncWritesDisabled()) {
     console.log("external sync worker: writes disabled via OP_DISABLE_EXTERNAL_SYNC_WRITES=true");
-    return;
+    const timestamp = new Date().toISOString();
+    return {
+      startedAt: timestamp,
+      completedAt: timestamp,
+      sources: [],
+      totals: {
+        marketsSynced: 0,
+        outcomesSynced: 0,
+        tradesSynced: 0,
+      },
+    };
   }
 
-  await runMarketSyncJobWithDependencies({
+  return runMarketSyncJobWithDependencies({
     db,
     adapters: defaultAdapters,
   });

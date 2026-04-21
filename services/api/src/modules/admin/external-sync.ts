@@ -1,23 +1,22 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import {
+  runMarketSyncJob,
+  type ExternalSyncRunSummary,
+} from "../../../../external-sync-worker/src/index";
 
 export interface ExternalSyncRunResult {
   ok: true;
   triggeredAt: string;
-  command: string;
+  mode: "in_process";
+  summary: ExternalSyncRunSummary;
 }
 
 export const runExternalSync = async (): Promise<ExternalSyncRunResult> => {
-  await execFileAsync("pnpm", ["sync:external"], {
-    cwd: process.cwd(),
-    env: process.env,
-  });
+  const summary = await runMarketSyncJob();
 
   return {
     ok: true,
     triggeredAt: new Date().toISOString(),
-    command: "pnpm sync:external",
+    mode: "in_process",
+    summary,
   };
 };

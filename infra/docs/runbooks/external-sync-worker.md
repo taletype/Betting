@@ -1,11 +1,15 @@
 # Runbook: External-sync worker
 
 ## Run
-Use one of the following one-shot triggers:
+Default one-shot trigger:
 
 ```bash
 pnpm sync:external
-# or
+```
+
+Alternative triggers:
+
+```bash
 pnpm --filter @bet/external-sync-worker run run
 # or (admin trigger through API service)
 curl -X POST "http://127.0.0.1:4000/admin/external-sync/run" -H "x-admin-token: dev-admin-token"

@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node --import tsx --test src/lib/market-realtime.test.ts src/app/api/_shared/market-serializers.test.ts src/app/api/_shared/market-read.test.ts src/app/api/_shared/api-serialization.test.ts src/lib/api.test.ts"
+    "test": "pnpm exec node --import tsx --test src/lib/market-realtime.test.ts src/app/api/_shared/market-serializers.test.ts src/app/api/_shared/market-read.test.ts src/app/api/_shared/api-serialization.test.ts src/lib/api.test.ts src/app/external-markets/page.test.tsx"
   },
   "dependencies": {
     "@bet/contracts": "workspace:*",

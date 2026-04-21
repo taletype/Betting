@@ -6,7 +6,7 @@ import {
   OrderBookSchema,
   PublicWebsocketEventSchema,
 } from "@bet/contracts";
-import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 import { getOrderBook, getRecentTrades } from "../../../lib/api";
 import { baseNetworkLabel } from "../../../lib/base-network";
@@ -100,7 +100,7 @@ export function MarketDetailClient({
   const resyncingRef = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
 
-  const scheduleReconnect = useEffectEvent((delayMs: number) => {
+  const scheduleReconnect = (delayMs: number) => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
     }
@@ -110,9 +110,9 @@ export function MarketDetailClient({
         setConnectionAttempt((value) => value + 1);
       });
     }, delayMs);
-  });
+  };
 
-  const beginResync = useEffectEvent(async () => {
+  const beginResync = async () => {
     if (resyncingRef.current) {
       return;
     }
@@ -139,7 +139,7 @@ export function MarketDetailClient({
       resyncingRef.current = false;
       scheduleReconnect(250);
     }
-  });
+  };
 
   useEffect(() => {
     setConnectionStatus(connectionAttempt === 0 ? "connecting" : "reconnecting");

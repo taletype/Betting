@@ -23,6 +23,6 @@ test("ledger deposit journal remains balanced", () => {
 });
 
 test("duplicate credit protection exists in migration", () => {
-  const migration = readFileSync(resolve(process.cwd(), "../../supabase/migrations/0016_base_deposit_flow.sql"), "utf8");
+  const migration = readFileSync(resolve(process.cwd(), "../../supabase/migrations/0019_base_deposit_flow.sql"), "utf8");
   assert.match(migration, /unique \(chain, tx_hash\)/i);
 });

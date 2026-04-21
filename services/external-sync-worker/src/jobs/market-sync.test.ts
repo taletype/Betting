@@ -111,11 +111,14 @@ test("market sync upsert path is idempotent for repeated runs", async () => {
     listMarkets: async () => [sampleMarket],
   };
 
-  await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
-  await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
+  const firstRun = await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
+  const secondRun = await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
 
   const counts = getCounts();
   assert.equal(counts.markets, 1);
   assert.equal(counts.outcomes, 1);
   assert.equal(counts.trades, 1);
+  assert.equal(firstRun.totals.marketsSynced, 1);
+  assert.equal(firstRun.totals.outcomesSynced, 1);
+  assert.equal(secondRun.sources[0]?.source, "polymarket");
 });
