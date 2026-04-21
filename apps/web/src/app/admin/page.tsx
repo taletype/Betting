@@ -1,4 +1,5 @@
 import { apiRequest, listAdminRequestedWithdrawals, toBigInt } from "../../lib/api";
+import { baseNetworkLabel } from "../../lib/base-network";
 
 import { executeWithdrawalAction, failWithdrawalAction, resolveMarketAction } from "./actions";
 
@@ -40,7 +41,7 @@ export default async function AdminPage() {
     <main className="stack">
       <section className="hero">
         <h1>Admin</h1>
-        <p>Resolve markets and process Base withdrawal requests.</p>
+        <p>Resolve markets and process {baseNetworkLabel} withdrawal requests.</p>
       </section>
 
       <section className="stack">
@@ -65,7 +66,7 @@ export default async function AdminPage() {
               <form action={executeWithdrawalAction} className="stack">
                 <input type="hidden" name="withdrawalId" value={withdrawal.id} />
                 <label className="stack">
-                  Transaction hash
+                  {baseNetworkLabel} transaction hash
                   <input name="txHash" placeholder="0x transaction hash" required />
                 </label>
                 <button type="submit">Confirm Payout</button>

@@ -48,11 +48,12 @@ const withMockedFetch = async (responses: unknown[], run: () => Promise<void>) =
 test("successful deposit verification", async () => {
   await withMockedFetch(
     [
+      { jsonrpc: "2.0", id: 1, result: "0x14a34" },
       { jsonrpc: "2.0", id: 1, result: mkReceipt({ token: "0xusdc", from: "0xaaa", to: "0xbbb", amount: 25n }) },
       { jsonrpc: "2.0", id: 1, result: "0x20" },
     ],
     async () => {
-      const adapter = new BaseChainAdapter("https://rpc.example");
+      const adapter = new BaseChainAdapter("https://rpc.example", 84532);
       const result = await adapter.verifyUsdcTransfer({
         txHash: "0xtx",
         tokenAddress: "0xusdc",
@@ -70,11 +71,12 @@ test("successful deposit verification", async () => {
 test("rejects wrong token", async () => {
   await withMockedFetch(
     [
+      { jsonrpc: "2.0", id: 1, result: "0x14a34" },
       { jsonrpc: "2.0", id: 1, result: mkReceipt({ token: "0xnotusdc", from: "0xaaa", to: "0xbbb", amount: 25n }) },
       { jsonrpc: "2.0", id: 1, result: "0x20" },
     ],
     async () => {
-      const adapter = new BaseChainAdapter("https://rpc.example");
+      const adapter = new BaseChainAdapter("https://rpc.example", 84532);
       const result = await adapter.verifyUsdcTransfer({
         txHash: "0xtx",
         tokenAddress: "0xusdc",
@@ -91,11 +93,12 @@ test("rejects wrong token", async () => {
 test("rejects wrong recipient", async () => {
   await withMockedFetch(
     [
+      { jsonrpc: "2.0", id: 1, result: "0x14a34" },
       { jsonrpc: "2.0", id: 1, result: mkReceipt({ token: "0xusdc", from: "0xaaa", to: "0xccc", amount: 25n }) },
       { jsonrpc: "2.0", id: 1, result: "0x20" },
     ],
     async () => {
-      const adapter = new BaseChainAdapter("https://rpc.example");
+      const adapter = new BaseChainAdapter("https://rpc.example", 84532);
       const result = await adapter.verifyUsdcTransfer({
         txHash: "0xtx",
         tokenAddress: "0xusdc",
@@ -112,11 +115,12 @@ test("rejects wrong recipient", async () => {
 test("rejects wrong sender", async () => {
   await withMockedFetch(
     [
+      { jsonrpc: "2.0", id: 1, result: "0x14a34" },
       { jsonrpc: "2.0", id: 1, result: mkReceipt({ token: "0xusdc", from: "0xccc", to: "0xbbb", amount: 25n }) },
       { jsonrpc: "2.0", id: 1, result: "0x20" },
     ],
     async () => {
-      const adapter = new BaseChainAdapter("https://rpc.example");
+      const adapter = new BaseChainAdapter("https://rpc.example", 84532);
       const result = await adapter.verifyUsdcTransfer({
         txHash: "0xtx",
         tokenAddress: "0xusdc",
@@ -128,4 +132,19 @@ test("rejects wrong sender", async () => {
       assert.equal(result.status, "wrong_sender");
     },
   );
+});
+
+test("rejects wrong chain", async () => {
+  await withMockedFetch([{ jsonrpc: "2.0", id: 1, result: "0x2105" }], async () => {
+    const adapter = new BaseChainAdapter("https://rpc.example", 84532);
+    const result = await adapter.verifyUsdcTransfer({
+      txHash: "0xtx",
+      tokenAddress: "0xusdc",
+      expectedFrom: "0xaaa",
+      expectedTo: "0xbbb",
+      minConfirmations: 1,
+    });
+
+    assert.equal(result.status, "wrong_chain");
+  });
 });

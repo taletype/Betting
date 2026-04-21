@@ -19,6 +19,7 @@ export interface VerifyDepositTransferInput {
 export interface VerifyDepositTransferResult {
   status:
     | 'confirmed'
+    | 'wrong_chain'
     | 'pending_confirmations'
     | 'not_found'
     | 'failed'

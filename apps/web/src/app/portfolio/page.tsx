@@ -1,4 +1,5 @@
 import { getPortfolio, linkWallet, requestWithdrawal, toBigInt, verifyDepositTx } from "../../lib/api";
+import { baseNetworkLabel, formatBaseExplorerTxUrl } from "../../lib/base-network";
 import { formatUsdc, formatPrice, formatQuantity } from "../../lib/format";
 
 const formatDate = (value: string): string =>
@@ -86,7 +87,7 @@ export default async function PortfolioPage() {
         <h2 className="section-title">Linked Wallet</h2>
         {portfolio.linkedWallet ? (
           <div className="stack">
-            <div className="badge badge-neutral">Base Network</div>
+            <div className="badge badge-neutral">{baseNetworkLabel}</div>
             <div className="kv">
               <span className="kv-key">Wallet address</span>
               <span className="kv-value">{portfolio.linkedWallet.walletAddress}</span>
@@ -94,7 +95,7 @@ export default async function PortfolioPage() {
             <div className="muted">Verified {formatDate(portfolio.linkedWallet.verifiedAt)}</div>
           </div>
         ) : (
-          <div className="empty-state">No linked wallet yet. Link a wallet to enable Base deposits and withdrawals.</div>
+          <div className="empty-state">No linked wallet yet. Link a wallet to enable {baseNetworkLabel} testnet deposits and withdrawals.</div>
         )}
 
         {!portfolio.linkedWallet && (
@@ -216,9 +217,9 @@ export default async function PortfolioPage() {
 
       <section className="grid">
         <article className="panel stack">
-          <div className="badge badge-neutral">Base Network</div>
+          <div className="badge badge-neutral">{baseNetworkLabel}</div>
           <h2 className="section-title">Credit Deposit</h2>
-          <p className="muted">Enter your Base transaction hash to credit USDC to your account. Deposits must be from your linked wallet.</p>
+          <p className="muted">Enter your {baseNetworkLabel} transaction hash to credit test USDC to your account. Deposits must come from your linked wallet and target the configured treasury.</p>
           <form action={verifyDepositAction} className="stack">
             <input name="txHash" placeholder="0x transaction hash" required />
             <button type="submit">Credit Deposit</button>
@@ -226,9 +227,9 @@ export default async function PortfolioPage() {
         </article>
 
         <article className="panel stack">
-          <div className="badge badge-neutral">Base Network</div>
+          <div className="badge badge-neutral">{baseNetworkLabel}</div>
           <h2 className="section-title">Request Withdrawal</h2>
-          <p className="muted">Enter amount and destination wallet to create a withdrawal request. Withdrawals are sent to your linked wallet.</p>
+          <p className="muted">Enter amount and destination wallet to create a {baseNetworkLabel} testnet withdrawal request.</p>
           <form action={requestWithdrawalAction} className="stack">
             <input name="amountAtoms" type="number" min="1" step="1" placeholder="Amount (atoms)" required />
             <input name="destinationAddress" placeholder="0x destination wallet" required />
@@ -254,7 +255,7 @@ export default async function PortfolioPage() {
             <tbody>
               {portfolio.deposits.map((deposit) => (
                 <tr key={deposit.id}>
-                  <td>{deposit.txHash}</td>
+                  <td><a href={formatBaseExplorerTxUrl(deposit.txHash)} target="_blank" rel="noreferrer">{deposit.txHash}</a></td>
                   <td>{formatUsdc(deposit.amount)} {deposit.currency}</td>
                   <td>
                     <span className={`badge badge-${depositTone(deposit.txStatus)}`}>{deposit.txStatus}</span>
@@ -292,7 +293,14 @@ export default async function PortfolioPage() {
                   <td>
                     Requested: {formatDate(withdrawal.requestedAt)}
                     {withdrawal.processedAt ? ` · Processed: ${formatDate(withdrawal.processedAt)}` : ""}
-                    {withdrawal.txHash ? ` · Tx: ${withdrawal.txHash}` : ""}
+                    {withdrawal.txHash ? (
+                      <>
+                        {" · Tx: "}
+                        <a href={formatBaseExplorerTxUrl(withdrawal.txHash)} target="_blank" rel="noreferrer">
+                          {withdrawal.txHash}
+                        </a>
+                      </>
+                    ) : null}
                   </td>
                 </tr>
               ))}
