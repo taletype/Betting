@@ -45,11 +45,22 @@ pnpm smoke:db
 
 What it does:
 
-1. checks DB connectivity against `SUPABASE_DB_URL` or `DATABASE_URL`,
+1. requires explicit DB URL env (`SUPABASE_DB_URL` or `DATABASE_URL`) and checks connectivity,
 2. optionally runs migrations/seed/reset based on `SMOKE_DB_PREP_MODE`,
 3. runs the DB happy-path smoke script,
 4. exits non-zero on any failure,
 5. stores launch artifacts.
+
+### Prerequisites by environment
+
+- **Local Supabase**:
+  1. `supabase start`
+  2. `export SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`
+  3. `SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db`
+- **CI/staging ephemeral DB**:
+  1. Provision DB and set `SUPABASE_DB_URL` (or `DATABASE_URL`) in the job env.
+  2. Set prep mode for that environment (`reset`, `command`, or `none`).
+  3. Run `pnpm smoke:db`.
 
 ### Prep controls
 
@@ -76,12 +87,14 @@ The JSON artifact includes final balances, trades, positions, claim state, and w
 ## Manual-only / environment-limited
 
 - DB-backed smoke requires a reachable Postgres/Supabase database and seeded launch fixtures (market `77777777-7777-4777-8777-777777777777` and outcome `88888888-8888-4888-8888-888888888888`).
+- Optional fixture overrides can be passed via `DB_HAPPY_PATH_MARKET_ID` and `DB_HAPPY_PATH_WINNING_OUTCOME_ID`.
 
 ## Current known blockers
 
 ### Must fix before launch
 
 - Execute `pnpm smoke:db` in CI/staging DB-enabled environment and attach `infra/artifacts/smoke-db/latest.log` + `latest.json` to launch signoff.
+- Publish those two files as CI job artifacts (for example: GitHub Actions artifact name `smoke-db`) and link that artifact in the launch signoff ticket.
 
 ### Should fix soon after launch
 
