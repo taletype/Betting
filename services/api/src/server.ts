@@ -19,6 +19,7 @@ import {
 import { cancelOrder, createOrder } from "./modules/orders/handlers";
 import { getPortfolio } from "./modules/portfolio/handlers";
 import { resolveMarket } from "./modules/admin/handlers";
+import { runExternalSync } from "./modules/admin/external-sync";
 import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
 import {
   claimMarket,
@@ -89,6 +90,19 @@ const handleRequest = async (request: Request): Promise<Response> => {
       await db.query("select 1");
       const payload: ApiReadyResponse = { ok: true, service: "api", ready: true, checkedAt: new Date().toISOString() };
       return Response.json(payload);
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/external-sync/run") {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const payload = await runExternalSync();
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+        status: 202,
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/external/markets") {

@@ -17,7 +17,8 @@
     "load:launch": "node --import tsx infra/load/launch-load-harness.ts",
     "smoke:db": "./infra/scripts/smoke-db.sh",
     "ci:smoke:db": "SMOKE_DB_PREP_MODE=none ./infra/scripts/smoke-db.sh",
-    "drill:staging": "./infra/scripts/staging-launch-drill.sh"
+    "drill:staging": "./infra/scripts/staging-launch-drill.sh",
+    "sync:external": "pnpm --filter @bet/external-sync-worker run run"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

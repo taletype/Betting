@@ -1,3 +1,4 @@
+import type { DatabaseClient, DatabaseExecutor } from "@bet/db";
 import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger, observeDuration, recordGauge } from "@bet/observability";
 import {
@@ -9,12 +10,12 @@ import {
 
 const db = createDatabaseClient();
 
-const adapters: ExternalMarketAdapter[] = [createPolymarketAdapter(), createKalshiAdapter()];
+const defaultAdapters: ExternalMarketAdapter[] = [createPolymarketAdapter(), createKalshiAdapter()];
 const isExternalSyncWritesDisabled = (): boolean =>
   (process.env.OP_DISABLE_EXTERNAL_SYNC_WRITES ?? "").trim().toLowerCase() === "true";
 
-const upsertMarket = async (market: NormalizedExternalMarket): Promise<void> => {
-  await db.transaction(async (tx) => {
+export const upsertMarket = async (database: DatabaseClient, market: NormalizedExternalMarket): Promise<void> => {
+  await database.transaction(async (tx) => {
     await tx.query(
       `
         insert into public.external_markets (
@@ -199,8 +200,8 @@ const upsertMarket = async (market: NormalizedExternalMarket): Promise<void> => 
   });
 };
 
-const getPreviousCheckpointLagMs = async (source: string): Promise<number | null> => {
-  const rows = await db.query<{ synced_at: string }>(
+const getPreviousCheckpointLagMs = async (database: DatabaseExecutor, source: string): Promise<number | null> => {
+  const rows = await database.query<{ synced_at: string }>(
     `
       select synced_at
       from public.external_sync_checkpoints
@@ -218,8 +219,8 @@ const getPreviousCheckpointLagMs = async (source: string): Promise<number | null
   return Date.now() - new Date(syncedAt).getTime();
 };
 
-const recordCheckpoint = async (source: string, syncedCount: number): Promise<void> => {
-  await db.query(
+const recordCheckpoint = async (database: DatabaseExecutor, source: string, syncedCount: number): Promise<void> => {
+  await database.query(
     `
       insert into public.external_sync_checkpoints (source, checkpoint_key, checkpoint_value, synced_at)
       values ($1, 'last_market_sync', $2::jsonb, now())
@@ -236,43 +237,81 @@ const recordCheckpoint = async (source: string, syncedCount: number): Promise<vo
   );
 };
 
+export interface MarketSyncDependencies {
+  db: DatabaseClient;
+  adapters: ExternalMarketAdapter[];
+}
+
+export const runMarketSyncJobWithDependencies = async ({ db: database, adapters }: MarketSyncDependencies): Promise<void> => {
+  for (const adapter of adapters) {
+    const syncStartedAt = Date.now();
+    logger.info("external sync started", { source: adapter.source });
+
+    try {
+      const previousLagMs = await getPreviousCheckpointLagMs(database, adapter.source);
+      const markets = await adapter.listMarkets();
+
+      let outcomesSynced = 0;
+      let tradesSynced = 0;
+      for (const market of markets) {
+        outcomesSynced += market.outcomes.length;
+        tradesSynced += market.recentTrades.length;
+        await upsertMarket(database, market);
+      }
+
+      await recordCheckpoint(database, adapter.source, markets.length);
+
+      observeDuration("external_sync_duration_ms", Date.now() - syncStartedAt, {
+        source: adapter.source,
+      });
+      incrementCounter("external_sync_runs_total", {
+        source: adapter.source,
+        status: "success",
+      });
+      recordGauge("external_sync_markets_synced", markets.length, {
+        source: adapter.source,
+      });
+      recordGauge("external_sync_outcomes_synced", outcomesSynced, {
+        source: adapter.source,
+      });
+      recordGauge("external_sync_trade_ticks_synced", tradesSynced, {
+        source: adapter.source,
+      });
+      if (previousLagMs !== null) {
+        recordGauge("external_sync_lag_ms", previousLagMs, {
+          source: adapter.source,
+        });
+      }
+
+      logger.info("external sync completed", {
+        source: adapter.source,
+        syncedCount: markets.length,
+        outcomesSynced,
+        tradesSynced,
+        previousLagMs,
+      });
+    } catch (error) {
+      incrementCounter("external_sync_runs_total", {
+        source: adapter.source,
+        status: "failed",
+      });
+      logger.error("external sync failed", {
+        source: adapter.source,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+      throw error;
+    }
+  }
+};
+
 export const runMarketSyncJob = async (): Promise<void> => {
   if (isExternalSyncWritesDisabled()) {
     console.log("external sync worker: writes disabled via OP_DISABLE_EXTERNAL_SYNC_WRITES=true");
     return;
   }
 
-  for (const adapter of adapters) {
-    const syncStartedAt = Date.now();
-    const previousLagMs = await getPreviousCheckpointLagMs(adapter.source);
-    const markets = await adapter.listMarkets();
-
-    for (const market of markets) {
-      await upsertMarket(market);
-    }
-
-    await recordCheckpoint(adapter.source, markets.length);
-
-    observeDuration("external_sync_duration_ms", Date.now() - syncStartedAt, {
-      source: adapter.source,
-    });
-    incrementCounter("external_sync_runs_total", {
-      source: adapter.source,
-      status: "success",
-    });
-    recordGauge("external_sync_markets_synced", markets.length, {
-      source: adapter.source,
-    });
-    if (previousLagMs !== null) {
-      recordGauge("external_sync_lag_ms", previousLagMs, {
-        source: adapter.source,
-      });
-    }
-
-    logger.info("external sync completed", {
-      source: adapter.source,
-      syncedCount: markets.length,
-      previousLagMs,
-    });
-  }
+  await runMarketSyncJobWithDependencies({
+    db,
+    adapters: defaultAdapters,
+  });
 };

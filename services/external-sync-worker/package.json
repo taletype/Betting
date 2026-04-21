@@ -10,7 +10,8 @@
     "dev": "node --import tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node -e \"console.log('external-sync-worker: no tests yet')\""
+    "test": "pnpm exec node --test --import tsx src/**/*.test.ts",
+    "run": "node --import tsx src/main.ts"
   },
   "dependencies": {
     "@bet/integrations": "workspace:*",
