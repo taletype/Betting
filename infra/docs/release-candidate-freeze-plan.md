@@ -1,200 +1,119 @@
-# Release Candidate Freeze & Merge Plan
+# Release Candidate Freeze Plan (v1.0)
 
-Date: 2026-04-20
-Owner: Launch captain / release manager
-Scope: RC freeze pass for `taletype/betting` monorepo. No feature expansion.
+Date: 2026-04-21  
+Scope: `taletype/betting` launch RC freeze pass (docs + release planning only).
 
-## 1) Current workspace status snapshot
+## 1) Repo-state inspection snapshot
 
-### 1.1 Package scripts and launch-critical entry points
+### Open changes
+- Working tree is currently clean (`git status --short` returned no pending file changes).
+- Current branch: `work`.
+- Recent launch-critical hardening already landed in history:
+  - `726d046` (Supabase-session identity + admin gate hardening)
+  - `7498e35` (migration renumbering conflict fix)
 
-Root launch/verification scripts currently available:
+### Launch docs / runbooks status
+- Launch hardening snapshot exists and explicitly points to this RC plan as active source of truth: `infra/docs/launch-readiness.md`.
+- Launch-day execution checklist exists: `infra/docs/runbooks/launch-checklist.md`.
+- Staging dress rehearsal runbook exists with artifact expectations: `infra/docs/runbooks/staging-launch-drill.md`.
+- Ops runbook index is current and links all launch-critical runbooks: `infra/docs/runbooks/operations.md`.
 
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- `pnpm db:reset`
-- `pnpm smoke:local`
-- `pnpm load:launch`
+### Migration folders / schema churn status
+- Migration chain is sequential and contiguous from `0001` through `0020`.
+- Latest migrations are launch-flow migrations:
+  - `0019_base_deposit_flow.sql`
+  - `0020_base_withdrawals.sql`
+- Most recent migration activity was conflict cleanup + Base flows, indicating churn has only recently settled.
 
-Service-specific launch-critical script:
+### Package scripts / launch-critical commands present
+- Workspace: `pnpm typecheck`, `pnpm test`, `pnpm smoke:db`, `pnpm drill:staging`.
+- DB-backed local reset + smoke path: `pnpm db:reset`.
+- Staging drill entrypoint: `pnpm drill:staging`.
 
-- `pnpm --filter @bet/service-api test:db-happy-path`
+### Known launch caveats (from current docs)
+- Launch signoff still requires one passing DB-backed smoke artifact run (`latest.log` + `latest.json`) in CI/staging context.
+- `0012_rls_policies.sql` still carries TODO ambiguity that must be treated as a documented temporary posture until post-launch tightening.
 
-Operational note:
+---
 
-- `pnpm db:reset` already includes DB reset and `test:db-happy-path` execution, so this is the canonical DB-backed pre-RC command.
+## 2) Short RC checklist (authoritative)
 
-### 1.2 Migrations status (recent churn)
+Mark all items complete before RC cut:
 
-Current migration chain is sequential (`0001` .. `0020`) and includes recent Base flows:
+- [ ] **Typecheck green:** `pnpm typecheck`
+- [ ] **Tests green:** `pnpm test`
+- [ ] **DB-backed smoke artifact passing:** `pnpm smoke:db` (archive `infra/artifacts/smoke-db/latest.log` + `latest.json`)
+- [ ] **Auth/admin gating fixed and verified:** confirm Supabase-session identity path + admin token gates are active in deployed RC build
+- [ ] **Reconciliation clean:** one reconciliation run with zero invariant mismatches
+- [ ] **Deposit + withdrawal lifecycle proven:** staging drill evidence covers verify -> trade/resolution/claim -> withdrawal request -> admin execute/fail
+- [ ] **Runbooks current:** launch checklist + staging drill + operations index match current endpoints/flows
+- [ ] **Env/secrets audit complete:** `./infra/scripts/check-env.sh` + env matrix review (`replace-me/changeme` free)
+- [ ] **Kill switches confirmed:** operator can toggle and validate order/deposit/withdraw/external-sync/ws switches
+- [ ] **Staging drill completed:** `pnpm drill:staging` artifacts stored under timestamped drill directory
 
-- `0019_base_deposit_flow.sql`
-- `0020_base_withdrawals.sql`
-
-Recent history also shows a same-day migration renumbering fix to remove duplicate version conflicts. That indicates schema churn has stabilized but was active very recently.
-
-### 1.3 Launch-readiness docs and runbooks present
-
-Present and useful for RC + launch:
-
-- `infra/docs/launch-readiness.md` (hardening report snapshot)
-- `infra/docs/runbooks/launch-checklist.md` (short launch-day checklist)
-- `infra/docs/runbooks/operations.md` (runbook index)
-- Focused operational runbooks (`deposit-verification`, `withdrawals-admin`, `reconciliation-worker`, `external-sync-worker`, `incidents`, etc.)
-
-### 1.4 Drift observed between code and docs
-
-Drift/open items identified during freeze pass:
-
-1. Launch docs are split between a dated hardening report and a short checklist; this document is now the operational RC source of truth.
-2. DB-backed verification is documented, but RC evidence requirements were not previously explicit (what exact logs/screenshots/artifacts must be captured).
-3. Migration churn happened on 2026-04-20; explicit schema-freeze gate was not previously documented.
-
-## 2) RC checklist (authoritative)
-
-Run in order from repo root.
-
-### 2.1 Exact commands to run before RC
-
-1. Environment validation
-
-```bash
-./infra/scripts/check-env.sh
-```
-
-2. Dependency and workspace baseline
-
-```bash
-pnpm install
-pnpm lint
-pnpm typecheck
-pnpm test
-```
-
-3. Bring up DB and apply full schema/seed + DB happy path
-
-```bash
-supabase start
-pnpm db:reset
-```
-
-4. Bring up launch-path services
-
-```bash
-pnpm dev:api
-pnpm dev:workers
-pnpm dev:web
-```
-
-5. Full local smoke
-
-```bash
-pnpm smoke:local
-```
-
-6. Optional-but-recommended launch load sanity pass
-
-```bash
-pnpm load:launch
-```
-
-### 2.2 Exact evidence to capture
-
-Capture and attach to RC ticket/release notes:
-
-1. Terminal output (or CI artifact) for:
-   - `pnpm lint`
-   - `pnpm typecheck`
-   - `pnpm test`
-2. Terminal output for `pnpm db:reset` showing:
-   - migrations applied cleanly,
-   - `test:db-happy-path` passes.
-3. Terminal output for `pnpm smoke:local` showing all checks pass.
-4. Health endpoint responses:
-   - `GET /health` (API)
-   - `GET /ready` (API)
-   - `GET /health` (WS)
-5. One reconciliation worker run log without invariant failures.
-6. Migration inventory snapshot (`ls -1 supabase/migrations | sort`) attached with RC artifact.
-
-### 2.3 Launch blockers (must resolve before RC/launch)
-
-Any of the following is a launch blocker:
-
-1. `pnpm lint`, `pnpm typecheck`, or `pnpm test` failure on RC commit.
-2. `pnpm db:reset` failure (including any migration failure or `test:db-happy-path` failure).
-3. `pnpm smoke:local` failure.
-4. Missing health/readiness response for API/WS.
-5. Any schema change PR proposed after freeze start without explicit launch captain approval.
-6. Any reconciliation invariant mismatch affecting ledger/funds correctness.
-
-### 2.4 Can wait until after launch (explicit deferrals)
-
-Allowed post-launch if blocker list above is green:
-
-1. CI enhancement to automatically run DB-backed happy-path in ephemeral DB.
-2. Expansion of load scenarios beyond current launch-path harness.
-3. Non-critical documentation cleanup beyond this freeze plan + checklist alignment.
-4. Additional runbook ergonomics/formatting improvements.
+---
 
 ## 3) Schema freeze recommendation
 
 ### Decision
+**Freeze schema now at migration `0020_base_withdrawals.sql` (effective 2026-04-21).**
 
-**Recommendation: begin schema freeze now (2026-04-20), with one exception class: break/fix migrations only.**
+### Launch-blocking exception rule
+Only allow new migrations pre-launch if **all** are true:
+1. Fixes a proven launch blocker (integrity, custody, auth/security, or inability to operate).
+2. No reasonable application-layer workaround exists.
+3. Explicit launch-captain signoff is recorded in RC notes.
 
-### Rationale
+### Current recommendation based on repo state
+- No additional planned migrations are evidenced in current docs/runbooks for RC readiness.
+- Therefore: **default to no further schema changes before launch**.
 
-- Migration chain is now sequential through `0020`.
-- Base deposit/withdrawal schema landed and renumber conflict was already resolved.
-- Current program objective is launch stabilization, not capability expansion.
+---
 
-### Branches/changes that must land before freeze lock
+## 4) Merge / branch order before RC cut
 
-Treat these as pre-freeze must-lands if still pending in any branch/PR:
+Apply remaining merge candidates in this exact order:
 
-1. Anything modifying or depending on:
-   - `0019_base_deposit_flow.sql`
-   - `0020_base_withdrawals.sql`
-2. Any fix for migration ordering/numbering consistency.
-3. Any reconciliation correctness fix required for new deposit/withdrawal flows.
+1. **Release-integrity blockers first (must land before RC cut)**
+   - Any fix that unblocks `pnpm typecheck`, `pnpm test`, `pnpm smoke:db`, or reconciliation clean run.
+   - Any auth/admin gating regression fix.
 
-After those land, reject new non-break/fix migrations until post-launch window opens.
+2. **Ops-evidence blockers second (must land before RC cut)**
+   - Runbook corrections required to execute launch checklist/drill without ambiguity.
+   - Artifact path/command correctness for smoke + drill evidence capture.
 
-## 4) Merge order for release candidate
+3. **RC polish third (merge only if zero risk)**
+   - Small docs clarity edits that do not change runtime behavior or schema.
 
-Use this ordering for open work streams.
+### Blockers before RC cut
+- Any red in the short RC checklist above.
+- Missing DB smoke artifact evidence.
+- Missing staging drill evidence.
 
-### 4.1 Must merge before RC
+### Safe-to-defer until post-launch
+- Additional automation (e.g., CI expansion) not required for day-1 operation.
+- Non-critical doc polish.
+- Any feature or schema expansion.
 
-1. **Schema and funds correctness lane**
-   - migration ordering/finality (`0019`/`0020` integrity),
-   - deposit/withdrawal ledger correctness,
-   - reconciliation invariant correctness.
-2. **Launch reliability lane**
-   - health/readiness correctness,
-   - `smoke:local` reliability fixes,
-   - DB happy-path script reliability fixes.
-3. **Operational readiness lane**
-   - runbooks/checklists required to execute launch without tribal knowledge.
+---
 
-### 4.2 Nice to merge before RC
+## 5) Launch blocker list (grouped)
 
-1. Monitoring/reporting polish that does not alter schema or critical runtime behavior.
-2. Small docs improvements that reduce operator ambiguity.
-3. Low-risk test robustness improvements outside launch-critical path.
+### Must fix before launch
+- Failing `pnpm typecheck` or `pnpm test`.
+- Failing or missing DB-backed smoke artifact (`pnpm smoke:db`).
+- Auth/admin gating regressions in RC deploy.
+- Any reconciliation invariant mismatch affecting balances or custody state.
+- Inability to demonstrate deposit + withdrawal lifecycle in staging drill.
+- Missing/incorrect runbook steps that block operator execution.
 
-### 4.3 Defer until after launch
+### Should fix soon after launch
+- CI automation to run `pnpm smoke:db` and publish artifacts automatically.
+- Follow-up tightening/clarification work for RLS TODO scope in `0012_rls_policies.sql`.
+- Additional operator ergonomics around manual withdrawal queue handling.
 
-1. New product features and surface area expansion.
-2. Broad refactors (module moves, architecture cleanup, large renames).
-3. Non-essential migration additions unrelated to production break/fix.
-4. Deep performance tuning not tied to a measured launch blocker.
-
-## 5) Minimal stale-content cleanup completed in this pass
-
-1. Added explicit cross-link in launch checklist to this RC freeze plan to avoid split source-of-truth during launch week.
-2. Added runbook index link to this RC freeze plan.
-3. Added note in launch-readiness hardening report that it is a historical verification snapshot, while this RC freeze plan is the active operational checklist.
-
+### Safe to defer
+- New feature work.
+- Architectural refactors.
+- Non-launch-critical performance tuning.
+- Any non-break/fix migration after freeze point.
