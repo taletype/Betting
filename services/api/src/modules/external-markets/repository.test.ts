@@ -75,6 +75,21 @@ test("repository list/detail map synced external market rows", async () => {
         ];
       }
 
+      if (statement.includes("from public.external_orderbook_snapshots")) {
+        return [
+          {
+            external_market_id: "m1",
+            external_outcome_id: "yes",
+            bids_json: [{ price: "0.42", size: "100" }],
+            asks_json: [{ price: "0.44", size: "120" }],
+            captured_at: "2026-01-01T00:00:00.000Z",
+            last_trade_price: "0.43",
+            best_bid: "0.42",
+            best_ask: "0.44",
+          },
+        ];
+      }
+
       if (statement.includes("from public.external_trade_ticks")) {
         return [
           {
@@ -99,6 +114,7 @@ test("repository list/detail map synced external market rows", async () => {
   assert.equal(markets.length, 1);
   assert.equal(markets[0]?.outcomes.length, 1);
   assert.equal(markets[0]?.recentTrades.length, 1);
+  assert.equal(markets[0]?.latestOrderbook.length, 1);
 
   const detail = await repository.getExternalMarketRecord("polymarket", "123");
   assert.equal(detail?.externalId, "123");

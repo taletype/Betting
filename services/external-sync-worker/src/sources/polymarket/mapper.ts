@@ -1,1 +1,1 @@
-export const mapPolymarketMarket = <T>(payload: T): T => payload;
+export { normalizePolymarketMarket as mapPolymarketMarket } from "@bet/integrations";
