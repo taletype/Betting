@@ -63,8 +63,10 @@ let pool: Pool | null = null;
 
 const getPool = (): Pool => {
   if (!pool) {
+    const connectionString = getConnectionString();
     pool = new Pool({
-      connectionString: getConnectionString(),
+      connectionString,
+      ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
     });
   }
 
