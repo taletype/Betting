@@ -7,6 +7,8 @@ import type {
 
 const GAMMA_BASE_URL = "https://gamma-api.polymarket.com";
 const DATA_BASE_URL = "https://data-api.polymarket.com";
+const TRANSIENT_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const MAX_FETCH_ATTEMPTS = 3;
 
 interface PolymarketToken {
   token_id?: string;
@@ -55,6 +57,39 @@ interface PolymarketTrade {
   transactionHash?: string;
   asset?: string;
 }
+
+const isTransientHttpStatus = (status: number): boolean => TRANSIENT_HTTP_STATUSES.has(status);
+
+const fetchJsonWithRetry = async <T>(url: string, requestName: string): Promise<T> => {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        if (isTransientHttpStatus(response.status) && attempt < MAX_FETCH_ATTEMPTS) {
+          continue;
+        }
+
+        throw new Error(`${requestName} failed with status ${response.status}`);
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(`${requestName} failed`);
+      if (attempt >= MAX_FETCH_ATTEMPTS) {
+        break;
+      }
+    }
+  }
+
+  throw lastError ?? new Error(`${requestName} failed`);
+};
 
 const parseNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -217,17 +252,16 @@ const attachRecentTrades = async (
     offset: "0",
     takerOnly: "true",
   });
-  const response = await fetch(`${DATA_BASE_URL}/trades?${searchParams.toString()}`, {
-    headers: {
-      accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Polymarket data trades request failed with status ${response.status}`);
+  let payload: unknown;
+  try {
+    payload = await fetchJsonWithRetry<unknown>(
+      `${DATA_BASE_URL}/trades?${searchParams.toString()}`,
+      "Polymarket data trades request",
+    );
+  } catch {
+    return [...markets];
   }
 
-  const payload = (await response.json()) as unknown;
   if (!Array.isArray(payload)) {
     return [...markets];
   }
@@ -297,17 +331,10 @@ const mapMarket = (market: PolymarketMarket): NormalizedExternalMarket | null =>
 export const createPolymarketAdapter = (): ExternalMarketAdapter => ({
   source: "polymarket",
   async listMarkets(): Promise<NormalizedExternalMarket[]> {
-    const response = await fetch(`${GAMMA_BASE_URL}/markets?limit=100&active=true`, {
-      headers: {
-        accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Polymarket gamma request failed with status ${response.status}`);
-    }
-
-    const payload = (await response.json()) as unknown;
+    const payload = await fetchJsonWithRetry<unknown>(
+      `${GAMMA_BASE_URL}/markets?limit=100&active=true`,
+      "Polymarket gamma request",
+    );
     if (!Array.isArray(payload)) {
       return [];
     }

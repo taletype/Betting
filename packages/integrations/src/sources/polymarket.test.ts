@@ -71,3 +71,83 @@ test("polymarket adapter normalizes API market payload", async (t) => {
   assert.equal(markets[0]?.recentTrades[0]?.tradeId, "0xtrade123");
   assert.equal(markets[0]?.recentTrades[0]?.outcomeExternalId, "yes-token");
 });
+
+test("polymarket adapter retries transient gamma failures", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let gammaCalls = 0;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+
+    if (url.startsWith("https://gamma-api.polymarket.com/markets")) {
+      gammaCalls += 1;
+      if (gammaCalls < 3) {
+        return new Response("timeout", { status: 408 });
+      }
+
+      return new Response(
+        JSON.stringify([
+          {
+            id: "123",
+            conditionId: "0xabc123",
+            question: "Will it rain?",
+            active: true,
+            closed: false,
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (url.startsWith("https://data-api.polymarket.com/trades")) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    throw new Error(`Unexpected fetch in test: ${url}`);
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markets = await createPolymarketAdapter().listMarkets();
+  assert.equal(gammaCalls, 3);
+  assert.equal(markets.length, 1);
+});
+
+test("polymarket adapter skips trades when trades endpoint times out", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+
+    if (url.startsWith("https://gamma-api.polymarket.com/markets")) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "123",
+            conditionId: "0xabc123",
+            question: "Will it rain?",
+            active: true,
+            closed: false,
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (url.startsWith("https://data-api.polymarket.com/trades")) {
+      return new Response("request timeout", { status: 408 });
+    }
+
+    throw new Error(`Unexpected fetch in test: ${url}`);
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markets = await createPolymarketAdapter().listMarkets();
+  assert.equal(markets.length, 1);
+  assert.equal(markets[0]?.recentTrades.length, 0);
+});
