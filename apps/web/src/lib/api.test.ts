@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { listExternalMarkets, listMarkets } from "./api";
+import { getMlmDashboard, listExternalMarkets, listMarkets } from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
 
@@ -169,4 +169,54 @@ test("listExternalMarkets uses standalone API route when API base is configured"
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
+});
+
+test("getMlmDashboard uses local Next API route when API base is not configured", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const calls: FetchCall[] = [];
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = createFetchMock(
+    {
+      referralCode: {
+        id: "11111111-1111-4111-8111-111111111111",
+        code: "DEMO1001",
+        inviteUrl: "http://127.0.0.1:3000/referrals?code=DEMO1001",
+        createdAt: "2026-04-22T00:00:00.000Z",
+      },
+      sponsor: null,
+      directReferrals: [],
+      metrics: {
+        directReferralCount: 0,
+        totalDownlineCount: 0,
+        lifetimeCommission: "0",
+        recentCommission30d: "0",
+      },
+      commissions: [],
+    },
+    calls,
+  );
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await getMlmDashboard();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/mlm/dashboard");
 });

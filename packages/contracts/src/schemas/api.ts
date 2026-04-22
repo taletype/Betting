@@ -259,6 +259,92 @@ export const GetDepositsResponseSchema = z.object({
   deposits: z.array(ApiDepositRecordSchema),
 });
 
+export const ApiReferralCodeSchema = z.object({
+  id: UuidSchema,
+  code: z.string().min(1),
+  inviteUrl: z.string().min(1),
+  createdAt: TimestampSchema,
+});
+
+export const ApiReferralSponsorSchema = z.object({
+  userId: UuidSchema,
+  username: z.string().nullable(),
+  displayName: z.string().nullable(),
+  referralCode: z.string().nullable(),
+  assignedAt: TimestampSchema,
+});
+
+export const ApiReferralMemberSchema = z.object({
+  userId: UuidSchema,
+  username: z.string().nullable(),
+  displayName: z.string().nullable(),
+  joinedAt: TimestampSchema,
+});
+
+export const ApiMlmDashboardMetricsSchema = z.object({
+  directReferralCount: z.number().int().nonnegative(),
+  totalDownlineCount: z.number().int().nonnegative(),
+  lifetimeCommission: BigIntStringSchema,
+  recentCommission30d: BigIntStringSchema,
+});
+
+export const ApiMlmCommissionPlanLevelSchema = z.object({
+  id: UuidSchema,
+  levelDepth: z.number().int().positive(),
+  rateBps: z.number().int().nonnegative(),
+});
+
+export const ApiMlmCommissionPlanSchema = z.object({
+  id: UuidSchema,
+  version: z.number().int().positive(),
+  name: z.string().min(1),
+  payableDepth: z.number().int().positive(),
+  isActive: z.boolean(),
+  activatedAt: TimestampSchema.nullable(),
+  createdAt: TimestampSchema,
+  levels: z.array(ApiMlmCommissionPlanLevelSchema),
+});
+
+export const ApiMlmCommissionEventSchema = z.object({
+  id: UuidSchema,
+  depositId: UuidSchema,
+  sourceUserId: UuidSchema,
+  sourceDisplayName: z.string().nullable(),
+  beneficiaryUserId: UuidSchema,
+  levelDepth: z.number().int().positive(),
+  amount: BigIntStringSchema,
+  currency: z.string().min(1),
+  payoutStatus: z.enum(["credited", "skipped"]),
+  createdAt: TimestampSchema,
+  journalId: UuidSchema.nullable(),
+});
+
+export const GetMlmDashboardResponseSchema = z.object({
+  referralCode: ApiReferralCodeSchema,
+  sponsor: ApiReferralSponsorSchema.nullable(),
+  directReferrals: z.array(ApiReferralMemberSchema),
+  metrics: ApiMlmDashboardMetricsSchema,
+  commissions: z.array(ApiMlmCommissionEventSchema),
+});
+
+export const ApiAdminReferralRelationshipSchema = z.object({
+  id: UuidSchema,
+  referredUserId: UuidSchema,
+  referredDisplayName: z.string().nullable(),
+  sponsorUserId: UuidSchema,
+  sponsorDisplayName: z.string().nullable(),
+  referralCode: z.string().nullable(),
+  source: z.enum(["invite_code", "admin_override"]),
+  assignedAt: TimestampSchema,
+});
+
+export const GetAdminMlmOverviewResponseSchema = z.object({
+  activePlan: ApiMlmCommissionPlanSchema.nullable(),
+  plans: z.array(ApiMlmCommissionPlanSchema),
+  recentCommissions: z.array(ApiMlmCommissionEventSchema),
+  relationships: z.array(ApiAdminReferralRelationshipSchema),
+});
+
 export const CreateWithdrawalRequestSchema = z.object({
   amountAtoms: BigIntStringSchema,
   destinationAddress: z.string().min(1),

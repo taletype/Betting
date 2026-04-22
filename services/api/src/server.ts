@@ -23,6 +23,14 @@ import { resolveMarket } from "./modules/admin/handlers";
 import { runExternalSync } from "./modules/admin/external-sync";
 import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
 import {
+  activateAdminCommissionPlan,
+  createAdminCommissionPlan,
+  getAdminMlmOverview,
+  getMlmDashboard,
+  joinReferralProgram,
+  overrideReferralSponsor,
+} from "./modules/mlm/handlers";
+import {
   claimMarket,
   getClaimableStateForMarket,
   getClaims,
@@ -381,6 +389,24 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/mlm/dashboard") {
+      const payload = await getMlmDashboard(getRequestUserId(request));
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/mlm/join") {
+      const body = await parseBody(request);
+      const payload = await joinReferralProgram({
+        userId: getRequestUserId(request),
+        code: String(body.code ?? ""),
+      });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     if (request.method === "POST" && url.pathname === "/deposits/verify") {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
@@ -469,6 +495,78 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return new Response(toJson({ withdrawals: await getRequestedWithdrawals({ isAdmin: isAdminRequest(request) }) }), {
         headers: { "content-type": "application/json" },
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/admin/mlm") {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const payload = await getAdminMlmOverview();
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/mlm/plans") {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      const levels = Array.isArray(body.levels)
+        ? body.levels.map((level) => ({
+            levelDepth: Number((level as { levelDepth?: unknown }).levelDepth ?? 0),
+            rateBps: Number((level as { rateBps?: unknown }).rateBps ?? 0),
+          }))
+        : [];
+      const payload = await createAdminCommissionPlan({
+        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        name: String(body.name ?? "MLM Plan"),
+        levels,
+        activate: Boolean(body.activate),
+      });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "mlm" &&
+      segments[2] === "plans"
+    ) {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      await activateAdminCommissionPlan({
+        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        planId: segments[3] ?? "",
+      });
+      return Response.json({ ok: true });
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/mlm/relationships/override") {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      await overrideReferralSponsor({
+        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        referredUserId: String(body.referredUserId ?? ""),
+        sponsorCode: String(body.sponsorCode ?? ""),
+        reason: String(body.reason ?? ""),
+      });
+      return Response.json({ ok: true });
     }
 
     if (

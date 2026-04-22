@@ -35,8 +35,8 @@ const assertValidUrl = (name: string, value: string): string => {
 };
 
 const isLocalEnvironment = (): boolean => {
-  const env = process.env.NODE_ENV ?? "";
-  return env === "" || env === "development" || env === "test" || env === "local";
+  const env = (process.env.NODE_ENV ?? "") as string;
+  return !env || env === "development" || env === "test" || env === "local";
 };
 
 const getConnectionString = (): string => {

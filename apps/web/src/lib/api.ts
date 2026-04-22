@@ -4,6 +4,9 @@ import {
   OrderBookSchema,
   PortfolioSnapshotSchema,
   WithdrawalRecordSchema,
+  GetMlmDashboardResponseSchema,
+  GetAdminMlmOverviewResponseSchema,
+  ApiMlmCommissionPlanSchema,
   CreateOrderRequestSchema,
   PostOrdersResponseSchema,
 } from "@bet/contracts";
@@ -237,6 +240,47 @@ export const createOrder = async (input: {
     }),
   );
 };
+
+export const getMlmDashboard = async () =>
+  GetMlmDashboardResponseSchema.parse(await readApiJson("/mlm/dashboard"));
+
+export const joinReferralProgram = async (code: string) =>
+  GetMlmDashboardResponseSchema.parse(
+    await readApiJson("/mlm/join", {
+      method: "POST",
+      body: { code },
+    }),
+  );
+
+export const getAdminMlmOverview = async () =>
+  GetAdminMlmOverviewResponseSchema.parse(await readApiJson("/admin/mlm"));
+
+export const createAdminMlmPlan = async (input: {
+  name: string;
+  levels: { levelDepth: number; rateBps: number }[];
+  activate: boolean;
+}) =>
+  ApiMlmCommissionPlanSchema.parse(
+    await readApiJson("/admin/mlm/plans", {
+      method: "POST",
+      body: input,
+    }),
+  );
+
+export const activateAdminMlmPlan = async (planId: string) =>
+  readApiJson(`/admin/mlm/plans/${planId}`, {
+    method: "POST",
+  });
+
+export const overrideAdminReferralSponsor = async (input: {
+  referredUserId: string;
+  sponsorCode: string;
+  reason: string;
+}) =>
+  readApiJson("/admin/mlm/relationships/override", {
+    method: "POST",
+    body: input,
+  });
 
 
 export interface ExternalMarketApiOutcome {

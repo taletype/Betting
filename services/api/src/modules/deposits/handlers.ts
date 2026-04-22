@@ -6,6 +6,7 @@ import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger } from "@bet/observability";
 
 import { getLinkedWalletForUser } from "../wallets/repository";
+import { allocateDepositCommissions } from "../mlm/repository";
 import { insertAuditRecord } from "../shared/audit";
 import { DEMO_USER_ID } from "../shared/constants";
 import {
@@ -154,6 +155,25 @@ export const verifyDepositWithDependencies = async (
           chain: deposit.chain,
         },
       });
+
+      const commissionEvents = await allocateDepositCommissions(transaction, {
+        depositId: deposit.id,
+        sourceUserId: userId,
+        amount: deposit.amount,
+        currency: deposit.currency,
+      });
+
+      if (commissionEvents.length > 0) {
+        await insertAuditRecord(transaction, {
+          actorUserId: userId,
+          action: "mlm.commissions.credited",
+          entityType: "chain_deposit",
+          entityId: deposit.id,
+          metadata: {
+            eventCount: commissionEvents.length,
+          },
+        });
+      }
 
       return {
         status: "accepted",

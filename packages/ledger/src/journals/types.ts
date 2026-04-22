@@ -7,8 +7,14 @@ export type LedgerJournalKind =
   | "release"
   | "settle"
   | "deposit"
+  | "deposit_confirmed"
   | "withdrawal"
-  | "reconciliation_adjustment";
+  | "withdrawal_requested"
+  | "withdrawal_completed"
+  | "withdrawal_failed"
+  | "reconciliation_adjustment"
+  | "claim_payout"
+  | "mlm_commission";
 
 export interface LedgerJournal {
   id: string;

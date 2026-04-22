@@ -5,6 +5,14 @@ import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_share
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
 import { readExternalMarkets } from "../_shared/external-market-read";
+import {
+  activateAdminMlmPlanDb,
+  createAdminMlmPlanDb,
+  joinReferralProgramDb,
+  overrideReferralSponsorDb,
+  readAdminMlmOverview,
+  readMlmDashboard,
+} from "../_shared/mlm";
 
 import {
   evaluateAdminAccess,
@@ -166,6 +174,15 @@ async function handleRequest(
       return NextResponse.json({ withdrawals: data ?? [] });
     }
 
+    if (apiPath === "mlm/dashboard" && request.method === "GET") {
+      return NextResponse.json(await readMlmDashboard(userId));
+    }
+
+    if (apiPath === "mlm/join" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { code?: string };
+      return NextResponse.json(await joinReferralProgramDb(userId, body.code ?? ""));
+    }
+
     if (apiPath === "deposits/verify" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { txHash?: string };
       const { data, error } = await userSupabase.rpc("rpc_verify_deposit", {
@@ -244,6 +261,51 @@ async function handleRequest(
           throw error;
         }
         return NextResponse.json({ withdrawals: data ?? [] });
+      }
+
+      if (apiPath === "admin/mlm" && request.method === "GET") {
+        return NextResponse.json(await readAdminMlmOverview());
+      }
+
+      if (apiPath === "admin/mlm/plans" && request.method === "POST") {
+        const body = (await request.json().catch(() => ({}))) as {
+          name?: string;
+          activate?: boolean;
+          levels?: { levelDepth?: number; rateBps?: number }[];
+        };
+        return NextResponse.json(
+          await createAdminMlmPlanDb(adminActorId, {
+            name: body.name ?? "MLM Plan",
+            activate: Boolean(body.activate),
+            levels: Array.isArray(body.levels)
+              ? body.levels.map((level) => ({
+                  levelDepth: Number(level.levelDepth ?? 0),
+                  rateBps: Number(level.rateBps ?? 0),
+                }))
+              : [],
+          }),
+          { status: 201 },
+        );
+      }
+
+      if (apiPath.match(/^admin\/mlm\/plans\/[^/]+$/) && request.method === "POST") {
+        const planId = apiPath.split("/")[3] ?? "";
+        await activateAdminMlmPlanDb(planId);
+        return NextResponse.json({ ok: true });
+      }
+
+      if (apiPath === "admin/mlm/relationships/override" && request.method === "POST") {
+        const body = (await request.json().catch(() => ({}))) as {
+          referredUserId?: string;
+          sponsorCode?: string;
+          reason?: string;
+        };
+        await overrideReferralSponsorDb(adminActorId, {
+          referredUserId: body.referredUserId ?? "",
+          sponsorCode: body.sponsorCode ?? "",
+          reason: body.reason ?? "",
+        });
+        return NextResponse.json({ ok: true });
       }
 
       if (apiPath.match(/^admin\/withdrawals\/[^/]+\/execute$/) && request.method === "POST") {

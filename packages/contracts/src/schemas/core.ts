@@ -232,6 +232,92 @@ export const PortfolioSnapshotSchema = z.object({
   withdrawals: z.array(WithdrawalRecordSchema).default([]),
 });
 
+export const ReferralCodeSchema = z.object({
+  id: UuidSchema,
+  code: z.string().min(1),
+  inviteUrl: z.string().min(1),
+  createdAt: TimestampSchema,
+});
+
+export const ReferralSponsorSchema = z.object({
+  userId: UuidSchema,
+  username: z.string().nullable(),
+  displayName: z.string().nullable(),
+  referralCode: z.string().nullable(),
+  assignedAt: TimestampSchema,
+});
+
+export const ReferralMemberSchema = z.object({
+  userId: UuidSchema,
+  username: z.string().nullable(),
+  displayName: z.string().nullable(),
+  joinedAt: TimestampSchema,
+});
+
+export const MlmCommissionPlanLevelSchema = z.object({
+  id: UuidSchema,
+  levelDepth: z.number().int().positive(),
+  rateBps: z.number().int().nonnegative(),
+});
+
+export const MlmCommissionPlanSchema = z.object({
+  id: UuidSchema,
+  version: z.number().int().positive(),
+  name: z.string().min(1),
+  payableDepth: z.number().int().positive(),
+  isActive: z.boolean(),
+  activatedAt: TimestampSchema.nullable(),
+  createdAt: TimestampSchema,
+  levels: z.array(MlmCommissionPlanLevelSchema).default([]),
+});
+
+export const MlmCommissionEventSchema = z.object({
+  id: UuidSchema,
+  depositId: UuidSchema,
+  sourceUserId: UuidSchema,
+  sourceDisplayName: z.string().nullable(),
+  beneficiaryUserId: UuidSchema,
+  levelDepth: z.number().int().positive(),
+  amount: MoneySchema,
+  currency: z.string().min(1),
+  payoutStatus: z.enum(["credited", "skipped"]),
+  createdAt: TimestampSchema,
+  journalId: UuidSchema.nullable(),
+});
+
+export const MlmDashboardMetricsSchema = z.object({
+  directReferralCount: z.number().int().nonnegative(),
+  totalDownlineCount: z.number().int().nonnegative(),
+  lifetimeCommission: MoneySchema,
+  recentCommission30d: MoneySchema,
+});
+
+export const MlmDashboardSchema = z.object({
+  referralCode: ReferralCodeSchema,
+  sponsor: ReferralSponsorSchema.nullable(),
+  directReferrals: z.array(ReferralMemberSchema).default([]),
+  metrics: MlmDashboardMetricsSchema,
+  commissions: z.array(MlmCommissionEventSchema).default([]),
+});
+
+export const AdminReferralRelationshipSchema = z.object({
+  id: UuidSchema,
+  referredUserId: UuidSchema,
+  referredDisplayName: z.string().nullable(),
+  sponsorUserId: UuidSchema,
+  sponsorDisplayName: z.string().nullable(),
+  referralCode: z.string().nullable(),
+  source: z.enum(["invite_code", "admin_override"]),
+  assignedAt: TimestampSchema,
+});
+
+export const AdminMlmOverviewSchema = z.object({
+  activePlan: MlmCommissionPlanSchema.nullable(),
+  plans: z.array(MlmCommissionPlanSchema).default([]),
+  recentCommissions: z.array(MlmCommissionEventSchema).default([]),
+  relationships: z.array(AdminReferralRelationshipSchema).default([]),
+});
+
 export type Market = z.infer<typeof MarketSchema>;
 export type MarketStats = z.infer<typeof MarketStatsSchema>;
 export type MarketSnapshot = z.infer<typeof MarketSnapshotSchema>;
@@ -253,3 +339,12 @@ export type DepositRecord = z.infer<typeof DepositRecordSchema>;
 export type WithdrawalRecord = z.infer<typeof WithdrawalRecordSchema>;
 export type PortfolioBalance = z.infer<typeof PortfolioBalanceSchema>;
 export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;
+export type ReferralCode = z.infer<typeof ReferralCodeSchema>;
+export type ReferralSponsor = z.infer<typeof ReferralSponsorSchema>;
+export type ReferralMember = z.infer<typeof ReferralMemberSchema>;
+export type MlmCommissionPlanLevel = z.infer<typeof MlmCommissionPlanLevelSchema>;
+export type MlmCommissionPlan = z.infer<typeof MlmCommissionPlanSchema>;
+export type MlmCommissionEvent = z.infer<typeof MlmCommissionEventSchema>;
+export type MlmDashboard = z.infer<typeof MlmDashboardSchema>;
+export type AdminReferralRelationship = z.infer<typeof AdminReferralRelationshipSchema>;
+export type AdminMlmOverview = z.infer<typeof AdminMlmOverviewSchema>;
