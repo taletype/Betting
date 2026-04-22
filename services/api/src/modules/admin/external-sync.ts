@@ -10,8 +10,8 @@ export interface ExternalSyncRunResult {
   summary: ExternalSyncRunSummary;
 }
 
-export const runExternalSync = async (): Promise<ExternalSyncRunResult> => {
-  const summary = await runMarketSyncJob();
+export const runExternalSync = async (source?: string): Promise<ExternalSyncRunResult> => {
+  const summary = await runMarketSyncJob(source);
 
   return {
     ok: true,

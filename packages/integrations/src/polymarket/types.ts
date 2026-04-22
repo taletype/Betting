@@ -1,0 +1,56 @@
+export interface PolymarketEvent {
+  id?: string | number;
+  slug?: string;
+  title?: string;
+  active?: boolean;
+  closed?: boolean;
+}
+
+export interface PolymarketToken {
+  token_id?: string;
+  tokenId?: string;
+  outcome?: string;
+  winner?: boolean;
+  price?: number | string;
+  bestBid?: number | string;
+  bestAsk?: number | string;
+  volume?: number | string;
+}
+
+export interface PolymarketMarket {
+  id?: string | number;
+  conditionId?: string;
+  slug?: string;
+  question?: string;
+  description?: string;
+  closed?: boolean;
+  active?: boolean;
+  endDate?: string;
+  end_date_iso?: string;
+  closedTime?: string;
+  resolved_at?: string;
+  bestBid?: number | string;
+  bestAsk?: number | string;
+  lastTradePrice?: number | string;
+  volume24hr?: number | string;
+  volume?: number | string;
+  url?: string;
+  outcomes?: string | string[];
+  outcomePrices?: string | number[] | string[];
+  clobTokenIds?: string | string[];
+  tokens?: PolymarketToken[];
+  events?: PolymarketEvent[];
+}
+
+export interface PolymarketBookLevel {
+  price?: string | number;
+  size?: string | number;
+}
+
+export interface PolymarketBookPayload {
+  asset_id?: string;
+  market?: string;
+  timestamp?: string | number;
+  bids?: PolymarketBookLevel[];
+  asks?: PolymarketBookLevel[];
+}

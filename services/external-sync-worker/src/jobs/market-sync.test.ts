@@ -12,9 +12,16 @@ const createMockDb = () => {
 
   let nextId = 1;
 
+  const marketInsertValues: unknown[][] = [];
+
   const tx: DatabaseTransaction = {
     async query(statement, values = []) {
+      if (statement.includes("public.orders") || statement.includes("public.positions") || statement.includes("public.ledger")) {
+        throw new Error("internal trading tables must not be touched");
+      }
+
       if (statement.includes("insert into public.external_markets")) {
+        marketInsertValues.push(values);
         const key = `${values[0]}:${values[1]}`;
         if (!marketIds.has(key)) {
           marketIds.set(key, `market-${nextId++}`);
@@ -59,7 +66,11 @@ const createMockDb = () => {
     },
   };
 
-  return { db, getCounts: () => ({ markets: marketIds.size, outcomes: outcomes.size, trades: trades.size }) };
+  return {
+    db,
+    marketInsertValues,
+    getCounts: () => ({ markets: marketIds.size, outcomes: outcomes.size, trades: trades.size }),
+  };
 };
 
 const sampleMarket = {
@@ -101,7 +112,7 @@ const sampleMarket = {
       tradedAt: "2026-01-01T00:00:00.000Z",
     },
   ],
-  rawPayload: { source: "test" },
+  rawPayload: { rawJson: { source: "test" }, provenance: { upstream: "gamma-api.polymarket.com" } },
 };
 
 test("market sync upsert path is idempotent for repeated runs", async () => {
@@ -121,4 +132,20 @@ test("market sync upsert path is idempotent for repeated runs", async () => {
   assert.equal(firstRun.totals.marketsSynced, 1);
   assert.equal(firstRun.totals.outcomesSynced, 1);
   assert.equal(secondRun.sources[0]?.source, "polymarket");
+});
+
+
+test("market upsert stores raw payload/provenance and does not touch internal trading tables", async () => {
+  const { db, marketInsertValues } = createMockDb();
+  const adapter = { source: "polymarket" as const, listMarkets: async () => [sampleMarket] };
+  await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
+  const firstInsert = marketInsertValues[0] ?? [];
+  assert.match(String(firstInsert[15]), /rawJson/);
+  assert.match(String(firstInsert[17]), /gamma-api.polymarket.com/);
+});
+
+test("sync failure in one source rejects without mutating internal state", async () => {
+  const { db } = createMockDb();
+  const badAdapter = { source: "polymarket" as const, listMarkets: async () => { throw new Error("boom"); } };
+  await assert.rejects(() => runMarketSyncJobWithDependencies({ db, adapters: [badAdapter] }));
 });

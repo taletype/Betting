@@ -35,6 +35,17 @@ interface ExternalOutcomeRow {
   volume: number | string | null;
 }
 
+interface ExternalOrderbookSnapshotRow {
+  external_market_id: string;
+  external_outcome_id: string;
+  bids_json: unknown;
+  asks_json: unknown;
+  captured_at: Date | string;
+  last_trade_price: number | string | null;
+  best_bid: number | string | null;
+  best_ask: number | string | null;
+}
+
 interface ExternalTradeRow {
   external_market_id: string;
   external_trade_id: string;
@@ -87,6 +98,16 @@ export interface ExternalTradeView {
   tradedAt: string;
 }
 
+export interface ExternalOrderbookSnapshotView {
+  externalOutcomeId: string;
+  bids: unknown;
+  asks: unknown;
+  capturedAt: string;
+  lastTradePrice: number | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+}
+
 export interface ExternalMarketView {
   id: string;
   source: "polymarket" | "kalshi";
@@ -109,6 +130,7 @@ export interface ExternalMarketView {
   updatedAt: string;
   outcomes: ExternalOutcomeView[];
   recentTrades: ExternalTradeView[];
+  latestOrderbook: ExternalOrderbookSnapshotView[];
 }
 
 const mapMarket = (row: ExternalMarketRow): ExternalMarketView => ({
@@ -133,6 +155,7 @@ const mapMarket = (row: ExternalMarketRow): ExternalMarketView => ({
   updatedAt: toIsoString(row.updated_at),
   outcomes: [],
   recentTrades: [],
+  latestOrderbook: [],
 });
 
 const mapOutcome = (row: ExternalOutcomeRow): ExternalOutcomeView => ({
@@ -145,6 +168,16 @@ const mapOutcome = (row: ExternalOutcomeRow): ExternalOutcomeView => ({
   bestAsk: toNumber(row.best_ask),
   lastPrice: toNumber(row.last_price),
   volume: toNumber(row.volume),
+});
+
+const mapOrderbookSnapshot = (row: ExternalOrderbookSnapshotRow): ExternalOrderbookSnapshotView => ({
+  externalOutcomeId: row.external_outcome_id,
+  bids: row.bids_json,
+  asks: row.asks_json,
+  capturedAt: toIsoString(row.captured_at),
+  lastTradePrice: toNumber(row.last_trade_price),
+  bestBid: toNumber(row.best_bid),
+  bestAsk: toNumber(row.best_ask),
 });
 
 const mapTrade = (row: ExternalTradeRow): ExternalTradeView => ({
@@ -164,7 +197,7 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
 
     const ids = marketRecords.map((market) => market.id);
 
-    const [outcomeRows, tradeRows] = await Promise.all([
+    const [outcomeRows, tradeRows, snapshotRows] = await Promise.all([
       database.query<ExternalOutcomeRow>(
         `
           select
@@ -200,12 +233,33 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
         `,
         [ids],
       ),
+      database.query<ExternalOrderbookSnapshotRow>(
+        `
+          select distinct on (external_market_id, external_outcome_id)
+            external_market_id,
+            external_outcome_id,
+            bids_json,
+            asks_json,
+            captured_at,
+            last_trade_price,
+            best_bid,
+            best_ask
+          from public.external_orderbook_snapshots
+          where external_market_id = any($1::uuid[])
+          order by external_market_id asc, external_outcome_id asc, captured_at desc
+        `,
+        [ids],
+      ),
     ]);
 
     const byMarket = new Map(marketRecords.map((market) => [market.id, market]));
 
     for (const row of outcomeRows) {
       byMarket.get(row.external_market_id)?.outcomes.push(mapOutcome(row));
+    }
+
+    for (const row of snapshotRows) {
+      byMarket.get(row.external_market_id)?.latestOrderbook.push(mapOrderbookSnapshot(row));
     }
 
     const tradeCountByMarket = new Map<string, number>();

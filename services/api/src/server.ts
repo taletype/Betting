@@ -153,7 +153,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
         return Response.json(payload, { status: 401 });
       }
 
-      const payload = await runExternalSync();
+      const source = url.searchParams.get("source") ?? undefined;
+      const payload = await runExternalSync(source);
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
         status: 202,
@@ -164,6 +165,20 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const payload = await listExternalMarkets();
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (
+      request.method === "GET" &&
+      segments.length >= 5 &&
+      segments[0] === "external" &&
+      segments[1] === "markets" &&
+      segments[4] === "orderbook"
+    ) {
+      const payload = await getExternalMarketBySourceAndId(segments[2] ?? "", decodeURIComponent(segments[3] ?? ""));
+      return new Response(toJson({ orderbook: payload?.latestOrderbook ?? [] }), {
+        headers: { "content-type": "application/json" },
+        status: payload ? 200 : 404,
       });
     }
 

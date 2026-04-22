@@ -34,6 +34,7 @@ test("GET /external/markets returns synced data", async (t) => {
         updatedAt: "2026-01-01T00:00:00.000Z",
         outcomes: [],
         recentTrades: [],
+        latestOrderbook: [],
       },
     ],
     getExternalMarketRecord: async () => null,
@@ -50,4 +51,45 @@ test("GET /external/markets returns synced data", async (t) => {
   assert.equal(payload.length, 1);
   assert.equal(payload[0]?.externalId, "123");
   assert.equal(payload[0]?.source, "polymarket");
+});
+
+test("GET /external/markets/:source/:id/orderbook returns latest snapshots", async (t) => {
+  const handleRequest = await getHandleRequest();
+
+  setExternalMarketsRepositoryForTests({
+    listExternalMarketRecords: async () => [],
+    getExternalMarketRecord: async () => ({
+      id: "m1",
+      source: "polymarket",
+      externalId: "123",
+      slug: "will-it-rain",
+      title: "Will it rain?",
+      description: "desc",
+      status: "open",
+      marketUrl: null,
+      closeTime: null,
+      endTime: null,
+      resolvedAt: null,
+      bestBid: null,
+      bestAsk: null,
+      lastTradePrice: null,
+      volume24h: null,
+      volumeTotal: null,
+      lastSyncedAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      outcomes: [],
+      recentTrades: [],
+      latestOrderbook: [{ externalOutcomeId: "yes", bids: [], asks: [], capturedAt: "2026-01-01T00:00:00.000Z", lastTradePrice: null, bestBid: null, bestAsk: null }],
+    }),
+  });
+
+  t.after(() => {
+    setExternalMarketsRepositoryForTests(null);
+  });
+
+  const response = await handleRequest(new Request("http://localhost/external/markets/polymarket/123/orderbook"));
+  const payload = (await response.json()) as { orderbook: Array<{ externalOutcomeId: string }> };
+  assert.equal(response.status, 200);
+  assert.equal(payload.orderbook[0]?.externalOutcomeId, "yes");
 });

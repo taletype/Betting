@@ -1,3 +1,1 @@
-import { createPolymarketAdapter } from "@bet/integrations";
-
-export const fetchPolymarketGamma = async () => createPolymarketAdapter().listMarkets();
+export { fetchPolymarketGammaMarkets as fetchPolymarketGamma } from "@bet/integrations";
