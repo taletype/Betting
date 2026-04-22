@@ -61,12 +61,29 @@ export const getDatabaseConnectionString = (): string => getConnectionString();
 
 let pool: Pool | null = null;
 
+const getSslConfig = (connectionString: string): { rejectUnauthorized: boolean } | undefined => {
+  try {
+    const url = new URL(connectionString);
+    const sslMode = (url.searchParams.get("sslmode") ?? "").toLowerCase();
+    const isSupabaseHost = url.hostname.includes("supabase.com");
+    const sslExplicitlyDisabled = sslMode === "disable";
+
+    if (isSupabaseHost && !sslExplicitlyDisabled) {
+      return { rejectUnauthorized: false };
+    }
+  } catch {
+    // Connection string validation happens upstream; keep a safe fallback here.
+  }
+
+  return undefined;
+};
+
 const getPool = (): Pool => {
   if (!pool) {
     const connectionString = getConnectionString();
     pool = new Pool({
       connectionString,
-      ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+      ssl: getSslConfig(connectionString),
     });
   }
 
@@ -97,8 +114,10 @@ export const createDatabaseClient = (): DatabaseClient => {
 };
 
 export const createDatabaseNotificationClient = async (): Promise<Client> => {
+  const connectionString = getConnectionString();
   const client = new Client({
-    connectionString: getConnectionString(),
+    connectionString,
+    ssl: getSslConfig(connectionString),
   });
 
   await client.connect();
