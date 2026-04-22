@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { headers } from "next/headers";
+
+import { AppShell } from "./app-shell";
+import { localeHeaderName, resolveLocale } from "../lib/locale";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,26 +10,16 @@ export const metadata: Metadata = {
   description: "Prediction market scaffold",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const headerStore = await headers();
+  const locale = resolveLocale(headerStore.get(localeHeaderName));
+
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body>
-        <div className="shell">
-          <header className="topbar">
-            <Link href="/markets"><strong>Bet</strong></Link>
-            <nav className="nav">
-              <Link href="/markets">Markets</Link>
-              <Link href="/portfolio">Portfolio</Link>
-              <Link href="/referrals">Referrals</Link>
-              <Link href="/claims">Claims</Link>
-              <Link href="/external-markets">Research</Link>
-              <Link href="/admin">Admin</Link>
-            </nav>
-          </header>
-          {children}
-        </div>
+        <AppShell locale={locale}>{children}</AppShell>
       </body>
     </html>
   );

@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { verifyMessage } from "ethers";
 
 import { baseChainId, baseNetworkLabel, baseSettlementAsset } from "../../lib/base-network";
+import { getLocaleCopy, interpolate, type AppLocale } from "../../lib/locale";
 
 type WalletState = "disconnected" | "wrong-network" | "ready";
 
 interface WalletConnectCardProps {
   linkedWalletAddress?: string;
+  locale: AppLocale;
 }
 
 type EthereumProvider = {
@@ -45,7 +47,7 @@ const toWalletState = (connected: boolean, correctChain: boolean): WalletState =
   return "ready";
 };
 
-export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProps) {
+export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnectCardProps) {
   const router = useRouter();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [chainIdHex, setChainIdHex] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const copy = getLocaleCopy(locale).wallet;
   const provider = useMemo(() => readProvider(), []);
 
   const syncWalletState = useCallback(async () => {
@@ -108,7 +111,7 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
 
   const connectWallet = useCallback(async () => {
     if (!provider) {
-      setError("No wallet detected. Install Coinbase Wallet or MetaMask for Base Sepolia testing.");
+      setError(copy.noWalletDetected);
       return;
     }
 
@@ -123,18 +126,18 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
         : [];
 
       if (accounts.length === 0) {
-        throw new Error("Wallet connection was cancelled.");
+        throw new Error(copy.walletConnectionCancelled);
       }
 
       setWalletAddress(accounts[0] ?? null);
       const chainRaw = await provider.request({ method: "eth_chainId" });
       setChainIdHex(typeof chainRaw === "string" ? chainRaw.toLowerCase() : null);
     } catch (connectError) {
-      setError(connectError instanceof Error ? connectError.message : "Failed to connect wallet.");
+      setError(connectError instanceof Error ? connectError.message : copy.failedToConnectWallet);
     } finally {
       setBusy(false);
     }
-  }, [provider]);
+  }, [copy.failedToConnectWallet, copy.noWalletDetected, copy.walletConnectionCancelled, provider]);
 
   const switchToBaseSepolia = useCallback(async () => {
     if (!provider) {
@@ -149,11 +152,11 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
       await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: expectedChainIdHex }] });
       await syncWalletState();
     } catch (switchError) {
-      setError(switchError instanceof Error ? switchError.message : "Failed to switch network.");
+      setError(switchError instanceof Error ? switchError.message : copy.failedToSwitchNetwork);
     } finally {
       setBusy(false);
     }
-  }, [provider, syncWalletState]);
+  }, [copy.failedToSwitchNetwork, provider, syncWalletState]);
 
   const linkWallet = useCallback(async () => {
     if (!provider || !walletAddress) {
@@ -161,7 +164,7 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
     }
 
     if (walletState !== "ready") {
-      setError(`Switch wallet network to ${baseNetworkLabel} before linking.`);
+      setError(interpolate(copy.switchBeforeLink, { network: baseNetworkLabel }));
       return;
     }
 
@@ -175,12 +178,12 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
       const signatureRaw = await provider.request({ method: "personal_sign", params: [signedMessage, walletAddress] });
 
       if (typeof signatureRaw !== "string") {
-        throw new Error("Wallet did not return a valid signature.");
+        throw new Error(copy.invalidSignature);
       }
 
       const recovered = verifyMessage(signedMessage, signatureRaw);
       if (normalizeAddress(recovered) !== normalizeAddress(walletAddress)) {
-        throw new Error("Wallet signature does not match connected account.");
+        throw new Error(copy.signatureMismatch);
       }
 
       const response = await fetch("/api/wallets/link", {
@@ -198,52 +201,62 @@ export function WalletConnectCard({ linkedWalletAddress }: WalletConnectCardProp
         throw new Error(payload.error ?? `Failed to link wallet (${response.status})`);
       }
 
-      setNotice("Wallet linked. Base deposit verification is now enabled for this account.");
+      setNotice(copy.walletLinkedNotice);
       router.refresh();
     } catch (linkError) {
-      setError(linkError instanceof Error ? linkError.message : "Failed to link wallet.");
+      setError(linkError instanceof Error ? linkError.message : copy.failedToLinkWallet);
     } finally {
       setBusy(false);
     }
-  }, [provider, router, walletAddress, walletState]);
+  }, [
+    copy.failedToLinkWallet,
+    copy.invalidSignature,
+    copy.signatureMismatch,
+    copy.switchBeforeLink,
+    copy.walletLinkedNotice,
+    provider,
+    router,
+    walletAddress,
+    walletState,
+  ]);
 
   return (
     <section className="panel stack">
-      <h2 className="section-title">Base Wallet Connect</h2>
+      <h2 className="section-title">{copy.title}</h2>
       <div className="badge badge-neutral">{baseNetworkLabel} · {baseSettlementAsset}</div>
-      <p className="muted">v1 uses Base only. Connect your wallet on {baseNetworkLabel} to enable deposit verification and withdrawals.</p>
+      <p className="muted">{interpolate(copy.subtitle, { network: baseNetworkLabel })}</p>
 
       <div className="stack">
         <div className="kv">
-          <span className="kv-key">Connected wallet</span>
-          <span className="kv-value">{walletAddress ? shortAddress(walletAddress) : "Not connected"}</span>
+          <span className="kv-key">{copy.connectedWallet}</span>
+          <span className="kv-value">{walletAddress ? shortAddress(walletAddress) : copy.notConnected}</span>
         </div>
         <div className="kv">
-          <span className="kv-key">Wallet network</span>
-          <span className="kv-value">{chainIdHex ? `${chainIdHex} (${chainIdHex === expectedChainIdHex ? baseNetworkLabel : "Wrong network"})` : "Unknown"}</span>
+          <span className="kv-key">{copy.walletNetwork}</span>
+          <span className="kv-value">{chainIdHex ? `${chainIdHex} (${chainIdHex === expectedChainIdHex ? baseNetworkLabel : copy.wrongNetwork})` : copy.unknown}</span>
         </div>
         <div className="kv">
-          <span className="kv-key">Linked wallet</span>
-          <span className="kv-value">{linkedWalletAddress ? shortAddress(linkedWalletAddress) : "Not linked"}</span>
+          <span className="kv-key">{copy.linkedWallet}</span>
+          <span className="kv-value">{linkedWalletAddress ? shortAddress(linkedWalletAddress) : copy.notLinked}</span>
         </div>
       </div>
 
-      {walletState === "wrong-network" ? <div className="badge badge-warning">Wrong network. Switch to {baseNetworkLabel}.</div> : null}
-      {walletState === "disconnected" ? <div className="badge badge-neutral">Wallet disconnected.</div> : null}
-      {walletState === "ready" ? <div className="badge badge-success">Wallet connected on {baseNetworkLabel}.</div> : null}
+      {walletState === "wrong-network" ? <div className="badge badge-warning">{interpolate(copy.wrongNetworkBadge, { network: baseNetworkLabel })}</div> : null}
+      {walletState === "disconnected" ? <div className="badge badge-neutral">{copy.disconnectedBadge}</div> : null}
+      {walletState === "ready" ? <div className="badge badge-success">{interpolate(copy.connectedBadge, { network: baseNetworkLabel })}</div> : null}
 
       <div className="cluster">
         <button type="button" onClick={() => void connectWallet()} disabled={busy}>
-          {busy ? "Connecting…" : walletAddress ? "Reconnect Wallet" : "Connect Wallet"}
+          {busy ? copy.connecting : walletAddress ? copy.reconnectWallet : copy.connectWallet}
         </button>
         {walletState === "wrong-network" ? (
           <button type="button" onClick={() => void switchToBaseSepolia()} disabled={busy}>
-            Switch to {baseNetworkLabel}
+            {interpolate(copy.switchToNetwork, { network: baseNetworkLabel })}
           </button>
         ) : null}
         {walletState === "ready" ? (
           <button type="button" onClick={() => void linkWallet()} disabled={busy || normalizeAddress(walletAddress ?? "") === normalizeAddress(linkedWalletAddress ?? "") }>
-            {linkedWalletAddress ? "Relink Wallet" : "Link Wallet"}
+            {linkedWalletAddress ? copy.relinkWallet : copy.linkWallet}
           </button>
         ) : null}
       </div>
