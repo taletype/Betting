@@ -20,10 +20,15 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
 
 export async function renderExternalMarketsPage(locale: AppLocale) {
   const copy = getLocaleCopy(locale).research;
-  const markets = await listExternalMarkets().catch((error) => {
+  let markets = [];
+  let loadFailed = false;
+
+  try {
+    markets = await listExternalMarkets();
+  } catch (error) {
+    loadFailed = true;
     console.error("failed to load external markets", error);
-    return [];
-  });
+  }
 
   return (
     <main className="stack">
@@ -32,7 +37,9 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
         <p>{copy.subtitle}</p>
       </section>
       <section className="stack">
-        {markets.length === 0 ? (
+        {loadFailed ? (
+          <div className="panel empty-state">{copy.loadError}</div>
+        ) : markets.length === 0 ? (
           <div className="panel empty-state">{copy.empty}</div>
         ) : (
           markets.map((market) => (

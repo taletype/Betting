@@ -22,6 +22,22 @@ test("Market Research page renders empty-state when no synced rows exist", async
   assert.match(markup, /pnpm sync:external/);
 });
 
+test("Market Research page renders load error when external market fetch fails", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () => {
+    throw new Error("connect ECONNREFUSED 127.0.0.1:4000");
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  assert.match(markup, /Unable to load synced market data/);
+  assert.doesNotMatch(markup, /No synced market data yet/);
+});
+
 test("Market Research page renders synced rows when external markets exist", async (t) => {
   const originalFetch = globalThis.fetch;
 

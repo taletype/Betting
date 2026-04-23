@@ -205,6 +205,7 @@ export interface LocaleCopy {
     title: string;
     subtitle: string;
     empty: string;
+    loadError: string;
     externalId: string;
     bestBid: string;
     bestAsk: string;
@@ -425,6 +426,7 @@ const en: LocaleCopy = {
     title: "Market Research",
     subtitle: "Reference pricing from Polymarket and Kalshi for market context. Trading remains on each native venue.",
     empty: "No synced market data yet. Run pnpm sync:external, then refresh this page.",
+    loadError: "Unable to load synced market data. Check that the API server is running and API_BASE_URL points to the right backend, then refresh this page.",
     externalId: "External ID",
     bestBid: "Best bid",
     bestAsk: "Best ask",
@@ -653,6 +655,7 @@ const zhCN: LocaleCopy = {
     title: "市场研究",
     subtitle: "参考 Polymarket 和 Kalshi 的价格以获取市场背景。交易仍在各自原生平台完成。",
     empty: "暂无已同步市场数据。运行 pnpm sync:external 后刷新此页面。",
+    loadError: "无法加载已同步的市场数据。请确认 API 服务正在运行，且 API_BASE_URL 指向正确后端，然后刷新此页面。",
     externalId: "外部 ID",
     bestBid: "最佳买价",
     bestAsk: "最佳卖价",
