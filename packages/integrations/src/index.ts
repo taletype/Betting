@@ -19,6 +19,8 @@ export interface NormalizedExternalTradeTick {
   price: number;
   size: number | null;
   tradedAt: string | null;
+  rawJson?: unknown;
+  sourceProvenance?: unknown;
 }
 
 export interface NormalizedExternalMarket {
@@ -53,5 +55,6 @@ export * from "./sources/polymarket";
 export * from "./polymarket/gamma";
 export * from "./polymarket/clob";
 export * from "./polymarket/normalize";
+export * from "./polymarket/trades";
 export * from "./polymarket/types";
 export * from "./polymarket/provenance";

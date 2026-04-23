@@ -42,6 +42,23 @@ export interface PolymarketMarket {
   events?: PolymarketEvent[];
 }
 
+export interface PolymarketDataTrade {
+  proxyWallet?: string;
+  side?: string;
+  asset?: string;
+  conditionId?: string;
+  size?: number | string;
+  price?: number | string;
+  timestamp?: number | string;
+  title?: string;
+  slug?: string;
+  icon?: string;
+  eventSlug?: string;
+  outcome?: string;
+  outcomeIndex?: number;
+  transactionHash?: string;
+}
+
 export interface PolymarketBookLevel {
   price?: string | number;
   size?: string | number;

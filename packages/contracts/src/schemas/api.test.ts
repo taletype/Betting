@@ -17,6 +17,7 @@ import {
   GetClaimsResponseSchema,
   GetDepositsResponseSchema,
   GetExternalMarketBySourceAndIdResponseSchema,
+  GetExternalMarketTradesBySourceAndIdResponseSchema,
   GetExternalMarketsResponseSchema,
   GetMarketByIdResponseSchema,
   GetMarketsResponseSchema,
@@ -265,6 +266,25 @@ test("admin and external market schemas parse expected wire payloads", () => {
 
   assert.doesNotThrow(() => GetExternalMarketsResponseSchema.parse([externalMarket]));
   assert.doesNotThrow(() => GetExternalMarketBySourceAndIdResponseSchema.parse({ market: externalMarket }));
+  assert.doesNotThrow(() =>
+    GetExternalMarketTradesBySourceAndIdResponseSchema.parse({
+      source: "polymarket",
+      externalId: "pm-1",
+      trades: [
+        {
+          externalTradeId: "trade-1",
+          externalOutcomeId: "yes",
+          source: "polymarket",
+          side: "buy",
+          price: 0.42,
+          pricePpm: "420000",
+          size: 5,
+          sizeAtoms: "5000000",
+          executedAt: now,
+        },
+      ],
+    }),
+  );
 });
 
 test("openapi source only lists implemented HTTP routes", () => {
@@ -281,6 +301,7 @@ test("openapi source only lists implemented HTTP routes", () => {
     "/external/markets",
     "/external/markets/{source}/{externalId}",
     "/external/markets/{source}/{externalId}/orderbook",
+    "/external/markets/{source}/{externalId}/trades",
     "/health",
     "/markets",
     "/markets/{marketId}",

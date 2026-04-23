@@ -38,6 +38,7 @@ test("GET /external/markets returns synced data", async (t) => {
       },
     ],
     getExternalMarketRecord: async () => null,
+    listExternalMarketTrades: async () => null,
   });
 
   t.after(() => {
@@ -82,6 +83,7 @@ test("GET /external/markets/:source/:id/orderbook returns latest snapshots", asy
       recentTrades: [],
       latestOrderbook: [{ externalOutcomeId: "yes", bids: [], asks: [], capturedAt: "2026-01-01T00:00:00.000Z", lastTradePrice: null, bestBid: null, bestAsk: null }],
     }),
+    listExternalMarketTrades: async () => [],
   });
 
   t.after(() => {
@@ -92,4 +94,43 @@ test("GET /external/markets/:source/:id/orderbook returns latest snapshots", asy
   const payload = (await response.json()) as { orderbook: Array<{ externalOutcomeId: string }> };
   assert.equal(response.status, 200);
   assert.equal(payload.orderbook[0]?.externalOutcomeId, "yes");
+});
+
+test("GET /external/markets/:source/:id/trades returns imported external trades", async (t) => {
+  const handleRequest = await getHandleRequest();
+
+  setExternalMarketsRepositoryForTests({
+    listExternalMarketRecords: async () => [],
+    getExternalMarketRecord: async () => null,
+    listExternalMarketTrades: async () => [
+      {
+        externalTradeId: "trade-1",
+        externalOutcomeId: "yes",
+        source: "polymarket",
+        side: "buy",
+        price: 0.43,
+        pricePpm: "430000",
+        size: 10,
+        sizeAtoms: "10000000",
+        executedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  t.after(() => {
+    setExternalMarketsRepositoryForTests(null);
+  });
+
+  const response = await handleRequest(new Request("http://localhost/external/markets/polymarket/123/trades"));
+  const payload = (await response.json()) as {
+    source: string;
+    externalId: string;
+    trades: Array<{ externalTradeId: string; pricePpm: string }>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.source, "polymarket");
+  assert.equal(payload.externalId, "123");
+  assert.equal(payload.trades[0]?.externalTradeId, "trade-1");
+  assert.equal(payload.trades[0]?.pricePpm, "430000");
 });

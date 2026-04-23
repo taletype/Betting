@@ -153,6 +153,16 @@ export const apiOpenApiSource = {
         responses: { "200": { description: "OK" }, "404": { description: "Not found" } },
       },
     },
+    "/external/markets/{source}/{externalId}/trades": {
+      get: {
+        summary: "Get imported external trades by market",
+        parameters: [
+          { name: "source", in: "path", required: true, schema: { type: "string", enum: ["polymarket", "kalshi"] } },
+          { name: "externalId", in: "path", required: true, schema: { type: "string" } },
+        ],
+        responses: { "200": { description: "OK" }, "404": { description: "Not found" } },
+      },
+    },
   },
 } as const;
 

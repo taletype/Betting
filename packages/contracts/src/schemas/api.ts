@@ -408,6 +408,18 @@ export const ApiExternalTradeSchema = z.object({
   tradedAt: TimestampSchema,
 });
 
+export const ApiExternalImportedTradeSchema = z.object({
+  externalTradeId: z.string().min(1),
+  externalOutcomeId: z.string().nullable(),
+  source: ApiExternalSourceSchema,
+  side: OrderSideSchema.nullable(),
+  price: z.number().nullable(),
+  pricePpm: BigIntStringSchema.nullable(),
+  size: z.number().nullable(),
+  sizeAtoms: BigIntStringSchema.nullable(),
+  executedAt: TimestampSchema,
+});
+
 export const ApiExternalMarketSchema = z.object({
   id: UuidSchema,
   source: ApiExternalSourceSchema,
@@ -434,6 +446,11 @@ export const ApiExternalMarketSchema = z.object({
 
 export const GetExternalMarketsResponseSchema = z.array(ApiExternalMarketSchema);
 export const GetExternalMarketBySourceAndIdResponseSchema = z.object({ market: ApiExternalMarketSchema.nullable() });
+export const GetExternalMarketTradesBySourceAndIdResponseSchema = z.object({
+  source: ApiExternalSourceSchema,
+  externalId: z.string().min(1),
+  trades: z.array(ApiExternalImportedTradeSchema),
+});
 
 export type ApiHealthResponse = z.infer<typeof ApiHealthResponseSchema>;
 export type ApiReadyResponse = z.infer<typeof ApiReadyResponseSchema>;
@@ -462,3 +479,4 @@ export type AdminFailWithdrawalRequest = z.infer<typeof AdminFailWithdrawalReque
 export type AdminWithdrawalActionResponse = z.infer<typeof AdminWithdrawalActionResponseSchema>;
 export type GetExternalMarketsResponse = z.infer<typeof GetExternalMarketsResponseSchema>;
 export type GetExternalMarketBySourceAndIdResponse = z.infer<typeof GetExternalMarketBySourceAndIdResponseSchema>;
+export type GetExternalMarketTradesBySourceAndIdResponse = z.infer<typeof GetExternalMarketTradesBySourceAndIdResponseSchema>;

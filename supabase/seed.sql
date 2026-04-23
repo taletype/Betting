@@ -712,23 +712,35 @@ insert into public.external_trade_ticks (
   external_market_id,
   external_trade_id,
   external_outcome_id,
+  source,
   side,
   price,
+  price_ppm,
   size,
+  size_atoms,
   traded_at,
+  executed_at,
   raw_payload,
+  raw_json,
+  source_provenance,
   created_at
 ) values
-  ('f2f2f2f2-1111-4111-8111-111111111111', 'efefefef-1111-4111-8111-111111111111', 'poly-trade-1', 'yes', 'buy', 0.59, 2500, '2026-04-20T04:55:00.000Z', '{"seed":"true"}'::jsonb, '2026-04-20T04:55:00.000Z'),
-  ('f2f2f2f2-2222-4222-8222-222222222222', 'efefefef-1111-4111-8111-111111111111', 'poly-trade-2', 'no', 'sell', 0.41, 1900, '2026-04-20T04:58:00.000Z', '{"seed":"true"}'::jsonb, '2026-04-20T04:58:00.000Z'),
-  ('f2f2f2f2-3333-4333-8333-333333333333', 'efefefef-2222-4222-8222-222222222222', 'kal-trade-1', 'yes', 'buy', 0.10, 800, '2025-11-03T13:55:00.000Z', '{"seed":"true"}'::jsonb, '2025-11-03T13:55:00.000Z'),
-  ('f2f2f2f2-4444-4444-8444-444444444444', 'efefefef-3333-4333-8333-333333333333', 'poly-ai-trade-1', 'yes', 'buy', 0.42, 1200, '2026-04-20T05:19:00.000Z', '{"seed":"true"}'::jsonb, '2026-04-20T05:19:00.000Z'),
-  ('f2f2f2f2-5555-4555-8555-555555555555', 'efefefef-3333-4333-8333-333333333333', 'poly-ai-trade-2', 'no', 'sell', 0.58, 950, '2026-04-20T05:21:00.000Z', '{"seed":"true"}'::jsonb, '2026-04-20T05:21:00.000Z')
+  ('f2f2f2f2-1111-4111-8111-111111111111', 'efefefef-1111-4111-8111-111111111111', 'poly-trade-1', 'yes', 'polymarket', 'buy', 0.59, 590000, 2500, 2500000000, '2026-04-20T04:55:00.000Z', '2026-04-20T04:55:00.000Z', '{"seed":"true"}'::jsonb, '{"seed":"true"}'::jsonb, '{"source":"seed"}'::jsonb, '2026-04-20T04:55:00.000Z'),
+  ('f2f2f2f2-2222-4222-8222-222222222222', 'efefefef-1111-4111-8111-111111111111', 'poly-trade-2', 'no', 'polymarket', 'sell', 0.41, 410000, 1900, 1900000000, '2026-04-20T04:58:00.000Z', '2026-04-20T04:58:00.000Z', '{"seed":"true"}'::jsonb, '{"seed":"true"}'::jsonb, '{"source":"seed"}'::jsonb, '2026-04-20T04:58:00.000Z'),
+  ('f2f2f2f2-3333-4333-8333-333333333333', 'efefefef-2222-4222-8222-222222222222', 'kal-trade-1', 'yes', 'kalshi', 'buy', 0.10, 100000, 800, 800000000, '2025-11-03T13:55:00.000Z', '2025-11-03T13:55:00.000Z', '{"seed":"true"}'::jsonb, '{"seed":"true"}'::jsonb, '{"source":"seed"}'::jsonb, '2025-11-03T13:55:00.000Z'),
+  ('f2f2f2f2-4444-4444-8444-444444444444', 'efefefef-3333-4333-8333-333333333333', 'poly-ai-trade-1', 'yes', 'polymarket', 'buy', 0.42, 420000, 1200, 1200000000, '2026-04-20T05:19:00.000Z', '2026-04-20T05:19:00.000Z', '{"seed":"true"}'::jsonb, '{"seed":"true"}'::jsonb, '{"source":"seed"}'::jsonb, '2026-04-20T05:19:00.000Z'),
+  ('f2f2f2f2-5555-4555-8555-555555555555', 'efefefef-3333-4333-8333-333333333333', 'poly-ai-trade-2', 'no', 'polymarket', 'sell', 0.58, 580000, 950, 950000000, '2026-04-20T05:21:00.000Z', '2026-04-20T05:21:00.000Z', '{"seed":"true"}'::jsonb, '{"seed":"true"}'::jsonb, '{"source":"seed"}'::jsonb, '2026-04-20T05:21:00.000Z')
 on conflict (external_market_id, external_trade_id) do update
 set price = excluded.price,
+    price_ppm = excluded.price_ppm,
     size = excluded.size,
+    size_atoms = excluded.size_atoms,
+    source = excluded.source,
     traded_at = excluded.traded_at,
-    raw_payload = excluded.raw_payload;
+    executed_at = excluded.executed_at,
+    raw_payload = excluded.raw_payload,
+    raw_json = excluded.raw_json,
+    source_provenance = excluded.source_provenance;
 
 insert into public.external_sync_checkpoints (
   id,

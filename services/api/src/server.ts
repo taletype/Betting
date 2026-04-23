@@ -9,7 +9,11 @@ import type {
   ApiReadyResponse,
 } from "@bet/contracts";
 
-import { getExternalMarketBySourceAndId, listExternalMarkets } from "./modules/external-markets/handlers";
+import {
+  getExternalMarketBySourceAndId,
+  getExternalMarketTradesBySourceAndId,
+  listExternalMarkets,
+} from "./modules/external-markets/handlers";
 import { getHealth } from "./modules/health/handlers";
 import {
   getMarketById,
@@ -166,6 +170,27 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
+    }
+
+    if (
+      request.method === "GET" &&
+      segments.length >= 5 &&
+      segments[0] === "external" &&
+      segments[1] === "markets" &&
+      segments[4] === "trades"
+    ) {
+      const trades = await getExternalMarketTradesBySourceAndId(segments[2] ?? "", decodeURIComponent(segments[3] ?? ""));
+      return new Response(
+        toJson({
+          source: segments[2] ?? "",
+          externalId: decodeURIComponent(segments[3] ?? ""),
+          trades: trades ?? [],
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: trades ? 200 : 404,
+        },
+      );
     }
 
     if (

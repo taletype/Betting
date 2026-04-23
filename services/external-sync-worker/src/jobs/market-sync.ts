@@ -5,10 +5,20 @@ import { createKalshiAdapter, createPolymarketAdapter, type ExternalMarketAdapte
 import { incrementCounter, logger, observeDuration, recordGauge } from "@bet/observability";
 
 const db = createDatabaseClient();
+const EXTERNAL_PRICE_SCALE = 1_000_000;
+const EXTERNAL_SIZE_SCALE = 1_000_000;
 
 const defaultAdapters: ExternalMarketAdapter[] = [createPolymarketAdapter(), createKalshiAdapter()];
 const isExternalSyncWritesDisabled = (): boolean =>
   (process.env.OP_DISABLE_EXTERNAL_SYNC_WRITES ?? "").trim().toLowerCase() === "true";
+
+const toScaledIntegerString = (value: number | null, scale: number): string | null => {
+  if (value === null || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return String(Math.round(value * scale));
+};
 
 export const upsertMarket = async (database: DatabaseClient, market: NormalizedExternalMarket): Promise<void> => {
   await database.transaction(async (tx) => {
@@ -126,23 +136,35 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
     }
 
     for (const tick of market.recentTrades) {
+      const tickRawJson = tick.rawJson ?? tick;
+      const tickSourceProvenance = tick.sourceProvenance ?? sourceProvenance;
+
       await tx.query(
         `
           insert into public.external_trade_ticks (
-            external_market_id, external_trade_id, external_outcome_id, side, price, size,
-            traded_at, raw_payload, source_provenance, last_seen_at
+            external_market_id, external_trade_id, external_outcome_id, source, side,
+            price, price_ppm, size, size_atoms,
+            traded_at, executed_at,
+            raw_payload, raw_json, source_provenance, last_seen_at
           ) values (
-            $1::uuid, $2, $3, $4, $5, $6, coalesce($7::timestamptz, now()),
-            $8::jsonb, $9::jsonb, now()
+            $1::uuid, $2, $3, $4, $5,
+            $6, $7::bigint, $8, $9::bigint,
+            coalesce($10::timestamptz, now()), coalesce($10::timestamptz, now()),
+            $11::jsonb, $12::jsonb, $13::jsonb, now()
           )
           on conflict (external_market_id, external_trade_id)
           do update set
             external_outcome_id = excluded.external_outcome_id,
+            source = excluded.source,
             side = excluded.side,
             price = excluded.price,
+            price_ppm = excluded.price_ppm,
             size = excluded.size,
+            size_atoms = excluded.size_atoms,
             traded_at = excluded.traded_at,
+            executed_at = excluded.executed_at,
             raw_payload = excluded.raw_payload,
+            raw_json = excluded.raw_json,
             source_provenance = excluded.source_provenance,
             last_seen_at = now()
         `,
@@ -150,12 +172,16 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
           marketId,
           tick.tradeId,
           tick.outcomeExternalId,
+          market.source,
           tick.side,
           tick.price,
+          toScaledIntegerString(tick.price, EXTERNAL_PRICE_SCALE),
           tick.size,
+          toScaledIntegerString(tick.size, EXTERNAL_SIZE_SCALE),
           tick.tradedAt,
           JSON.stringify(tick),
-          JSON.stringify(sourceProvenance),
+          JSON.stringify(tickRawJson),
+          JSON.stringify(tickSourceProvenance),
         ],
       );
     }

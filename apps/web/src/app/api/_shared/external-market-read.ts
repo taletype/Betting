@@ -40,9 +40,9 @@ interface ExternalTradeRow {
   external_trade_id: string;
   external_outcome_id: string | null;
   side: "buy" | "sell" | null;
-  price: string | number;
-  size: string | number | null;
-  traded_at: string;
+  price_ppm: string | number | null;
+  size_atoms: string | number | null;
+  executed_at: string;
 }
 
 const toNumber = (value: string | number | null): number | null => {
@@ -94,9 +94,15 @@ const mapExternalTrade = (row: ExternalTradeRow) => ({
   externalTradeId: row.external_trade_id,
   externalOutcomeId: row.external_outcome_id,
   side: row.side,
-  price: toNumber(row.price),
-  size: toNumber(row.size),
-  tradedAt: row.traded_at,
+  price: (() => {
+    const pricePpm = toNumber(row.price_ppm);
+    return pricePpm === null ? null : pricePpm / 1_000_000;
+  })(),
+  size: (() => {
+    const sizeAtoms = toNumber(row.size_atoms);
+    return sizeAtoms === null ? null : sizeAtoms / 1_000_000;
+  })(),
+  tradedAt: row.executed_at,
 });
 
 export async function readExternalMarkets(supabase: {
@@ -147,9 +153,9 @@ export async function readExternalMarkets(supabase: {
         };
       };
     })
-      .select("external_market_id, external_trade_id, external_outcome_id, side, price, size, traded_at")
+      .select("external_market_id, external_trade_id, external_outcome_id, side, price_ppm, size_atoms, executed_at")
       .in("external_market_id", marketIds)
-      .order("traded_at", { ascending: false }),
+      .order("executed_at", { ascending: false }),
   ]);
 
   if (outcomeResult.error) {
@@ -162,19 +168,45 @@ export async function readExternalMarkets(supabase: {
 
   const markets = marketRows.map(mapExternalMarket);
   const byId = new Map(markets.map((market) => [market.id, market]));
+  const outcomeByMarketAndExternalId = new Map<string, ReturnType<typeof mapExternalOutcome>>();
 
   for (const outcome of outcomeResult.data ?? []) {
-    byId.get(outcome.external_market_id)?.outcomes.push(mapExternalOutcome(outcome));
+    const market = byId.get(outcome.external_market_id);
+    if (!market) {
+      continue;
+    }
+
+    const mapped = mapExternalOutcome(outcome);
+    market.outcomes.push(mapped);
+    outcomeByMarketAndExternalId.set(`${outcome.external_market_id}:${outcome.external_outcome_id}`, mapped);
   }
 
   const tradeCounts = new Map<string, number>();
+  const latestTradeByMarket = new Set<string>();
+  const latestTradeByOutcome = new Set<string>();
   for (const trade of tradeResult.data ?? []) {
+    const market = byId.get(trade.external_market_id);
+    const mappedTrade = mapExternalTrade(trade);
+    if (market && !latestTradeByMarket.has(trade.external_market_id)) {
+      market.lastTradePrice = mappedTrade.price;
+      latestTradeByMarket.add(trade.external_market_id);
+    }
+
+    if (trade.external_outcome_id) {
+      const outcomeKey = `${trade.external_market_id}:${trade.external_outcome_id}`;
+      const outcome = outcomeByMarketAndExternalId.get(outcomeKey);
+      if (outcome && !latestTradeByOutcome.has(outcomeKey)) {
+        outcome.lastPrice = mappedTrade.price;
+        latestTradeByOutcome.add(outcomeKey);
+      }
+    }
+
     const current = tradeCounts.get(trade.external_market_id) ?? 0;
     if (current >= 20) {
       continue;
     }
 
-    byId.get(trade.external_market_id)?.recentTrades.push(mapExternalTrade(trade));
+    market?.recentTrades.push(mappedTrade);
     tradeCounts.set(trade.external_market_id, current + 1);
   }
 

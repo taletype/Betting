@@ -96,10 +96,11 @@ test("repository list/detail map synced external market rows", async () => {
             external_market_id: "m1",
             external_trade_id: "t1",
             external_outcome_id: "yes",
+            source: "polymarket",
             side: "buy",
-            price: "0.43",
-            size: "10",
-            traded_at: "2026-01-01T00:00:00.000Z",
+            price_ppm: "430000",
+            size_atoms: "10000000",
+            executed_at: "2026-01-01T00:00:00.000Z",
           },
         ];
       }
@@ -119,6 +120,54 @@ test("repository list/detail map synced external market rows", async () => {
   const detail = await repository.getExternalMarketRecord("polymarket", "123");
   assert.equal(detail?.externalId, "123");
   assert.equal(detail?.outcomes[0]?.title, "Yes");
+  assert.equal(detail?.lastTradePrice, 0.43);
+  assert.equal(detail?.outcomes[0]?.lastPrice, 0.43);
+});
+
+test("repository returns imported trades ordered by executed_at desc", async () => {
+  const db = {
+    async query(statement: string) {
+      if (statement.includes("from public.external_markets") && statement.includes("limit 1")) {
+        return [{ id: "m1" }];
+      }
+
+      if (statement.includes("from public.external_trade_ticks")) {
+        return [
+          {
+            external_market_id: "m1",
+            external_trade_id: "t-new",
+            external_outcome_id: "yes",
+            source: "polymarket",
+            side: "buy",
+            price_ppm: "510000",
+            size_atoms: "12000000",
+            executed_at: "2026-01-02T00:00:00.000Z",
+          },
+          {
+            external_market_id: "m1",
+            external_trade_id: "t-old",
+            external_outcome_id: "no",
+            source: "polymarket",
+            side: "sell",
+            price_ppm: "490000",
+            size_atoms: "7000000",
+            executed_at: "2026-01-01T00:00:00.000Z",
+          },
+        ];
+      }
+
+      return [];
+    },
+  };
+
+  const repository = createExternalMarketsRepository(db as never);
+  const trades = await repository.listExternalMarketTrades("polymarket", "123");
+
+  assert.equal(trades?.length, 2);
+  assert.equal(trades?.[0]?.externalTradeId, "t-new");
+  assert.equal(trades?.[0]?.pricePpm, "510000");
+  assert.equal(trades?.[0]?.sizeAtoms, "12000000");
+  assert.equal(trades?.[0]?.executedAt, "2026-01-02T00:00:00.000Z");
 });
 
 test("repository returns empty list and null detail when no rows exist", async () => {
