@@ -1,6 +1,6 @@
 import React from "react";
 
-import { listExternalMarkets } from "../../lib/api";
+import { listExternalMarkets, type ExternalMarketApiRecord } from "../../lib/api";
 import { formatDateTime, getLocaleCopy, type AppLocale } from "../../lib/locale";
 
 const toDisplay = (value: number | null, locale: AppLocale): string =>
@@ -20,7 +20,7 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
 
 export async function renderExternalMarketsPage(locale: AppLocale) {
   const copy = getLocaleCopy(locale).research;
-  let markets = [];
+  let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
 
   try {
