@@ -49,7 +49,7 @@ const getOptionalProxyHeaders = async (): Promise<HeadersInit> => {
   return headers;
 };
 
-const getApiBaseUrl = (): string => {
+const getConfiguredApiBaseUrl = (): string => {
   const configuredUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
 
   if (configuredUrl) {
@@ -77,23 +77,23 @@ const getLocalWebBaseUrl = (): string => {
   return `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
 };
 
-const getApiUrl = (path: string): string => {
-  const base = getApiBaseUrl();
-  if (base) {
-    return `${base}${path}`;
-  }
-
+const getLocalApiUrl = (path: string): string => {
   const localPath = path.startsWith("/api/") ? path : `/api${path}`;
   const localBase = getLocalWebBaseUrl();
   return localBase ? `${localBase}${localPath}` : localPath;
 };
 
-export const apiRequest = async <T>(
-  path: string,
+const getApiUrl = (path: string): string => {
+  const base = getConfiguredApiBaseUrl();
+  return base ? `${base}${path}` : getLocalApiUrl(path);
+};
+
+class ApiResponseError extends Error {}
+
+const executeApiRequest = async <T>(
+  url: string,
   init?: RequestInit & { allowNotFound?: boolean },
 ): Promise<T | null> => {
-  const url = getApiUrl(path);
-
   const response = await fetch(url, {
     ...init,
     headers: {
@@ -110,21 +110,49 @@ export const apiRequest = async <T>(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(payload.error ?? `API request failed for ${path}: ${response.status}`);
+    throw new ApiResponseError(payload.error ?? `API request failed for ${url}: ${response.status}`);
   }
 
   return (await response.json()) as T;
 };
 
+export const apiRequest = async <T>(
+  path: string,
+  init?: RequestInit & { allowNotFound?: boolean; fallbackToLocal?: boolean },
+): Promise<T | null> => {
+  const url = getApiUrl(path);
+
+  try {
+    return await executeApiRequest<T>(url, init);
+  } catch (error) {
+    const configuredBase = getConfiguredApiBaseUrl();
+    const fallbackUrl = getLocalApiUrl(path);
+
+    if (!init?.fallbackToLocal || !configuredBase || fallbackUrl === url || error instanceof ApiResponseError) {
+      throw error;
+    }
+
+    console.warn(`apiRequest fallback for ${path}: retrying via local Next API route`, error);
+    return executeApiRequest<T>(fallbackUrl, init);
+  }
+};
+
 const readApiJson = async (
   path: string,
-  options?: { allowNotFound?: boolean; method?: string; body?: unknown; headers?: HeadersInit },
+  options?: {
+    allowNotFound?: boolean;
+    method?: string;
+    body?: unknown;
+    headers?: HeadersInit;
+    fallbackToLocal?: boolean;
+  },
 ) =>
   apiRequest(path, {
     method: options?.method ?? "GET",
     headers: options?.headers,
     body: options?.body ? JSON.stringify(options.body) : undefined,
     allowNotFound: options?.allowNotFound,
+    fallbackToLocal: options?.fallbackToLocal,
   });
 
 export const toBigInt = (value: string | number | bigint | null | undefined): bigint => {
@@ -329,6 +357,6 @@ export interface ExternalMarketApiRecord {
 }
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
-  const payload = await readApiJson("/external/markets");
+  const payload = await readApiJson("/external/markets", { fallbackToLocal: true });
   return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
 };

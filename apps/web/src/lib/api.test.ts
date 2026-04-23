@@ -171,6 +171,50 @@ test("listExternalMarkets uses standalone API route when API base is configured"
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
 });
 
+test("listExternalMarkets falls back to local Next API route when configured API base is unreachable", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const calls: FetchCall[] = [];
+
+  process.env.API_BASE_URL = "https://api.example.com";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async (...args: FetchCall) => {
+    calls.push(args);
+
+    if (calls.length === 1) {
+      throw new Error("connect ECONNREFUSED api.example.com:443");
+    }
+
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  const markets = await listExternalMarkets();
+
+  assert.deepEqual(markets, []);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
+  assert.equal(calls[1]?.[0], "http://127.0.0.1:3000/api/external/markets");
+});
+
 test("getMlmDashboard uses local Next API route when API base is not configured", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
