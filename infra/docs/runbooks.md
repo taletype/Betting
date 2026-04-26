@@ -11,6 +11,7 @@ Direct links:
 - `infra/docs/runbooks/market-resolution-claims.md`
 - `infra/docs/runbooks/reconciliation-worker.md`
 - `infra/docs/runbooks/external-sync-worker.md`
+- `infra/docs/runbooks/external-markets-deployment-checklist.md`
 - `infra/docs/runbooks/websocket-recovery.md`
 - `infra/docs/runbooks/incidents.md`
 - `infra/docs/runbooks/launch-checklist.md`

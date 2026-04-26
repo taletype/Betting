@@ -69,6 +69,8 @@ Required (no placeholders, rotation-ready):
 ### `apps/web` (server runtime)
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_WS_URL`
+- `API_BASE_URL` (required for server-rendered API reads like `/external-markets`)
+- `NEXT_PUBLIC_API_BASE_URL` (optional; required only for browser-side direct API reads)
 - `ADMIN_API_TOKEN` (for admin server actions)
 
 ### `apps/ws`

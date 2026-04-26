@@ -171,7 +171,7 @@ test("listExternalMarkets uses standalone API route when API base is configured"
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
 });
 
-test("listExternalMarkets falls back to local Next API route when configured API base is unreachable", async (t) => {
+test("listExternalMarkets surfaces network error when configured API base is unreachable", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -182,15 +182,7 @@ test("listExternalMarkets falls back to local Next API route when configured API
 
   globalThis.fetch = (async (...args: FetchCall) => {
     calls.push(args);
-
-    if (calls.length === 1) {
-      throw new Error("connect ECONNREFUSED api.example.com:443");
-    }
-
-    return new Response(JSON.stringify([]), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    throw new Error("connect ECONNREFUSED api.example.com:443");
   }) as typeof globalThis.fetch;
 
   t.after(() => {
@@ -207,12 +199,39 @@ test("listExternalMarkets falls back to local Next API route when configured API
     }
   });
 
-  const markets = await listExternalMarkets();
-
-  assert.deepEqual(markets, []);
-  assert.equal(calls.length, 2);
+  await assert.rejects(() => listExternalMarkets(), /ECONNREFUSED/);
+  assert.equal(calls.length, 1);
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
-  assert.equal(calls[1]?.[0], "http://127.0.0.1:3000/api/external/markets");
+});
+
+test("listExternalMarkets fails fast in production when API_BASE_URL is not configured", async (t) => {
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.NODE_ENV = "production";
+
+  t.after(() => {
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
+  await assert.rejects(() => listExternalMarkets(), /Missing API base URL/);
 });
 
 test("getMlmDashboard uses local Next API route when API base is not configured", async (t) => {
