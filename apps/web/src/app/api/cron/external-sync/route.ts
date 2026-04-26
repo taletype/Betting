@@ -6,7 +6,7 @@ const getApiBaseUrl = (): string => {
     return configured.replace(/\/+$/, "");
   }
 
-  return "http://127.0.0.1:4000";
+  throw new Error("Missing API_BASE_URL for cron external sync trigger");
 };
 
 export async function GET(request: Request) {
@@ -16,11 +16,16 @@ export async function GET(request: Request) {
     return unauthorized;
   }
 
+  const adminToken = process.env.ADMIN_API_TOKEN?.trim();
+  if (!adminToken) {
+    return Response.json({ error: "Missing ADMIN_API_TOKEN for cron external sync trigger" }, { status: 500 });
+  }
+
   const response = await fetch(`${getApiBaseUrl()}/admin/external-sync/run`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-admin-token": process.env.ADMIN_API_TOKEN?.trim() || "dev-admin-token",
+      "x-admin-token": adminToken,
     },
     cache: "no-store",
   });

@@ -83,9 +83,22 @@ const getLocalApiUrl = (path: string): string => {
   return localBase ? `${localBase}${localPath}` : localPath;
 };
 
-const getApiUrl = (path: string): string => {
+const isProductionRuntime = (): boolean =>
+  process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+
+const getApiUrl = (path: string, options?: { requireConfiguredBaseUrl?: boolean }): string => {
   const base = getConfiguredApiBaseUrl();
-  return base ? `${base}${path}` : getLocalApiUrl(path);
+  if (base) {
+    return `${base}${path}`;
+  }
+
+  if (options?.requireConfiguredBaseUrl && isProductionRuntime()) {
+    throw new Error(
+      `Missing API base URL for ${path}. Set API_BASE_URL (and NEXT_PUBLIC_API_BASE_URL if client calls are needed).`,
+    );
+  }
+
+  return getLocalApiUrl(path);
 };
 
 class ApiResponseError extends Error {}
@@ -118,9 +131,13 @@ const executeApiRequest = async <T>(
 
 export const apiRequest = async <T>(
   path: string,
-  init?: RequestInit & { allowNotFound?: boolean; fallbackToLocal?: boolean },
+  init?: RequestInit & {
+    allowNotFound?: boolean;
+    fallbackToLocal?: boolean;
+    requireConfiguredBaseUrl?: boolean;
+  },
 ): Promise<T | null> => {
-  const url = getApiUrl(path);
+  const url = getApiUrl(path, { requireConfiguredBaseUrl: init?.requireConfiguredBaseUrl });
 
   try {
     return await executeApiRequest<T>(url, init);
@@ -145,6 +162,7 @@ const readApiJson = async (
     body?: unknown;
     headers?: HeadersInit;
     fallbackToLocal?: boolean;
+    requireConfiguredBaseUrl?: boolean;
   },
 ) =>
   apiRequest(path, {
@@ -153,6 +171,7 @@ const readApiJson = async (
     body: options?.body ? JSON.stringify(options.body) : undefined,
     allowNotFound: options?.allowNotFound,
     fallbackToLocal: options?.fallbackToLocal,
+    requireConfiguredBaseUrl: options?.requireConfiguredBaseUrl,
   });
 
 export const toBigInt = (value: string | number | bigint | null | undefined): bigint => {
@@ -357,6 +376,8 @@ export interface ExternalMarketApiRecord {
 }
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
-  const payload = await readApiJson("/external/markets", { fallbackToLocal: true });
+  const payload = await readApiJson("/external/markets", {
+    requireConfiguredBaseUrl: true,
+  });
   return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
 };
