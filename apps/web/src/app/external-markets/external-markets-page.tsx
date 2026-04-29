@@ -38,7 +38,8 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
   let loadFailed = false;
   const showPolymarketTradeCta = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
-  const submitterMode = routedTradingEnabled && showPolymarketTradeCta ? "mock" : "disabled";
+  const submitterAvailable = process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
+  const submitterMode = routedTradingEnabled && submitterAvailable ? "enabled" : "disabled";
 
   try {
     markets = await listExternalMarkets();
@@ -57,7 +58,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
         <strong>{copy.builderDebug}</strong>
         <div className="kv"><span className="kv-key">{copy.builderCodeConfigured}</span><span className="kv-value">{showPolymarketTradeCta ? copy.yes : copy.no}</span></div>
         <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{routedTradingEnabled ? copy.yes : copy.no}</span></div>
-        <div className="kv"><span className="kv-key">{copy.orderSubmitterMode}</span><span className="kv-value">{submitterMode === "mock" ? copy.mock : copy.disabled}</span></div>
+        <div className="kv"><span className="kv-key">{copy.orderSubmitterMode}</span><span className="kv-value">{submitterMode === "enabled" ? copy.yes : copy.disabled}</span></div>
         <div className="kv"><span className="kv-key">{copy.intendedFees}</span><span className="kv-value">taker 0.25%, maker 0%</span></div>
         <div className="muted">{copy.feeNotice}</div>
       </section>
@@ -108,6 +109,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
                   walletConnected={false}
                   hasCredentials={false}
                   marketTradable={market.status === "open"}
+                  submitterAvailable={submitterAvailable}
                  marketTitle={market.title}
                   outcome={market.outcomes[0]?.title ?? "Yes"}
                   side="buy"

@@ -16,10 +16,19 @@ const forbiddenChineseTerms = [
   "代客交易",
   "入會費",
   "套餐解鎖收益",
+  "MLM",
+  "downline",
+  "passive income",
+  "guaranteed profit",
+  "managed betting",
 ];
 
 test("key zh-HK ambassador copy avoids forbidden terms", () => {
-  const ambassadorCopy = JSON.stringify(getLocaleCopy("zh-HK").ambassador);
+  const ambassadorCopy = JSON.stringify({
+    ambassador: getLocaleCopy("zh-HK").ambassador,
+    rewards: getLocaleCopy("zh-HK").rewards,
+    research: getLocaleCopy("zh-HK").research,
+  });
   for (const term of forbiddenChineseTerms) {
     assert.doesNotMatch(ambassadorCopy, new RegExp(term));
   }

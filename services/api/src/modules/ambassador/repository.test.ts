@@ -125,7 +125,7 @@ test("no referrer sends the referrer share to platform revenue", () => {
 
 test("no second-tier reward type is created", () => {
   const unexpectedRewardTypes = ambassadorRewardTypes.filter((rewardType) =>
-    /recruit|generation|tier|ancestor|recursive/i.test(rewardType),
+    /recruit|generation|tier|ancestor|recursive|downline|second/i.test(rewardType),
   );
 
   assert.deepEqual(unexpectedRewardTypes, []);
@@ -177,7 +177,7 @@ test("ambassador migration contains direct-only reward tables", () => {
   assert.match(migration, /create table if not exists public\.ambassador_codes/i);
   assert.match(migration, /create table if not exists public\.referral_attributions/i);
   assert.match(migration, /create table if not exists public\.ambassador_reward_ledger/i);
-  assert.doesNotMatch(migration, /parent_referrer_id|sponsor_tree|ancestor|closure|nested|binary|matrix|spillover|level_[0-9]|team_captain|with recursive/i);
+  assert.doesNotMatch(migration, /parent_referrer_id|sponsor_tree|ancestor|closure|nested|binary|matrix|spillover|level_[0-9]|team_captain|with recursive|downline|second_level/i);
 });
 
 test("reward accounting module does not import internal balance mutation modules", () => {

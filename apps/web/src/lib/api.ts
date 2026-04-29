@@ -401,6 +401,16 @@ export interface ExternalMarketApiTrade {
   tradedAt: string;
 }
 
+export interface ExternalMarketApiOrderbookSnapshot {
+  externalOutcomeId: string;
+  bids: unknown;
+  asks: unknown;
+  capturedAt: string;
+  lastTradePrice: number | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+}
+
 export interface ExternalMarketApiRecord {
   id: string;
   source: "polymarket" | "kalshi";
@@ -423,6 +433,7 @@ export interface ExternalMarketApiRecord {
   updatedAt: string;
   outcomes: ExternalMarketApiOutcome[];
   recentTrades: ExternalMarketApiTrade[];
+  latestOrderbook?: ExternalMarketApiOrderbookSnapshot[];
 }
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {

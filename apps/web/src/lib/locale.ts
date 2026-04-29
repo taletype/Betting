@@ -274,6 +274,10 @@ export interface LocaleCopy {
     builderDebug: string;
     builderCodeConfigured: string;
     routedTradingEnabled: string;
+    walletConnected: string;
+    polymarketCredentials: string;
+    marketTradable: string;
+    submitterAvailable: string;
     orderSubmitterMode: string;
     intendedFees: string;
     feeNotice: string;
@@ -619,6 +623,10 @@ const en: LocaleCopy = {
     builderDebug: "Builder Routing Debug",
     builderCodeConfigured: "builder code configured",
     routedTradingEnabled: "routed trading enabled",
+    walletConnected: "wallet connected",
+    polymarketCredentials: "Polymarket credentials present",
+    marketTradable: "market tradable",
+    submitterAvailable: "submitter available",
     orderSubmitterMode: "order submitter mode",
     intendedFees: "intended fees",
     feeNotice: "Actual fees are configured in Polymarket Builder settings, not locally.",
@@ -648,6 +656,7 @@ const en: LocaleCopy = {
       wallet_not_connected: "Wallet not connected",
       credentials_missing: "Polymarket credentials required",
       market_not_tradable: "Market not tradable",
+      submitter_unavailable: "Submitter unavailable",
       ready_to_route: "Ready (submission scaffold only)",
     },
     polymarketRoutingPending: "POLYMARKET_ROUTED_TRADING_ENABLED is disabled until user signing/API credential flow is wired.",
@@ -974,6 +983,10 @@ const zhHK: DeepPartial<LocaleCopy> = {
     builderDebug: "Builder 路由除錯",
     builderCodeConfigured: "Builder 代碼已設定",
     routedTradingEnabled: "路由交易已啟用",
+    walletConnected: "錢包已連接",
+    polymarketCredentials: "Polymarket 憑證已準備",
+    marketTradable: "市場可交易",
+    submitterAvailable: "提交器可用",
     orderSubmitterMode: "訂單提交模式",
     intendedFees: "預期費用",
     feeNotice: "實際費用由 Polymarket Builder 設定，本地不作配置。",
@@ -1003,6 +1016,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
       wallet_not_connected: "尚未連接錢包",
       credentials_missing: "需要 Polymarket 憑證",
       market_not_tradable: "市場暫不可交易",
+      submitter_unavailable: "提交器暫不可用",
       ready_to_route: "已準備好 (只限提交框架)",
     },
     polymarketRoutingPending: "用戶簽署及 API 憑證流程完成前，POLYMARKET_ROUTED_TRADING_ENABLED 會保持關閉。",

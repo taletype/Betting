@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 
-export function CopyButton({ value, label, copiedLabel = label }: { value: string; label: string; copiedLabel?: string }) {
+export function CopyButton({
+  value,
+  label,
+  copiedLabel = label,
+  onCopied,
+}: {
+  value: string;
+  label: string;
+  copiedLabel?: string;
+  onCopied?: () => void;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -11,6 +21,7 @@ export function CopyButton({ value, label, copiedLabel = label }: { value: strin
       onClick={async () => {
         await navigator.clipboard.writeText(value);
         setCopied(true);
+        onCopied?.();
         window.setTimeout(() => setCopied(false), 1600);
       }}
       title={label}

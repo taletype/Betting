@@ -10,3 +10,17 @@ export const readReferralCodeFromSearch = (search: string): string | null => {
   const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
   return normalizeReferralCode(params.get("ref"));
 };
+
+export const selectReferralCodeToPersist = (
+  existingCode: string | null | undefined,
+  incomingCode: string | null | undefined,
+): string | null => {
+  const existing = normalizeReferralCode(existingCode);
+  const incoming = normalizeReferralCode(incomingCode);
+
+  if (!incoming || existing) {
+    return null;
+  }
+
+  return incoming;
+};

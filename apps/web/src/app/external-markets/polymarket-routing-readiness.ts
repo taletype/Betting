@@ -4,6 +4,7 @@ export type PolymarketRoutingReadiness =
   | "wallet_not_connected"
   | "credentials_missing"
   | "market_not_tradable"
+  | "submitter_unavailable"
   | "ready_to_route";
 
 export interface PolymarketRoutingReadinessInput {
@@ -12,6 +13,7 @@ export interface PolymarketRoutingReadinessInput {
   walletConnected: boolean;
   hasCredentials: boolean;
   marketTradable: boolean;
+  submitterAvailable: boolean;
 }
 
 export const getPolymarketRoutingReadiness = (
@@ -22,5 +24,6 @@ export const getPolymarketRoutingReadiness = (
   if (!input.walletConnected) return "wallet_not_connected";
   if (!input.hasCredentials) return "credentials_missing";
   if (!input.marketTradable) return "market_not_tradable";
+  if (!input.submitterAvailable) return "submitter_unavailable";
   return "ready_to_route";
 };
