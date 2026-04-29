@@ -179,10 +179,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /交易功能尚未啟用/);
     assert.match(markup, /尚未登入/);
-    assert.match(markup, /尚未連接錢包/);
-    assert.match(markup, /需要 Polymarket 憑證/);
-    assert.match(markup, /需要用戶自行簽署訂單/);
-    assert.match(markup, /你目前所在地區暫不支援 Polymarket 下單/);
+    assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
 });
@@ -235,6 +232,10 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /推薦分成/);
   assert.match(markup, /Orderbook snapshot/);
   assert.match(markup, /透過 Polymarket 交易/);
+  assert.match(markup, /mobile-trade-sheet/);
+  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
+  assert.match(markup, /data-testid="readiness-checklist"/);
+  assert.match(markup, /複製市場推薦連結/);
 });
 
 test("Polymarket page renders load error when market fetch fails", async (t) => {
@@ -484,7 +485,7 @@ test("Polymarket page defaults routed trading disabled", async () => {
 
   try {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">交易功能尚未啟用/);
+    assert.match(markup, /交易功能<\/span><span class="kv-value">交易功能尚未啟用/);
   } finally {
     globalThis.fetch = originalFetch;
     if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
@@ -548,10 +549,9 @@ test("Polymarket page keeps routed trade CTA disabled when submitter is unavaila
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.doesNotMatch(markup, /路由交易已啟用<\/span><span class="kv-value">是/);
-    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">交易功能尚未啟用/);
-    assert.match(markup, /訂單提交模式<\/span><span class="kv-value">已停用/);
-    assert.match(markup, /提交器暫時不可用/);
+    assert.match(markup, /交易功能<\/span><span class="kv-value">交易功能已啟用/);
+    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /尚未登入/);
     assert.match(markup, /disabled=""/);
   });
 });

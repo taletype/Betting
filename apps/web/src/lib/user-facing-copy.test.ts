@@ -76,6 +76,8 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "需要 Polymarket 憑證",
     "Builder Code 未設定",
     "市場暫時不可交易",
+    "正在檢查所在地區支援狀態",
+    "暫時未能確認所在地區支援狀態",
     "你目前所在地區暫不支援 Polymarket 下單",
     "價格或數量無效",
     "提交器暫時不可用",

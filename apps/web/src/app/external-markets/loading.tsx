@@ -2,11 +2,11 @@ export default function ExternalMarketsLoading() {
   return (
     <main className="stack">
       <section className="hero">
-        <h1>External Markets</h1>
-        <p>Loading synced external market snapshots…</p>
+        <h1>Polymarket 市場</h1>
+        <p>正在載入 Polymarket 市場…</p>
       </section>
       <section className="panel">
-        <div className="empty-state">Fetching Polymarket and Kalshi outcomes, prices, and recent trade ticks.</div>
+        <div className="empty-state">正在載入 Polymarket 市場…</div>
       </section>
     </main>
   );

@@ -5,6 +5,7 @@ import { getAmbassadorDashboard } from "../../lib/api";
 import { applyReferralCodeAction } from "../auth-actions";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { PendingReferralApplier } from "../pending-referral-applier";
+import { PendingReferralNotice } from "../pending-referral-notice";
 import { TrackedCopyButton } from "../tracked-copy-button";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,9 @@ export default async function AmbassadorPage() {
         <p>{copy.subtitle}</p>
         <p>{copy.safeNotice}</p>
         <p>{copy.approvalNotice}</p>
+        <p>{getLocaleCopy(locale).rewards.autoCalculationNotice}</p>
+        <p>{getLocaleCopy(locale).rewards.adminApprovalNotice}</p>
+        <PendingReferralNotice />
       </section>
       <BuilderFeeDisclosureCard locale={locale} />
 

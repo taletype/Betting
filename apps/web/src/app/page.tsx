@@ -56,6 +56,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               eventName="invite_link_copied"
               metadata={refCode ? { code: refCode } : undefined}
             />
+            <TrackedCopyButton
+              value={`${siteUrl()}${marketHref}`}
+              label="複製市場推薦連結"
+              copiedLabel="已複製"
+              eventName="market_share_link_copied"
+              metadata={refCode ? { code: refCode, surface: "home" } : { surface: "home" }}
+            />
           </div>
           <p className="muted">本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</p>
         </div>

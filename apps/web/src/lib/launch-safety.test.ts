@@ -134,13 +134,60 @@ test("Trade via Polymarket ticket is disabled by default", () => {
     assert.match(markup, /用戶需要自行簽署訂單/);
     assert.match(markup, /本平台不會代用戶下注或交易/);
     assert.match(markup, /不託管用戶在 Polymarket 的資金/);
-    assert.match(markup, /待生效 0.5%/);
-    assert.match(markup, /待生效 1%/);
+    assert.match(markup, /data-testid="readiness-checklist"/);
+    assert.match(markup, /正在檢查所在地區支援狀態/);
+    assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
+    assert.match(markup, /待生效 Maker 費率：0.5%/);
+    assert.match(markup, /待生效 Taker 費率：1%/);
     assert.match(markup, /disabled=""/);
   } finally {
     if (originalFlag === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
     else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = originalFlag;
   }
+});
+
+test("Trade ticket shows one top readiness reason for specific missing gates", () => {
+  const baseProps = {
+    locale: "zh-HK" as const,
+    hasBuilderCode: true,
+    featureEnabled: true,
+    walletConnected: true,
+    geoblockAllowed: true,
+    hasCredentials: true,
+    userSigningAvailable: true,
+    userSigned: true,
+    marketTradable: true,
+    orderValid: true,
+    submitterAvailable: true,
+    submitModeEnabled: true,
+    loggedIn: true,
+    marketTitle: "Readiness market",
+    outcome: "Yes",
+    tokenId: "yes",
+    side: "buy" as const,
+    price: 0.5,
+    size: 10,
+  };
+
+  const walletMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, walletConnected: false }));
+  assert.match(walletMarkup, /data-testid="top-blocking-reason">尚未連接錢包/);
+  assert.match(walletMarkup, /連接錢包/);
+
+  const credentialMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasCredentials: false }));
+  assert.match(credentialMarkup, /data-testid="top-blocking-reason">需要 Polymarket 憑證/);
+
+  const featureMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, featureEnabled: false }));
+  assert.match(featureMarkup, /data-testid="top-blocking-reason">交易功能尚未啟用/);
+
+  const builderMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasBuilderCode: false }));
+  assert.match(builderMarkup, /data-testid="top-blocking-reason">Builder Code 未設定/);
+  assert.match(builderMarkup, /只影響下單，不影響瀏覽市場/);
+
+  const blockedMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, geoblockAllowed: false }));
+  assert.match(blockedMarkup, /你目前所在地區暫不支援 Polymarket 下單/);
+
+  const submitterMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitterAvailable: false }));
+  assert.match(submitterMarkup, /data-testid="top-blocking-reason">提交器暫時不可用/);
 });
 
 test("rewards page presents rewards as manual approval accounting", async () => {
@@ -197,6 +244,7 @@ test("forbidden reward and trading wording does not appear in non-test product f
     "downline",
     "passive income",
     "guaranteed profit",
+    "managed betting",
   ];
   const pattern = new RegExp(forbiddenTerms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "i");
   const offenders = walkTextFiles(repoRoot)

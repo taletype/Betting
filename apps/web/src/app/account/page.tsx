@@ -1,15 +1,20 @@
 import React from "react";
+import { getAmbassadorDashboard } from "../../lib/api";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { applyReferralCodeAction, logoutAction } from "../auth-actions";
 import { getCurrentWebUser } from "../auth-session";
 import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { PendingReferralApplier } from "../pending-referral-applier";
+import { TrackedCopyButton } from "../tracked-copy-button";
+
+const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 export default async function AccountPage() {
   const copy = getLocaleCopy(defaultLocale).auth;
   const walletCopy = getLocaleCopy(defaultLocale).wallet;
   const user = await getCurrentWebUser();
+  const dashboard = user ? await getAmbassadorDashboard().catch(() => null) : null;
 
   return (
     <main className="stack">
@@ -36,6 +41,31 @@ export default async function AccountPage() {
             <form action={logoutAction}>
               <button type="submit">{copy.logout}</button>
             </form>
+          </section>
+
+          <section className="panel stack">
+            <strong>推薦碼</strong>
+            {dashboard ? (
+              <>
+                <div className="metric-sm mono">{dashboard.ambassadorCode.code}</div>
+                <TrackedCopyButton
+                  value={dashboard.ambassadorCode.inviteUrl}
+                  label="複製一般邀請連結"
+                  copiedLabel="已複製"
+                  eventName="invite_link_copied"
+                  metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
+                />
+                <TrackedCopyButton
+                  value={`${siteUrl()}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
+                  label="複製市場推薦連結"
+                  copiedLabel="已複製"
+                  eventName="market_share_link_copied"
+                  metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
+                />
+              </>
+            ) : (
+              <div className="empty-state">登入後可在此查看你的推薦碼及邀請連結。</div>
+            )}
           </section>
 
           <section className="panel stack">

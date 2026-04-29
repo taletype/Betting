@@ -46,14 +46,14 @@ export function BuilderFeeDisclosureCard({
     <section className={compact ? "disclosure-card stack" : "panel stack disclosure-card"}>
       <strong>Builder 費用披露</strong>
       {hasBuilderCode !== undefined ? (
-        <div className="kv"><span className="kv-key">Builder Code 狀態</span><span className="kv-value">{hasBuilderCode ? "已設定" : "未設定"}</span></div>
+        <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
       ) : null}
       {routedTradingEnabled !== undefined ? (
-        <div className="kv"><span className="kv-key">路由交易</span><span className="kv-value">{routedTradingEnabled ? "已啟用" : "已停用"}</span></div>
+        <div className="kv"><span className="kv-key">交易功能</span><span className="kv-value">{routedTradingEnabled ? "交易功能已啟用" : "交易功能尚未啟用"}</span></div>
       ) : null}
-      <div className="kv"><span className="kv-key">Maker Builder 費率</span><span className="kv-value">{statusLabel} {maker}</span></div>
-      <div className="kv"><span className="kv-key">Taker Builder 費率</span><span className="kv-value">{statusLabel} {taker}</span></div>
-      <p className="muted">以上只作披露用途。Builder 費用只適用於附有本平台 Builder Code、合資格並成功成交的 Polymarket 路由訂單；單純瀏覽市場不會產生 Builder 費用。</p>
+      <div className="kv"><span className="kv-key">Maker Builder 費率</span><span className="kv-value">{statusLabel} Maker 費率：{maker}</span></div>
+      <div className="kv"><span className="kv-key">Taker Builder 費率</span><span className="kv-value">{statusLabel} Taker 費率：{taker}</span></div>
+      <p className="muted">費率只適用於合資格並成功成交的 Polymarket 路由訂單。單純瀏覽市場不會產生 Builder 費用。</p>
       <p className="muted">用戶需要自行簽署訂單，本平台不託管用戶在 Polymarket 的資金。Polygon pUSD 獎勵支付維持人手審批。</p>
     </section>
   );

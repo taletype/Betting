@@ -5,10 +5,14 @@ import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
 import { getCurrentWebUser } from "../../auth-session";
-import { isPolymarketRoutingFullyEnabled, type PolymarketRoutingReadinessInput } from "../../external-markets/polymarket-routing-readiness";
+import {
+  getPolymarketTopBlockingReason,
+  type PolymarketRoutingReadinessInput,
+} from "../../external-markets/polymarket-routing-readiness";
 import { PolymarketTradeTicket } from "../../external-markets/polymarket-trade-ticket";
 import { FunnelEventTracker } from "../../funnel-analytics";
 import { PendingReferralNotice } from "../../pending-referral-notice";
+import { TrackedCopyButton } from "../../tracked-copy-button";
 import { listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
@@ -22,6 +26,8 @@ export const dynamic = "force-dynamic";
 
 const toDisplay = (value: number | null): string =>
   value === null ? "—" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 const hasPolymarketBuilderCode = (): boolean => {
   try {
@@ -103,14 +109,43 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     submitModeEnabled,
     loggedIn: Boolean(currentUser),
     walletConnected: false,
-    geoblockAllowed: false,
+    geoblockStatus: "unknown",
     hasCredentials: false,
     userSigningAvailable: false,
     marketTradable: market.status === "open",
-    orderValid: true,
+    orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
     submitterAvailable,
   };
-  const routingFullyEnabled = isPolymarketRoutingFullyEnabled(routingInput);
+  const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
+  const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
+  const detailPath = `/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const marketShareUrl = `${siteUrl()}${detailPath}`;
+  const tradeTicketProps = {
+    locale: defaultLocale,
+    hasBuilderCode,
+    featureEnabled: routedTradingEnabled,
+    submitModeEnabled,
+    loggedIn: Boolean(currentUser),
+    walletConnected: false,
+    hasCredentials: false,
+    userSigningAvailable: false,
+    marketTradable: market.status === "open",
+    orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
+    submitterAvailable,
+    marketTitle: market.title,
+    outcomes: market.outcomes.map((outcome) => ({
+      tokenId: outcome.externalOutcomeId,
+      title: outcome.title,
+      bestBid: outcome.bestBid,
+      bestAsk: outcome.bestAsk,
+      lastPrice: outcome.lastPrice,
+    })),
+    tokenId: market.outcomes[0]?.externalOutcomeId,
+    outcome: market.outcomes[0]?.title ?? "Yes",
+    side: "buy" as const,
+    price: market.lastTradePrice,
+    size: 10,
+  };
 
   return (
     <main className="stack">
@@ -121,10 +156,21 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         <h1>{market.title}</h1>
         <p>{market.description || copy.subtitle}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
+        <div className="market-actions">
+          <TrackedCopyButton
+            value={marketShareUrl}
+            label="複製市場推薦連結"
+            copiedLabel="已複製"
+            eventName="market_share_link_copied"
+            metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
+          />
+        </div>
       </section>
 
-      <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routingFullyEnabled} />
+      <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
 
+      <section className="market-detail-layout">
+        <div className="market-detail-primary stack">
       <section className="grid">
         <article className="panel stack">
           <strong>{copy.price}</strong>
@@ -220,35 +266,23 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         </article>
       </section>
 
-      <section className="panel">
-        <PolymarketTradeTicket
-          locale={defaultLocale}
-          hasBuilderCode={hasBuilderCode}
-          featureEnabled={routedTradingEnabled}
-          submitModeEnabled={submitModeEnabled}
-          loggedIn={Boolean(currentUser)}
-          walletConnected={false}
-          geoblockAllowed={false}
-          hasCredentials={false}
-          userSigningAvailable={false}
-          marketTradable={market.status === "open"}
-          orderValid={Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice)}
-          submitterAvailable={submitterAvailable}
-          marketTitle={market.title}
-          outcomes={market.outcomes.map((outcome) => ({
-            tokenId: outcome.externalOutcomeId,
-            title: outcome.title,
-            bestBid: outcome.bestBid,
-            bestAsk: outcome.bestAsk,
-            lastPrice: outcome.lastPrice,
-          }))}
-          tokenId={market.outcomes[0]?.externalOutcomeId}
-          outcome={market.outcomes[0]?.title ?? "Yes"}
-          side="buy"
-          price={market.lastTradePrice}
-          size={10}
-        />
+        </div>
+        <aside className="market-detail-sidebar">
+          <section className="panel sticky-ticket">
+            <PolymarketTradeTicket {...tradeTicketProps} />
+          </section>
+        </aside>
       </section>
+
+      <details className="mobile-trade-sheet" data-testid="mobile-trade-sheet">
+        <summary>
+          <span>{copy.tradeViaPolymarket}</span>
+          <small>{topBlockingReasonLabel}</small>
+        </summary>
+        <div className="mobile-sheet-panel">
+          <PolymarketTradeTicket {...tradeTicketProps} />
+        </div>
+      </details>
     </main>
   );
 }
