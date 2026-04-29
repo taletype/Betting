@@ -55,3 +55,23 @@ test("Polymarket routed trading stays disabled by default", () => {
     else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = previous;
   }
 });
+
+test("zh-HK Polymarket live trading readiness copy exposes every explicit state", () => {
+  const readiness = getLocaleCopy("zh-HK").research.readinessCopy;
+  for (const text of [
+    "交易功能尚未啟用",
+    "尚未連接錢包",
+    "需要 Polymarket 憑證",
+    "Builder Code 未設定",
+    "市場暫不可交易",
+    "需要用戶簽署訂單",
+    "準備提交到 Polymarket",
+    "已提交到 Polymarket",
+  ]) {
+    assert.ok(Object.values(readiness).includes(text), text);
+  }
+  assert.equal(
+    getLocaleCopy("zh-HK").research.nonCustodialNotice,
+    "用戶需要自行簽署訂單。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。",
+  );
+});

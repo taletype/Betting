@@ -50,11 +50,14 @@ interface ExternalTradeRow {
   external_market_id: string;
   external_trade_id: string;
   external_outcome_id: string | null;
-  source: "polymarket" | "kalshi";
+  source?: "polymarket" | "kalshi";
   side: "buy" | "sell" | null;
-  price_ppm: bigint | number | string | null;
-  size_atoms: bigint | number | string | null;
-  executed_at: Date | string;
+  price: number | string | null;
+  price_ppm?: bigint | number | string | null;
+  size: number | string | null;
+  size_atoms?: bigint | number | string | null;
+  traded_at: Date | string;
+  executed_at?: Date | string | null;
 }
 
 const defaultDb = createDatabaseClient();
@@ -86,12 +89,33 @@ const toBigIntString = (value: bigint | number | string | null): string | null =
   return typeof value === "bigint" ? value.toString() : String(value);
 };
 
-const ppmToPrice = (value: bigint | number | string | null): number | null => {
+const decimalToScaledString = (value: number | string | null, scale: number): string | null => {
+  const parsed = toNumber(value);
+  return parsed === null ? null : String(Math.round(parsed * scale));
+};
+
+const getTradePricePpm = (row: ExternalTradeRow): bigint | number | string | null =>
+  row.price_ppm ?? decimalToScaledString(row.price, 1_000_000);
+
+const getTradeSizeAtoms = (row: ExternalTradeRow): bigint | number | string | null =>
+  row.size_atoms ?? decimalToScaledString(row.size, 1_000_000);
+
+const getTradeExecutedAt = (row: ExternalTradeRow): Date | string => row.executed_at ?? row.traded_at;
+
+const ppmToPrice = (value: bigint | number | string | null, fallback?: number | string | null): number | null => {
+  if (value === null && fallback !== undefined) {
+    return toNumber(fallback);
+  }
+
   const asNumber = toNumber(typeof value === "bigint" ? Number(value) : value);
   return asNumber === null ? null : asNumber / 1_000_000;
 };
 
-const atomsToSize = (value: bigint | number | string | null): number | null => {
+const atomsToSize = (value: bigint | number | string | null, fallback?: number | string | null): number | null => {
+  if (value === null && fallback !== undefined) {
+    return toNumber(fallback);
+  }
+
   const asNumber = toNumber(typeof value === "bigint" ? Number(value) : value);
   return asNumber === null ? null : asNumber / 1_000_000;
 };
@@ -215,21 +239,24 @@ const mapTrade = (row: ExternalTradeRow): ExternalTradeView => ({
   externalTradeId: row.external_trade_id,
   externalOutcomeId: row.external_outcome_id,
   side: row.side,
-  price: ppmToPrice(row.price_ppm),
-  size: atomsToSize(row.size_atoms),
-  tradedAt: toIsoString(row.executed_at),
+  price: ppmToPrice(row.price_ppm ?? null, row.price),
+  size: atomsToSize(row.size_atoms ?? null, row.size),
+  tradedAt: toIsoString(getTradeExecutedAt(row)),
 });
 
-const mapImportedTrade = (row: ExternalTradeRow): ExternalImportedTradeView => ({
+const mapImportedTrade = (
+  row: ExternalTradeRow,
+  sourceFallback: "polymarket" | "kalshi",
+): ExternalImportedTradeView => ({
   externalTradeId: row.external_trade_id,
   externalOutcomeId: row.external_outcome_id,
-  source: row.source,
+  source: row.source ?? sourceFallback,
   side: row.side,
-  price: ppmToPrice(row.price_ppm),
-  pricePpm: toBigIntString(row.price_ppm),
-  size: atomsToSize(row.size_atoms),
-  sizeAtoms: toBigIntString(row.size_atoms),
-  executedAt: toIsoString(row.executed_at),
+  price: ppmToPrice(row.price_ppm ?? null, row.price),
+  pricePpm: toBigIntString(getTradePricePpm(row)),
+  size: atomsToSize(row.size_atoms ?? null, row.size),
+  sizeAtoms: toBigIntString(getTradeSizeAtoms(row)),
+  executedAt: toIsoString(getTradeExecutedAt(row)),
 });
 
 export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
@@ -266,14 +293,13 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
             external_market_id,
             external_trade_id,
             external_outcome_id,
-            source,
             side,
-            price_ppm,
-            size_atoms,
-            executed_at
+            price,
+            size,
+            traded_at
           from public.external_trade_ticks
           where external_market_id = any($1::uuid[])
-          order by external_market_id asc, executed_at desc, external_trade_id desc
+          order by external_market_id asc, traded_at desc, external_trade_id desc
         `,
         [ids],
       ),
@@ -320,7 +346,7 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
     for (const row of tradeRows) {
       const market = byMarket.get(row.external_market_id);
       if (market && !latestTradeByMarket.has(row.external_market_id)) {
-        market.lastTradePrice = ppmToPrice(row.price_ppm);
+        market.lastTradePrice = ppmToPrice(row.price_ppm ?? null, row.price);
         latestTradeByMarket.add(row.external_market_id);
       }
 
@@ -329,7 +355,7 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
         if (!latestTradeByOutcome.has(outcomeKey)) {
           const outcome = outcomeByMarketAndExternalId.get(outcomeKey);
           if (outcome) {
-            outcome.lastPrice = ppmToPrice(row.price_ppm);
+            outcome.lastPrice = ppmToPrice(row.price_ppm ?? null, row.price);
           }
           latestTradeByOutcome.add(outcomeKey);
         }
@@ -440,20 +466,19 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           external_market_id,
           external_trade_id,
           external_outcome_id,
-          source,
           side,
-          price_ppm,
-          size_atoms,
-          executed_at
+          price,
+          size,
+          traded_at
         from public.external_trade_ticks
         where external_market_id = $1::uuid
-        order by executed_at desc, external_trade_id desc
+        order by traded_at desc, external_trade_id desc
         limit $2
       `,
       [market.id, limit],
     );
 
-    return rows.map(mapImportedTrade);
+    return rows.map((row) => mapImportedTrade(row, source as "polymarket" | "kalshi"));
   };
 
   return {

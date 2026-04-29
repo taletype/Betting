@@ -21,11 +21,22 @@ export const getAdminApiToken = (): string =>
     ? process.env.ADMIN_API_TOKEN?.trim() || localAdminToken
     : readSecret("ADMIN_API_TOKEN");
 
+const validateEthereumAddressIfConfigured = (name: string): void => {
+  if (process.env[name]?.trim()) {
+    readEthereumAddress(name);
+  }
+};
+
 export const validateApiEnvironment = (): void => {
   readRequiredUrl("API_BASE_URL", { defaultInLocal: "http://localhost:4000" });
 
-  readEthereumAddress("BASE_TREASURY_ADDRESS");
-  readEthereumAddress("BASE_USDC_ADDRESS");
+  if (environment.isLocal) {
+    validateEthereumAddressIfConfigured("BASE_TREASURY_ADDRESS");
+    validateEthereumAddressIfConfigured("BASE_USDC_ADDRESS");
+  } else {
+    readEthereumAddress("BASE_TREASURY_ADDRESS");
+    readEthereumAddress("BASE_USDC_ADDRESS");
+  }
 
   readBaseChainId();
   readBaseRpcUrl();

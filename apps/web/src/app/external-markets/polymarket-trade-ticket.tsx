@@ -18,6 +18,8 @@ interface Props {
   hasCredentials: boolean;
   marketTradable: boolean;
   submitterAvailable: boolean;
+  userSigned?: boolean;
+  submitted?: boolean;
   locale: AppLocale;
 }
 
@@ -26,7 +28,7 @@ const formatNum = (value: number | null): string => (value === null ? "—" : va
 export function PolymarketTradeTicket(props: Props) {
   const copy = getLocaleCopy(props.locale).research;
   const readiness = getPolymarketRoutingReadiness(props);
-  const disabled = readiness !== "ready_to_route";
+  const disabled = readiness !== "ready_to_submit";
   const estimated = props.price === null || props.size === null ? null : props.price * props.size;
   const readinessLabel = copy.readinessCopy[readiness] ?? readiness;
 
@@ -82,6 +84,7 @@ export function PolymarketTradeTicket(props: Props) {
         onClick={() => {
           trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
           trackFunnelEvent("routed_trade_attempted", { market: props.marketTitle, readiness });
+          trackFunnelEvent("routed_trade_signature_requested", { market: props.marketTitle, readiness });
         }}
       >
         {copy.submitUserSignedOrder}

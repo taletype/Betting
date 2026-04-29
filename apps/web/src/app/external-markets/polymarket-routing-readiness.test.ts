@@ -10,8 +10,10 @@ test("readiness model enumerates disabled states", () => {
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: false, marketTradable: true, submitterAvailable: true }), "credentials_missing");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: false, submitterAvailable: true }), "market_not_tradable");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: true, submitterAvailable: false }), "submitter_unavailable");
+  assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: true, submitterAvailable: true, userSigned: false }), "signature_required");
 });
 
 test("readiness returns ready when all conditions are met", () => {
-  assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: true, submitterAvailable: true }), "ready_to_route");
+  assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: true, submitterAvailable: true, userSigned: true }), "ready_to_submit");
+  assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: true, submitterAvailable: true, userSigned: true, submitted: true }), "submitted");
 });

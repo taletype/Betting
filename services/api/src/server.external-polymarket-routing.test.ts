@@ -3,75 +3,272 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { routeExternalPolymarketOrder, type ExternalPolymarketOrderRoutePayload } from "./modules/external-polymarket-routing/handlers";
-import { setExternalMarketsRepositoryForTests } from "./modules/external-markets/repository";
+import {
+  routeExternalPolymarketOrder,
+  type ExternalPolymarketOrderRouteInput,
+  type ExternalPolymarketOrderRoutePayload,
+  type PolymarketOrderSubmitter,
+} from "./modules/external-polymarket-routing/handlers";
+import { setExternalMarketsRepositoryForTests, type ExternalMarketView } from "./modules/external-markets/repository";
 
 process.env.NODE_ENV = "test";
+
 const VALID_BUILDER_CODE = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
+const USER_ID = "11111111-1111-1111-1111-111111111111";
+const USER_WALLET = "0x1111111111111111111111111111111111111111";
+const TOKEN_ID = "123";
+const NOW = new Date("2026-05-01T00:00:00.000Z");
+
 const getHandleRequest = async () => (await import("./server")).handleRequest;
 
 const withEnv = async (values: Record<string, string | undefined>, run: () => Promise<void>) => {
   const prev = new Map<string, string | undefined>();
   for (const [k, v] of Object.entries(values)) {
     prev.set(k, process.env[k]);
-    if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
   }
-  try { await run(); } finally { for (const [k, v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+  try {
+    await run();
+  } finally {
+    for (const [k, v] of prev) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 };
+
+const marketRecord = (overrides: Partial<ExternalMarketView> = {}): ExternalMarketView => ({
+  ...baseMarket(),
+  ...overrides,
+});
+
+const baseMarket = (): ExternalMarketView => ({
+  id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  source: "polymarket" as const,
+  externalId: "condition-1",
+  slug: "poly-1",
+  title: "Will routed trading stay safe?",
+  description: "Builder route test",
+  status: "open" as const,
+  marketUrl: "https://polymarket.com/event/poly-1",
+  closeTime: "2026-05-02T00:00:00.000Z",
+  endTime: null,
+  resolvedAt: null,
+  bestBid: 0.5,
+  bestAsk: 0.52,
+  lastTradePrice: 0.51,
+  volume24h: 10,
+  volumeTotal: 100,
+  lastSyncedAt: "2026-05-01T00:00:00.000Z",
+  createdAt: "2026-05-01T00:00:00.000Z",
+  updatedAt: "2026-05-01T00:00:00.000Z",
+  outcomes: [{ externalOutcomeId: TOKEN_ID, title: "Yes", slug: "yes", index: 0, yesNo: "yes" as const, bestBid: 0.5, bestAsk: 0.52, lastPrice: 0.51, volume: 10 }],
+  recentTrades: [],
+  latestOrderbook: [],
+});
+
+const withMarket = async (market: ExternalMarketView, run: () => Promise<void>) => {
+  setExternalMarketsRepositoryForTests({
+    listExternalMarketRecords: async () => [market],
+    getExternalMarketRecord: async (source, externalId) =>
+      source === market.source && externalId === market.externalId ? market : null,
+    listExternalMarketTrades: async () => [],
+  });
+  try {
+    await run();
+  } finally {
+    setExternalMarketsRepositoryForTests(null);
+  }
+};
+
+const baseInput = (overrides: Partial<ExternalPolymarketOrderRouteInput> = {}): ExternalPolymarketOrderRouteInput => ({
+  userWalletAddress: USER_WALLET,
+  marketSource: "polymarket",
+  marketExternalId: "condition-1",
+  outcomeExternalId: TOKEN_ID,
+  orderType: "GTC",
+  orderInput: {
+    tokenID: TOKEN_ID,
+    side: "BUY",
+    price: 0.55,
+    size: 10,
+    expiration: 0,
+    builderCode: VALID_BUILDER_CODE,
+  },
+  signedOrder: {
+    salt: "1",
+    maker: USER_WALLET,
+    signer: USER_WALLET,
+    tokenId: TOKEN_ID,
+    makerAmount: "5500000",
+    takerAmount: "10000000",
+    side: "BUY",
+    signatureType: 0,
+    timestamp: String(NOW.getTime()),
+    expiration: "0",
+    metadata: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    builder: VALID_BUILDER_CODE,
+    signature: "0xsafesignature",
+  },
+  userConfirmation: {
+    side: "BUY",
+    tokenID: TOKEN_ID,
+    outcomeExternalId: TOKEN_ID,
+    price: 0.55,
+    size: 10,
+    orderType: "GTC",
+    expiration: 0,
+    builderCode: VALID_BUILDER_CODE,
+    builderFeeAcknowledged: true,
+    confirmedAt: NOW.toISOString(),
+  },
+  ...overrides,
+});
+
+const liveDeps = (submitter: PolymarketOrderSubmitter) => ({
+  requestUserId: USER_ID,
+  submitter,
+  linkedWalletLookup: async () => ({ walletAddress: USER_WALLET }),
+  l2CredentialLookup: async () => ({ status: "present" as const, credentials: { key: "user-key", secret: "dXNlci1zZWNyZXQ=", passphrase: "user-passphrase" } }),
+  signatureVerifier: async () => true,
+  now: () => NOW,
+  allowNonProductionSubmissionForTests: true,
+});
+
+const mockSubmitter = (onSubmit?: (payload: ExternalPolymarketOrderRoutePayload) => void): PolymarketOrderSubmitter => ({
+  mode: "real",
+  healthCheck: async () => ({ ok: true }),
+  getMarketConstraints: async (conditionId, tokenId) => ({ conditionId, tokenId, tickSize: "0.01", negRisk: false, minOrderSize: "5" }),
+  submitOrder: async (payload) => {
+    onSubmit?.(payload);
+    return { success: true, orderId: "order-1", status: "submitted", error: null, transactionHashes: [], takingAmount: "10", makingAmount: "5.5" };
+  },
+});
 
 test("missing builder code disables routed trading but read-only external markets still work", async (t) => {
   const handleRequest = await getHandleRequest();
-  setExternalMarketsRepositoryForTests({ listExternalMarketRecords: async () => [{ id:"m1",source:"polymarket",externalId:"123",slug:"s",title:"t",description:"d",status:"open",marketUrl:"u",closeTime:null,endTime:null,resolvedAt:null,bestBid:1,bestAsk:1,lastTradePrice:1,volume24h:1,volumeTotal:1,lastSyncedAt:"2026-01-01T00:00:00.000Z",createdAt:"2026-01-01T00:00:00.000Z",updatedAt:"2026-01-01T00:00:00.000Z",outcomes:[],recentTrades:[],latestOrderbook:[] }], getExternalMarketRecord: async()=>null, listExternalMarketTrades: async()=>null });
+  setExternalMarketsRepositoryForTests({ listExternalMarketRecords: async () => [baseMarket()], getExternalMarketRecord: async () => null, listExternalMarketTrades: async () => [] });
   t.after(() => setExternalMarketsRepositoryForTests(null));
   await withEnv({ POLY_BUILDER_CODE: undefined, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
     const readOnlyResponse = await handleRequest(new Request("http://localhost/external/markets"));
     assert.equal(readOnlyResponse.status, 200);
-    const routingResponse = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method:"POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
-    const payload = await routingResponse.json() as {code:string; error:string};
-    assert.equal(routingResponse.status, 503); assert.equal(payload.code, "POLYMARKET_BUILDER_CODE_MISSING");
+    const routingResponse = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
+    const payload = await routingResponse.json() as { code: string };
+    assert.equal(routingResponse.status, 503);
+    assert.equal(payload.code, "POLYMARKET_BUILDER_CODE_MISSING");
   });
 });
 
 test("external Polymarket routing stays disabled behind the named feature flag", async () => {
   const handleRequest = await getHandleRequest();
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: undefined }, async () => {
-    const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method:"POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
-    const payload = await response.json() as {code:string};
-    assert.equal(response.status, 503); assert.equal(payload.code, "POLYMARKET_ROUTED_TRADING_DISABLED");
+    const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify(baseInput()) }));
+    const payload = await response.json() as { code: string };
+    assert.equal(response.status, 503);
+    assert.equal(payload.code, "POLYMARKET_ROUTED_TRADING_DISABLED");
   });
 });
 
-test("external Polymarket routing attaches builderCode before submission", async () => {
+test("setting routed trading true without real submitter still fails", async () => {
+  const handleRequest = await getHandleRequest();
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true", APP_ENV: "staging", POLYMARKET_CLOB_SUBMITTER: "disabled" }, async () => {
+    const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify(baseInput()) }));
+    const payload = await response.json() as { code: string };
+    assert.equal(response.status, 503);
+    assert.equal(payload.code, "POLYMARKET_SUBMITTER_UNAVAILABLE");
+  });
+});
+
+test("builderCode must be included before signing and is preserved through submission", async () => {
   let submittedPayload: ExternalPolymarketOrderRoutePayload | null = null;
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
-    const result = await routeExternalPolymarketOrder({ userWalletAddress:"0xabc", l2CredentialStatus:"present", signedOrder:{sig:"0x1"}, orderType:"GTC", orderInput:{tokenID:"123"} }, { submitter: { submitOrder: async (payload) => { submittedPayload = payload; return { orderID:"1" }; } } });
-    assert.equal(result.status, "submitted");
-    assert.equal(submittedPayload?.orderInput.builderCode, VALID_BUILDER_CODE);
+    await withMarket(baseMarket(), async () => {
+      const result = await routeExternalPolymarketOrder(baseInput(), liveDeps(mockSubmitter((payload) => { submittedPayload = payload; })));
+      assert.equal(result.status, "submitted");
+      assert.equal(result.attribution.attachedBeforeUserSignature, true);
+      assert.equal(submittedPayload?.orderInput.builderCode, VALID_BUILDER_CODE);
+      assert.equal(submittedPayload?.signedOrder.builder, VALID_BUILDER_CODE);
+    });
   });
 });
 
-test("external Polymarket routing rejects missing user signing", async () => {
+test("signed order signer must match linked user wallet", async () => {
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
-    await assert.rejects(() => routeExternalPolymarketOrder({ userWalletAddress:"0xabc", l2CredentialStatus:"present", orderInput:{tokenID:"123"} }, { submitter: { submitOrder: async () => ({}) } }), /user-signed order is required/);
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), linkedWalletLookup: async () => ({ walletAddress: "0x2222222222222222222222222222222222222222" }) }),
+        /signed order signer must match/,
+      );
+    });
   });
 });
 
-test("external Polymarket routing rejects missing Polymarket credentials", async () => {
+test("missing L2 credentials block submission", async () => {
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
-    await assert.rejects(() => routeExternalPolymarketOrder({ userWalletAddress:"0xabc", orderInput:{tokenID:"123"}, signedOrder:{sig:"0x1"}, l2CredentialStatus:"missing" }, { submitter: { submitOrder: async () => ({}) } }), /Polymarket credentials required/);
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), l2CredentialLookup: async () => ({ status: "missing" }) }),
+        /Polymarket credentials required/,
+      );
+    });
   });
 });
 
-test("external Polymarket routing returns submitter unavailable when not injected", async () => {
-  const handleRequest = await getHandleRequest();
+test("missing builder code in signed order blocks submission", async () => {
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
-    const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method:"POST", body: JSON.stringify({ userWalletAddress:"0xabc", orderInput:{tokenID:"123"}, signedOrder:{sig:"0x1"}, l2CredentialStatus:"present" }) }));
-    const payload = await response.json() as {code:string};
-    assert.equal(response.status, 503); assert.equal(payload.code, "POLYMARKET_SUBMITTER_UNAVAILABLE");
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput({ signedOrder: { ...(baseInput().signedOrder as Record<string, unknown>), builder: "0x0000000000000000000000000000000000000000000000000000000000000000" } }), liveDeps(mockSubmitter())),
+        /builderCode must be present before user signing/,
+      );
+    });
   });
 });
 
-test("external Polymarket routing module does not import internal ledger or balance mutation paths", () => {
-  const source = readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/handlers.ts"), "utf8");
-  assert.doesNotMatch(source, /@bet\/ledger/); assert.doesNotMatch(source, /@bet\/trading/);
+test("stale or non-tradable market blocks submission", async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+    await withMarket(marketRecord({ status: "closed" }), async () => {
+      await assert.rejects(() => routeExternalPolymarketOrder(baseInput(), liveDeps(mockSubmitter())), /market is not open/);
+    });
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput({ signedOrder: { ...(baseInput().signedOrder as Record<string, unknown>), timestamp: String(NOW.getTime() - 120_000) } }), liveDeps(mockSubmitter())),
+        /signed order is stale/,
+      );
+    });
+  });
+});
+
+test("invalid tokenId/outcome mapping blocks submission", async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput({ outcomeExternalId: "not-the-token" }), liveDeps(mockSubmitter())),
+        /tokenId does not belong/,
+      );
+    });
+  });
+});
+
+test("external Polymarket routing modules do not import internal ledger or balance mutation paths", () => {
+  for (const file of ["handlers.ts", "submitter.ts"]) {
+    const source = readFileSync(resolve(process.cwd(), `src/modules/external-polymarket-routing/${file}`), "utf8");
+    assert.doesNotMatch(source, /@bet\/ledger|@bet\/trading|ledger_journals|ledger_entries|balanceDeltas|rpc_place_order/);
+  }
+});
+
+test("external Polymarket trading path does not mutate internal balances or log secrets", () => {
+  const source = [
+    readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/handlers.ts"), "utf8"),
+    readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/submitter.ts"), "utf8"),
+  ].join("\n");
+  assert.doesNotMatch(source, /insert\s+into\s+public\.ledger|update\s+public\.portfolio|mutateBalance|creditBalance|debitBalance/i);
+  assert.doesNotMatch(source, /logger\.(info|error|warn)\([^)]*(secret|passphrase|POLY_SIGNATURE|POLY_API_KEY|signature)/is);
+});
+
+test("payouts remain manual/admin-approved in ambassador repository", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+  assert.match(source, /payout requires admin approval before it can be marked paid/);
+  assert.doesNotMatch(source, /AMBASSADOR_AUTO_PAYOUT_ENABLED=true/);
 });

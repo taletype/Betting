@@ -192,7 +192,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const body = await parseBody(request);
 
       try {
-        const payload = await routeExternalPolymarketOrder(body);
+        const payload = await routeExternalPolymarketOrder(body, { requestUserId });
         return new Response(toJson(payload), {
           headers: { "content-type": "application/json" },
           status: 202,

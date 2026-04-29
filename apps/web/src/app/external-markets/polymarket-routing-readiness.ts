@@ -5,7 +5,9 @@ export type PolymarketRoutingReadiness =
   | "credentials_missing"
   | "market_not_tradable"
   | "submitter_unavailable"
-  | "ready_to_route";
+  | "signature_required"
+  | "ready_to_submit"
+  | "submitted";
 
 export interface PolymarketRoutingReadinessInput {
   hasBuilderCode: boolean;
@@ -14,6 +16,8 @@ export interface PolymarketRoutingReadinessInput {
   hasCredentials: boolean;
   marketTradable: boolean;
   submitterAvailable: boolean;
+  userSigned?: boolean;
+  submitted?: boolean;
 }
 
 export const getPolymarketRoutingReadiness = (
@@ -25,5 +29,7 @@ export const getPolymarketRoutingReadiness = (
   if (!input.hasCredentials) return "credentials_missing";
   if (!input.marketTradable) return "market_not_tradable";
   if (!input.submitterAvailable) return "submitter_unavailable";
-  return "ready_to_route";
+  if (input.submitted) return "submitted";
+  if (!input.userSigned) return "signature_required";
+  return "ready_to_submit";
 };

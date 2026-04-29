@@ -40,9 +40,12 @@ interface ExternalTradeRow {
   external_trade_id: string;
   external_outcome_id: string | null;
   side: "buy" | "sell" | null;
-  price_ppm: string | number | null;
-  size_atoms: string | number | null;
-  executed_at: string;
+  price: string | number | null;
+  price_ppm?: string | number | null;
+  size: string | number | null;
+  size_atoms?: string | number | null;
+  traded_at: string;
+  executed_at?: string | null;
 }
 
 const toNumber = (value: string | number | null): number | null => {
@@ -95,14 +98,14 @@ const mapExternalTrade = (row: ExternalTradeRow) => ({
   externalOutcomeId: row.external_outcome_id,
   side: row.side,
   price: (() => {
-    const pricePpm = toNumber(row.price_ppm);
-    return pricePpm === null ? null : pricePpm / 1_000_000;
+    const pricePpm = toNumber(row.price_ppm ?? null);
+    return pricePpm === null ? toNumber(row.price) : pricePpm / 1_000_000;
   })(),
   size: (() => {
-    const sizeAtoms = toNumber(row.size_atoms);
-    return sizeAtoms === null ? null : sizeAtoms / 1_000_000;
+    const sizeAtoms = toNumber(row.size_atoms ?? null);
+    return sizeAtoms === null ? toNumber(row.size) : sizeAtoms / 1_000_000;
   })(),
-  tradedAt: row.executed_at,
+  tradedAt: row.executed_at ?? row.traded_at,
 });
 
 export async function readExternalMarkets(supabase: {
@@ -153,9 +156,9 @@ export async function readExternalMarkets(supabase: {
         };
       };
     })
-      .select("external_market_id, external_trade_id, external_outcome_id, side, price_ppm, size_atoms, executed_at")
+      .select("external_market_id, external_trade_id, external_outcome_id, side, price, size, traded_at")
       .in("external_market_id", marketIds)
-      .order("executed_at", { ascending: false }),
+      .order("traded_at", { ascending: false }),
   ]);
 
   if (outcomeResult.error) {

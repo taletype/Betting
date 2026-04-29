@@ -3,6 +3,6 @@ builder = "NIXPACKS"
 buildCommand = "cd ../.. && pnpm install && cd services/api && pnpm build"
 
 [deploy]
-startCommand = "node dist/server.js"
+startCommand = "pnpm --filter @bet/service-api start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
