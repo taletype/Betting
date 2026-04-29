@@ -44,74 +44,6 @@ const getVersionPayload = () => ({
   checkedAt: new Date().toISOString(),
 });
 
-const getEnvHost = (name: string): string | null => {
-  const value = process.env[name]?.trim();
-  if (!value) return null;
-  try {
-    return new URL(value).host;
-  } catch {
-    return "<invalid-url>";
-  }
-};
-
-const serializeSupabaseError = (error: unknown) => {
-  if (!error) return null;
-  if (error instanceof Error) {
-    return { message: error.message };
-  }
-  if (typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    return {
-      message: typeof record.message === "string" ? record.message : "unknown error",
-      code: typeof record.code === "string" ? record.code : null,
-      details: typeof record.details === "string" ? record.details : null,
-      hint: typeof record.hint === "string" ? record.hint : null,
-    };
-  }
-  return { message: String(error) };
-};
-
-const runExternalDiagnostics = async (adminSupabase: ReturnType<typeof createSupabaseAdminClient>) => {
-  const countTable = async (table: string) => {
-    const { count, error } = await adminSupabase.from(table).select("id", { count: "exact", head: true });
-    return { count, error: serializeSupabaseError(error) };
-  };
-
-  const probeColumns = async (table: string, columns: string) => {
-    const { error } = await adminSupabase.from(table).select(columns).limit(1);
-    return { ok: !error, error: serializeSupabaseError(error) };
-  };
-
-  return {
-    ...getVersionPayload(),
-    supabase: {
-      urlHost: getEnvHost("SUPABASE_URL"),
-      hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
-      nextPublicUrlHost: getEnvHost("NEXT_PUBLIC_SUPABASE_URL"),
-      hasAnonKey: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()),
-    },
-    counts: {
-      externalMarkets: await countTable("external_markets"),
-      externalOutcomes: await countTable("external_outcomes"),
-      externalTradeTicks: await countTable("external_trade_ticks"),
-    },
-    probes: {
-      externalMarkets: await probeColumns(
-        "external_markets",
-        "id, source, external_id, slug, title, description, status, market_url, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, last_synced_at, created_at, updated_at",
-      ),
-      externalOutcomes: await probeColumns(
-        "external_outcomes",
-        "external_market_id, external_outcome_id, title, slug, outcome_index, yes_no, best_bid, best_ask, last_price, volume, raw_json, source_provenance, last_seen_at",
-      ),
-      externalTradeTicks: await probeColumns(
-        "external_trade_ticks",
-        "external_market_id, external_trade_id, external_outcome_id, side, price, size, traded_at",
-      ),
-    },
-  };
-};
-
 const assertWalletLinkMessage = (message: string, userId: string): void => {
   if (!message.includes("Bet wallet link")) {
     throw new Error("invalid signed message prefix");
@@ -139,10 +71,6 @@ async function handleRequest(
     }
 
     const adminSupabase = supabaseAdminClientFactory();
-
-    if (apiPath === "external/diagnostics" && request.method === "GET") {
-      return NextResponse.json(await runExternalDiagnostics(adminSupabase));
-    }
 
     if (apiPath === "markets" && request.method === "GET") {
       return await getMarketsResponse();
