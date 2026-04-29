@@ -15,6 +15,7 @@ interface Props {
   size: number | null;
   hasBuilderCode: boolean;
   featureEnabled: boolean;
+  submitModeEnabled?: boolean;
   walletConnected: boolean;
   hasCredentials: boolean;
   marketTradable: boolean;
@@ -30,6 +31,7 @@ export function PolymarketTradeTicket(props: Props) {
   const copy = getLocaleCopy(props.locale).research;
   const readiness = getPolymarketRoutingReadiness(props);
   const disabled = readiness !== "ready_to_submit";
+  const routingUsable = readiness === "ready_to_submit" || readiness === "submitted";
   const estimated = props.price === null || props.size === null ? null : props.price * props.size;
   const readinessLabel = copy.readinessCopy[readiness] ?? readiness;
 
@@ -72,12 +74,13 @@ export function PolymarketTradeTicket(props: Props) {
       <BuilderFeeDisclosureCard
         locale={props.locale}
         hasBuilderCode={props.hasBuilderCode}
-        routedTradingEnabled={props.featureEnabled}
+        routedTradingEnabled={routingUsable}
         compact
       />
       <div className="readiness-grid">
         <div className="kv"><span className="kv-key">{copy.builderCodeConfigured}</span><span className="kv-value">{props.hasBuilderCode ? copy.yes : copy.no}</span></div>
-        <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{props.featureEnabled ? copy.yes : copy.no}</span></div>
+        <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{routingUsable ? copy.yes : copy.readinessCopy.feature_disabled}</span></div>
+        <div className="kv"><span className="kv-key">{copy.orderSubmitterMode}</span><span className="kv-value">{props.submitModeEnabled ? copy.yes : copy.disabled}</span></div>
         <div className="kv"><span className="kv-key">{copy.walletConnected}</span><span className="kv-value">{props.walletConnected ? copy.yes : copy.no}</span></div>
         <div className="kv"><span className="kv-key">{copy.polymarketCredentials}</span><span className="kv-value">{props.hasCredentials ? copy.yes : copy.no}</span></div>
         <div className="kv"><span className="kv-key">{copy.marketTradable}</span><span className="kv-value">{props.marketTradable ? copy.yes : copy.no}</span></div>

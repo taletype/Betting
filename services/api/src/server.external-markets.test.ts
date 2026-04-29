@@ -54,6 +54,49 @@ test("GET /external/markets returns synced data", async (t) => {
   assert.equal(payload[0]?.source, "polymarket");
 });
 
+test("GET /external/markets falls back to public Polymarket Gamma without authentication", async (t) => {
+  const handleRequest = await getHandleRequest();
+  const originalFetch = globalThis.fetch;
+
+  setExternalMarketsRepositoryForTests({
+    listExternalMarketRecords: async () => [],
+    getExternalMarketRecord: async () => null,
+    listExternalMarketTrades: async () => null,
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "gamma-1",
+          slug: "gamma-market",
+          question: "Will standalone API expose Gamma data?",
+          active: true,
+          closed: false,
+          outcomes: JSON.stringify(["Yes", "No"]),
+          outcomePrices: JSON.stringify(["0.62", "0.38"]),
+          clobTokenIds: JSON.stringify(["yes-token", "no-token"]),
+          volume: "1000",
+          volume24hr: "100",
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    setExternalMarketsRepositoryForTests(null);
+  });
+
+  const response = await handleRequest(new Request("http://localhost/external/markets"));
+  const payload = (await response.json()) as Array<{ source: string; title: string; outcomes: Array<{ lastPrice: number | null }> }>;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload[0]?.source, "polymarket");
+  assert.equal(payload[0]?.title, "Will standalone API expose Gamma data?");
+  assert.equal(payload[0]?.outcomes[0]?.lastPrice, 0.62);
+});
+
 test("GET /external/markets/:source/:id/orderbook returns latest snapshots", async (t) => {
   const handleRequest = await getHandleRequest();
 

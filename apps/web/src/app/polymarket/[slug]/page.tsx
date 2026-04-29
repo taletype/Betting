@@ -4,6 +4,7 @@ import React from "react";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
+import { isPolymarketRoutingFullyEnabled, type PolymarketRoutingReadinessInput } from "../../external-markets/polymarket-routing-readiness";
 import { PolymarketTradeTicket } from "../../external-markets/polymarket-trade-ticket";
 import { FunnelEventTracker } from "../../funnel-analytics";
 import { PendingReferralNotice } from "../../pending-referral-notice";
@@ -38,6 +39,18 @@ const findMarket = (markets: ExternalMarketApiRecord[], slug: string) => {
   ) ?? null;
 };
 
+const formatProvenance = (market: ExternalMarketApiRecord): string => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (provenance && typeof provenance === "object") {
+    const record = provenance as Record<string, unknown>;
+    const upstream = typeof record.upstream === "string" ? record.upstream : null;
+    const endpoint = typeof record.endpoint === "string" ? record.endpoint : null;
+    return [upstream, endpoint].filter(Boolean).join(" ") || market.source;
+  }
+
+  return market.source;
+};
+
 export default async function PolymarketSlugPage({ params, searchParams }: PolymarketSlugPageProps) {
   const { slug } = await params;
   const query = await searchParams;
@@ -45,7 +58,8 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   const copy = getLocaleCopy(defaultLocale).research;
   const hasBuilderCode = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
-  const submitterAvailable = process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
+  const submitModeEnabled = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
+  const submitterAvailable = submitModeEnabled;
   let market: ExternalMarketApiRecord | null = null;
   let failed = false;
 
@@ -81,6 +95,17 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     );
   }
 
+  const routingInput: PolymarketRoutingReadinessInput = {
+    hasBuilderCode,
+    featureEnabled: routedTradingEnabled,
+    submitModeEnabled,
+    walletConnected: false,
+    hasCredentials: false,
+    marketTradable: market.status === "open",
+    submitterAvailable,
+  };
+  const routingFullyEnabled = isPolymarketRoutingFullyEnabled(routingInput);
+
   return (
     <main className="stack">
       <FunnelEventTracker name="market_view" metadata={{ market: market.slug || market.externalId }} />
@@ -92,7 +117,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
       </section>
 
-      <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
+      <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routingFullyEnabled} />
 
       <section className="grid">
         <article className="panel stack">
@@ -105,6 +130,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
           <strong>{copy.volume24h} / {copy.liquidity}</strong>
           <div className="kv"><span className="kv-key">{copy.volume24h}</span><span className="kv-value">{toDisplay(market.volume24h)}</span></div>
           <div className="kv"><span className="kv-key">{copy.totalVolume}</span><span className="kv-value">{toDisplay(market.volumeTotal)}</span></div>
+          <div className="kv"><span className="kv-key">{copy.liquidity}</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal)}</span></div>
         </article>
         <article className="panel stack">
           <strong>{copy.resolution}</strong>
@@ -134,8 +160,9 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       <section className="panel stack">
         <h2 className="section-title">{copy.provenance}</h2>
         <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">{market.source}</span></div>
+        <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
-        <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastSyncedAt ? formatDateTime(defaultLocale, market.lastSyncedAt, "UTC") : copy.never}</span></div>
+        <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(defaultLocale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
         {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
       </section>
 
@@ -192,6 +219,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
           locale={defaultLocale}
           hasBuilderCode={hasBuilderCode}
           featureEnabled={routedTradingEnabled}
+          submitModeEnabled={submitModeEnabled}
           walletConnected={false}
           hasCredentials={false}
           marketTradable={market.status === "open"}

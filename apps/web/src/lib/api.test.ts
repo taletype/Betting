@@ -155,7 +155,7 @@ test("listExternalMarkets uses local Next API route when API base is not configu
   await listExternalMarkets();
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/external/markets");
 });
 
 test("listExternalMarkets uses standalone API route when API base is configured", async (t) => {
@@ -259,7 +259,7 @@ test("listExternalMarkets uses same-site Next API route in production when API_B
   });
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/api/external/markets");
+  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/external/markets");
 });
 
 test("listExternalMarkets classifies backend 500 and Supabase env errors", async (t) => {

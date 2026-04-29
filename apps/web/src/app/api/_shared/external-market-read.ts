@@ -1,4 +1,5 @@
 import { normalizeApiPayload } from "./api-serialization";
+import { readPolymarketGammaFallbackMarkets, type PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
 
 interface ExternalMarketRow {
   id: string;
@@ -17,6 +18,8 @@ interface ExternalMarketRow {
   last_trade_price: string | number | null;
   volume_24h: string | number | null;
   volume_total: string | number | null;
+  source_provenance?: unknown;
+  last_seen_at?: string | null;
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
@@ -57,7 +60,7 @@ const toNumber = (value: string | number | null): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const mapExternalMarket = (row: ExternalMarketRow) => ({
+const mapExternalMarket = (row: ExternalMarketRow): PublicExternalMarketRecord => ({
   id: row.id,
   source: row.source,
   externalId: row.external_id,
@@ -74,11 +77,24 @@ const mapExternalMarket = (row: ExternalMarketRow) => ({
   lastTradePrice: toNumber(row.last_trade_price),
   volume24h: toNumber(row.volume_24h),
   volumeTotal: toNumber(row.volume_total),
+  liquidity: toNumber(row.volume_total),
+  provenance: row.source_provenance ?? {
+    source: row.source,
+    upstream: "external_markets",
+    fetchedAt: row.last_synced_at ?? row.updated_at,
+  },
+  sourceProvenance: row.source_provenance ?? {
+    source: row.source,
+    upstream: "external_markets",
+    fetchedAt: row.last_synced_at ?? row.updated_at,
+  },
   lastSyncedAt: row.last_synced_at,
+  lastUpdatedAt: row.last_seen_at ?? row.last_synced_at ?? row.updated_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   outcomes: [] as ReturnType<typeof mapExternalOutcome>[],
   recentTrades: [] as ReturnType<typeof mapExternalTrade>[],
+  latestOrderbook: [],
 });
 
 const mapExternalOutcome = (row: ExternalOutcomeRow) => ({
@@ -121,7 +137,8 @@ const chunk = <T>(values: T[], size: number): T[][] => {
 export async function readExternalMarkets(supabase: {
   from: (table: string) => unknown;
 }) {
-  const { data: marketRows, error: marketError } = await (supabase.from("external_markets") as {
+  let marketRows: ExternalMarketRow[] | null = null;
+  const { data, error: marketError } = await (supabase.from("external_markets") as {
     select: (columns: string) => {
       order: (column: string, options?: Record<string, unknown>) => {
         order: (column: string, options?: Record<string, unknown>) => {
@@ -131,18 +148,21 @@ export async function readExternalMarkets(supabase: {
     };
   })
     .select(
-      "id, source, external_id, slug, title, description, status, market_url, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, last_synced_at, created_at, updated_at",
+      "id, source, external_id, slug, title, description, status, market_url, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, source_provenance, last_seen_at, last_synced_at, created_at, updated_at",
     )
     .order("last_synced_at", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
     .limit(500);
 
   if (marketError) {
-    throw marketError;
+    console.warn("external_markets read failed; falling back to Polymarket Gamma", marketError);
+    return normalizeApiPayload(await readPolymarketGammaFallbackMarkets());
   }
 
+  marketRows = data;
+
   if (!marketRows?.length) {
-    return [];
+    return normalizeApiPayload(await readPolymarketGammaFallbackMarkets());
   }
 
   const marketIds = marketRows.map((market) => market.id);
@@ -229,6 +249,10 @@ export async function readExternalMarkets(supabase: {
 
     market?.recentTrades.push(mappedTrade);
     tradeCounts.set(trade.external_market_id, current + 1);
+  }
+
+  if (!markets.some((market) => market.source === "polymarket")) {
+    markets.push(...(await readPolymarketGammaFallbackMarkets()));
   }
 
   return normalizeApiPayload(markets);

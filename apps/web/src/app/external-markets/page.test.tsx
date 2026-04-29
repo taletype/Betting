@@ -98,7 +98,7 @@ test("Polymarket page renders empty-state when no synced rows exist", async (t) 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /暫時未有 Polymarket 市場資料/);
+  assert.match(markup, /暫時未有市場資料/);
   assert.match(markup, /external_markets table 未返回任何 Polymarket row/);
   assert.match(markup, /外部同步尚未執行/);
 });
@@ -244,9 +244,10 @@ test("Polymarket page renders load error when market fetch fails", async (t) => 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /無法載入 Polymarket 市場資料/);
+  assert.match(markup, /市場資料暫時未能更新/);
   assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
-  assert.doesNotMatch(markup, /暫時未有 Polymarket 市場資料/);
+  assert.doesNotMatch(markup, /後端尚未提供 \/external\/markets/);
+  assert.doesNotMatch(markup, /暫時未有市場資料/);
 });
 
 test("Polymarket page renders synced rows when markets exist", async (t) => {
@@ -328,7 +329,51 @@ test("Polymarket page renders synced rows when markets exist", async (t) => {
   assert.match(markup, /Will CPI be above 3%/);
   assert.match(markup, /polymarket/);
   assert.doesNotMatch(markup, /Legacy non-Polymarket row/);
-  assert.doesNotMatch(markup, /暫時未有 Polymarket 市場資料/);
+  assert.doesNotMatch(markup, /暫時未有市場資料/);
+});
+
+test("Polymarket referral code survives navigation into market detail", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLYREF-1",
+          slug: "polyref-1",
+          title: "Will referral state survive?",
+          description: "Referral test",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/polyref-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.41,
+          bestAsk: 0.44,
+          lastTradePrice: 0.43,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [],
+          recentTrades: [],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage({
+    searchParams: Promise.resolve({ ref: "hkref001" }),
+  }));
+  assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /href="\/polymarket\/polyref-1\?ref=HKREF001"/);
 });
 
 test("Polymarket page renders load error when configured API base is unavailable", async (t) => {
@@ -362,7 +407,7 @@ test("Polymarket page renders load error when configured API base is unavailable
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /無法載入 Polymarket 市場資料/);
+  assert.match(markup, /市場資料暫時未能更新/);
   assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
   assert.equal(calls.length, 1);
@@ -411,14 +456,14 @@ test("Polymarket page renders operator-visible diagnostics when production API b
 
   await withNodeEnv("production", async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /無法載入 Polymarket 市場資料/);
+    assert.match(markup, /市場資料暫時未能更新/);
     assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL 未設定/);
-    assert.match(markup, /\/api\/external\/markets fallback/);
+    assert.match(markup, /\/external\/markets fallback/);
     assert.match(markup, /後端 \/external\/markets 返回 500/);
     assert.match(markup, /Supabase 環境變數缺失或無效/);
   });
 
-  assert.equal(calls[0], "https://bet.example.vercel.app/api/external/markets");
+  assert.equal(calls[0], "https://bet.example.vercel.app/external/markets");
 });
 
 test("Polymarket page defaults routed trading disabled", async () => {
@@ -434,7 +479,7 @@ test("Polymarket page defaults routed trading disabled", async () => {
 
   try {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">否/);
+    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">交易功能尚未啟用/);
   } finally {
     globalThis.fetch = originalFetch;
     if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
@@ -498,8 +543,10 @@ test("Polymarket page keeps routed trade CTA disabled when submitter is unavaila
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">是/);
+    assert.doesNotMatch(markup, /路由交易已啟用<\/span><span class="kv-value">是/);
+    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">交易功能尚未啟用/);
     assert.match(markup, /訂單提交模式<\/span><span class="kv-value">已停用/);
+    assert.match(markup, /訂單提交模式已停用/);
     assert.match(markup, /disabled=""/);
   });
 });

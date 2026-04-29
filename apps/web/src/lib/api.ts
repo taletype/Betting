@@ -82,6 +82,16 @@ const getLocalApiUrl = (path: string): string => {
   return localBase ? `${localBase}${localPath}` : localPath;
 };
 
+const getPublicRouteUrl = (path: string): string => {
+  const base = getConfiguredApiBaseUrl();
+  if (base) {
+    return `${base}${path}`;
+  }
+
+  const localBase = getLocalWebBaseUrl();
+  return localBase ? `${localBase}${path}` : path;
+};
+
 const isProductionRuntime = (): boolean =>
   process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 
@@ -463,7 +473,11 @@ export interface ExternalMarketApiRecord {
   lastTradePrice: number | null;
   volume24h: number | null;
   volumeTotal: number | null;
+  liquidity?: number | null;
+  provenance?: unknown;
+  sourceProvenance?: unknown;
   lastSyncedAt: string | null;
+  lastUpdatedAt?: string;
   createdAt: string;
   updatedAt: string;
   outcomes: ExternalMarketApiOutcome[];
@@ -478,7 +492,7 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
   }
 
   try {
-    const payload = await readApiJson("/external/markets");
+    const payload = await executeApiRequest<unknown>(getPublicRouteUrl("/external/markets"));
     return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
   } catch (error) {
     if (error instanceof ApiResponseError) {

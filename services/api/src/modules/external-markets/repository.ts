@@ -17,6 +17,8 @@ interface ExternalMarketRow {
   last_trade_price: number | string | null;
   volume_24h: number | string | null;
   volume_total: number | string | null;
+  source_provenance?: unknown;
+  last_seen_at?: Date | string | null;
   last_synced_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
@@ -59,8 +61,6 @@ interface ExternalTradeRow {
   traded_at: Date | string;
   executed_at?: Date | string | null;
 }
-
-const defaultDb = createDatabaseClient();
 
 const toIsoString = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -180,7 +180,11 @@ export interface ExternalMarketView {
   lastTradePrice: number | null;
   volume24h: number | null;
   volumeTotal: number | null;
+  liquidity?: number | null;
+  provenance?: unknown;
+  sourceProvenance?: unknown;
   lastSyncedAt: string | null;
+  lastUpdatedAt?: string;
   createdAt: string;
   updatedAt: string;
   outcomes: ExternalOutcomeView[];
@@ -205,7 +209,19 @@ const mapMarket = (row: ExternalMarketRow): ExternalMarketView => ({
   lastTradePrice: toNumber(row.last_trade_price),
   volume24h: toNumber(row.volume_24h),
   volumeTotal: toNumber(row.volume_total),
+  liquidity: toNumber(row.volume_total),
+  provenance: row.source_provenance ?? {
+    source: row.source,
+    upstream: "external_markets",
+    fetchedAt: toNullableIsoString(row.last_synced_at) ?? toIsoString(row.updated_at),
+  },
+  sourceProvenance: row.source_provenance ?? {
+    source: row.source,
+    upstream: "external_markets",
+    fetchedAt: toNullableIsoString(row.last_synced_at) ?? toIsoString(row.updated_at),
+  },
   lastSyncedAt: toNullableIsoString(row.last_synced_at),
+  lastUpdatedAt: toNullableIsoString(row.last_seen_at ?? null) ?? toNullableIsoString(row.last_synced_at) ?? toIsoString(row.updated_at),
   createdAt: toIsoString(row.created_at),
   updatedAt: toIsoString(row.updated_at),
   outcomes: [],
@@ -391,6 +407,8 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           last_trade_price,
           volume_24h,
           volume_total,
+          source_provenance,
+          last_seen_at,
           last_synced_at,
           created_at,
           updated_at
@@ -423,6 +441,8 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           last_trade_price,
           volume_24h,
           volume_total,
+          source_provenance,
+          last_seen_at,
           last_synced_at,
           created_at,
           updated_at
@@ -488,7 +508,7 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
   };
 };
 
-const repository = createExternalMarketsRepository(defaultDb);
+let repository: ReturnType<typeof createExternalMarketsRepository> | null = null;
 let repositoryOverride: ReturnType<typeof createExternalMarketsRepository> | null = null;
 
 export const setExternalMarketsRepositoryForTests = (
@@ -498,13 +518,13 @@ export const setExternalMarketsRepositoryForTests = (
 };
 
 export const listExternalMarketRecords = async (): Promise<ExternalMarketView[]> =>
-  (repositoryOverride ?? repository).listExternalMarketRecords();
+  (repositoryOverride ?? (repository ??= createExternalMarketsRepository(createDatabaseClient()))).listExternalMarketRecords();
 
 export const getExternalMarketRecord = async (source: string, externalId: string): Promise<ExternalMarketView | null> =>
-  (repositoryOverride ?? repository).getExternalMarketRecord(source, externalId);
+  (repositoryOverride ?? (repository ??= createExternalMarketsRepository(createDatabaseClient()))).getExternalMarketRecord(source, externalId);
 
 export const listExternalMarketTrades = async (
   source: string,
   externalId: string,
 ): Promise<ExternalImportedTradeView[] | null> =>
-  (repositoryOverride ?? repository).listExternalMarketTrades(source, externalId);
+  (repositoryOverride ?? (repository ??= createExternalMarketsRepository(createDatabaseClient()))).listExternalMarketTrades(source, externalId);

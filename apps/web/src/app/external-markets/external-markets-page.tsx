@@ -9,6 +9,12 @@ import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 
 import {
+  getPolymarketRoutingDisabledReasons,
+  isPolymarketRoutingFullyEnabled,
+  type PolymarketRoutingReadinessInput,
+  type PolymarketRoutingReadiness,
+} from "./polymarket-routing-readiness";
+import {
   ExternalMarketsLoadError,
   listExternalMarkets,
   type ExternalMarketApiRecord,
@@ -19,6 +25,18 @@ import { normalizeReferralCode } from "../../lib/referral-capture";
 
 const toDisplay = (value: number | null, locale: AppLocale): string =>
   value === null ? "—" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const formatProvenance = (market: ExternalMarketApiRecord): string => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (provenance && typeof provenance === "object") {
+    const record = provenance as Record<string, unknown>;
+    const upstream = typeof record.upstream === "string" ? record.upstream : null;
+    const endpoint = typeof record.endpoint === "string" ? record.endpoint : null;
+    return [upstream, endpoint].filter(Boolean).join(" ") || market.source;
+  }
+
+  return market.source;
+};
 
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
   if (status === "resolved" || status === "closed") {
@@ -83,8 +101,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
   const hasBuilderCode = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
-  const submitterAvailable = process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
-  const submitterMode = routedTradingEnabled && submitterAvailable ? "enabled" : "disabled";
+  const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" ? "enabled" : "disabled";
+  const submitterAvailable = submitterMode === "enabled";
   const refCode = normalizeReferralCode(params?.ref);
 
   try {
@@ -95,6 +113,18 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     console.error("failed to load external markets", error);
   }
   const visibleMarkets = filterAndSortMarkets(markets, params);
+  const statusInput: PolymarketRoutingReadinessInput = {
+    hasBuilderCode,
+    featureEnabled: routedTradingEnabled,
+    submitModeEnabled: submitterMode === "enabled",
+    walletConnected: false,
+    hasCredentials: false,
+    marketTradable: visibleMarkets.some((market) => market.status === "open"),
+    submitterAvailable,
+  };
+  const routingFullyEnabled = isPolymarketRoutingFullyEnabled(statusInput);
+  const disabledReasons = getPolymarketRoutingDisabledReasons(statusInput);
+  const disabledReasonLabel = (reason: PolymarketRoutingReadiness) => copy.readinessCopy[reason] ?? reason;
 
   return (
     <main className="stack">
@@ -108,15 +138,20 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       <section className="panel stack">
         <strong>{copy.builderDebug}</strong>
         <div className="kv"><span className="kv-key">{copy.builderCodeConfigured}</span><span className="kv-value">{hasBuilderCode ? copy.yes : copy.no}</span></div>
-        <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{routedTradingEnabled ? copy.yes : copy.no}</span></div>
+        <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{routingFullyEnabled ? copy.yes : copy.readinessCopy.feature_disabled}</span></div>
         <div className="kv"><span className="kv-key">{copy.orderSubmitterMode}</span><span className="kv-value">{submitterMode === "enabled" ? copy.yes : copy.disabled}</span></div>
+        {routingFullyEnabled ? null : (
+          <ul className="muted">
+            {disabledReasons.map((reason) => <li key={reason}>{disabledReasonLabel(reason)}</li>)}
+          </ul>
+        )}
         <div className="kv"><span className="kv-key">{copy.intendedFees}</span><span className="kv-value">Maker 0.5%, Taker 1%</span></div>
         <div className="muted">{copy.feeNotice}</div>
       </section>
       <BuilderFeeDisclosureCard
         locale={locale}
         hasBuilderCode={hasBuilderCode}
-        routedTradingEnabled={routedTradingEnabled}
+        routedTradingEnabled={routingFullyEnabled}
       />
       <form className="panel filters" action="/polymarket">
         {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
@@ -194,8 +229,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               ) : (
                 <div className="muted">{copy.outcomesUnavailable}</div>
               )}
-              <div className="muted">{copy.volume24h}: {toDisplay(market.volume24h, locale)} · {copy.liquidity}: {toDisplay(market.volumeTotal, locale)}</div>
-              <div className="muted">{copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {market.resolvedAt ? formatDateTime(locale, market.resolvedAt, "UTC") : copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.lastSynced}: {market.lastSyncedAt ? formatDateTime(locale, market.lastSyncedAt, "UTC") : copy.never}</div>
+              <div className="muted">{copy.volume24h}: {toDisplay(market.volume24h, locale)} · {copy.liquidity}: {toDisplay(market.liquidity ?? market.volumeTotal, locale)}</div>
+              <div className="muted">{copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {market.resolvedAt ? formatDateTime(locale, market.resolvedAt, "UTC") : copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</div>
               {market.source === "polymarket" ? (
                 <div className="market-actions stack">
                 {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
@@ -204,6 +239,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   locale={locale}
                   hasBuilderCode={hasBuilderCode}
                   featureEnabled={routedTradingEnabled}
+                  submitModeEnabled={submitterMode === "enabled"}
                   walletConnected={false}
                   hasCredentials={false}
                   marketTradable={market.status === "open"}

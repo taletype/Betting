@@ -23,13 +23,13 @@ English remains the fallback locale for missing copy keys and can be addressed b
 - Trading not enabled: 交易功能尚未啟用
 - User-signed order: 用戶自行簽署訂單
 - Non-custodial: 非託管
-- We do not bet for users: 本平台不會替用戶下注或交易
+- We do not trade for users: 本平台不會替用戶下注或交易
 
 ## Forbidden Terms
 
-Avoid Chinese copy that implies pyramid selling, guaranteed returns, passive earnings, managed betting, pay-to-join, or package-based reward unlocks. The automated tests guard key Ambassador user-facing copy against the prohibited term list from the product brief.
+Avoid copy that implies unsafe reward claims, indirect referral income, platform-directed trading, joining payments, or package-based reward unlocks. The automated tests guard key Ambassador user-facing copy against the prohibited term list from the product brief.
 
-Do not use product copy that names pyramid selling, indirect referral earnings, sponsor earnings, recruitment expansion, passive earnings, effortless profit, guaranteed returns, managed betting/trading, joining fees, or package-based reward unlocks.
+Do not use product copy that names those prohibited categories. Use positive, bounded terms such as 直接推薦, Builder 費用收入, 人手審批, 非託管, and 用戶自行簽署訂單.
 
 ## Ambassador Copy Guidance
 
@@ -43,7 +43,7 @@ Use safety copy:
 
 ## Non-Custodial Guidance
 
-External Polymarket routing should state that orders are user-signed and externally routed. Do not imply custody, managed trading, or platform-directed betting.
+External Polymarket routing should state that orders are user-signed and externally routed. Do not imply custody or platform-directed trading.
 
 ## Launch Note
 
