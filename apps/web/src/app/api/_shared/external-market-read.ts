@@ -108,6 +108,16 @@ const mapExternalTrade = (row: ExternalTradeRow) => ({
   tradedAt: row.executed_at ?? row.traded_at,
 });
 
+const EXTERNAL_MARKET_CHILD_QUERY_BATCH_SIZE = 50;
+
+const chunk = <T>(values: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+};
+
 export async function readExternalMarkets(supabase: {
   from: (table: string) => unknown;
 }) {
@@ -136,44 +146,52 @@ export async function readExternalMarkets(supabase: {
   }
 
   const marketIds = marketRows.map((market) => market.id);
-  const [outcomeResult, tradeResult] = await Promise.all([
-    (supabase.from("external_outcomes") as {
-      select: (columns: string) => {
-        in: (column: string, values: string[]) => {
-          order: (column: string, options?: Record<string, unknown>) => Promise<{ data: ExternalOutcomeRow[] | null; error: Error | null }>;
-        };
-      };
-    })
-      .select(
-        "external_market_id, external_outcome_id, title, slug, outcome_index, yes_no, best_bid, best_ask, last_price, volume",
-      )
-      .in("external_market_id", marketIds)
-      .order("outcome_index", { ascending: true }),
-    (supabase.from("external_trade_ticks") as {
-      select: (columns: string) => {
-        in: (column: string, values: string[]) => {
-          order: (column: string, options?: Record<string, unknown>) => Promise<{ data: ExternalTradeRow[] | null; error: Error | null }>;
-        };
-      };
-    })
-      .select("external_market_id, external_trade_id, external_outcome_id, side, price, size, traded_at")
-      .in("external_market_id", marketIds)
-      .order("traded_at", { ascending: false }),
-  ]);
+  const outcomeRows: ExternalOutcomeRow[] = [];
+  const tradeRows: ExternalTradeRow[] = [];
 
-  if (outcomeResult.error) {
-    throw outcomeResult.error;
-  }
+  for (const batch of chunk(marketIds, EXTERNAL_MARKET_CHILD_QUERY_BATCH_SIZE)) {
+    const [outcomeResult, tradeResult] = await Promise.all([
+      (supabase.from("external_outcomes") as {
+        select: (columns: string) => {
+          in: (column: string, values: string[]) => {
+            order: (column: string, options?: Record<string, unknown>) => Promise<{ data: ExternalOutcomeRow[] | null; error: Error | null }>;
+          };
+        };
+      })
+        .select(
+          "external_market_id, external_outcome_id, title, slug, outcome_index, yes_no, best_bid, best_ask, last_price, volume",
+        )
+        .in("external_market_id", batch)
+        .order("outcome_index", { ascending: true }),
+      (supabase.from("external_trade_ticks") as {
+        select: (columns: string) => {
+          in: (column: string, values: string[]) => {
+            order: (column: string, options?: Record<string, unknown>) => Promise<{ data: ExternalTradeRow[] | null; error: Error | null }>;
+          };
+        };
+      })
+        .select("external_market_id, external_trade_id, external_outcome_id, side, price, size, traded_at")
+        .in("external_market_id", batch)
+        .order("traded_at", { ascending: false }),
+    ]);
 
-  if (tradeResult.error) {
-    throw tradeResult.error;
+    if (outcomeResult.error) {
+      throw outcomeResult.error;
+    }
+
+    if (tradeResult.error) {
+      throw tradeResult.error;
+    }
+
+    outcomeRows.push(...(outcomeResult.data ?? []));
+    tradeRows.push(...(tradeResult.data ?? []));
   }
 
   const markets = marketRows.map(mapExternalMarket);
   const byId = new Map(markets.map((market) => [market.id, market]));
   const outcomeByMarketAndExternalId = new Map<string, ReturnType<typeof mapExternalOutcome>>();
 
-  for (const outcome of outcomeResult.data ?? []) {
+  for (const outcome of outcomeRows) {
     const market = byId.get(outcome.external_market_id);
     if (!market) {
       continue;
@@ -187,7 +205,7 @@ export async function readExternalMarkets(supabase: {
   const tradeCounts = new Map<string, number>();
   const latestTradeByMarket = new Set<string>();
   const latestTradeByOutcome = new Set<string>();
-  for (const trade of tradeResult.data ?? []) {
+  for (const trade of tradeRows) {
     const market = byId.get(trade.external_market_id);
     const mappedTrade = mapExternalTrade(trade);
     if (market && !latestTradeByMarket.has(trade.external_market_id)) {
