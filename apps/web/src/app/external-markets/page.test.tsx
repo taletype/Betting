@@ -2,9 +2,42 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import HomePage from "../page";
+import ExternalMarketsPage from "./page";
 import PolymarketPage from "../polymarket/page";
 
 const VALID_BUILDER_CODE = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
+
+const assertRedirectsTo = async (run: () => unknown | Promise<unknown>, location: string): Promise<void> => {
+  await assert.rejects(
+    async () => {
+      await run();
+    },
+    (error: unknown) =>
+      error instanceof Error &&
+      "digest" in error &&
+      typeof error.digest === "string" &&
+      error.digest.includes(`;${location};`),
+  );
+};
+
+const withNodeEnv = async (value: string | undefined, run: () => Promise<void>): Promise<void> => {
+  const originalEnv = process.env;
+  process.env = { ...originalEnv };
+
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  if (value === undefined) {
+    delete mutableEnv.NODE_ENV;
+  } else {
+    mutableEnv.NODE_ENV = value;
+  }
+
+  try {
+    await run();
+  } finally {
+    process.env = originalEnv;
+  }
+};
 
 const withBuilderCode = async (value: string | null, run: () => Promise<void>): Promise<void> => {
   const previous = process.env.POLY_BUILDER_CODE;
@@ -26,6 +59,14 @@ const withBuilderCode = async (value: string | null, run: () => Promise<void>): 
   }
 };
 
+test("home page redirects to Polymarket funnel instead of internal markets", async () => {
+  await assertRedirectsTo(() => HomePage(), "/polymarket");
+});
+
+test("external markets route remains a compatibility alias", async () => {
+  await assertRedirectsTo(() => ExternalMarketsPage(), "/polymarket");
+});
+
 test("Polymarket page renders empty-state when no synced rows exist", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -40,8 +81,7 @@ test("Polymarket page renders empty-state when no synced rows exist", async (t) 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /暫無已同步市場資料/);
-  assert.match(markup, /pnpm sync:external/);
+  assert.match(markup, /暫時未有 Polymarket 市場資料。請先執行外部市場同步，或檢查 API_BASE_URL 是否連接到正確後端。/);
 });
 
 test("Polymarket page shows disabled trade CTA only when builder code is configured", async (t) => {
@@ -132,8 +172,11 @@ test("Polymarket page renders load error when market fetch fails", async (t) => 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /無法載入已同步市場資料/);
-  assert.doesNotMatch(markup, /暫無已同步市場資料/);
+  assert.match(markup, /無法載入 Polymarket 市場資料/);
+  assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL/);
+  assert.match(markup, /\/external\/markets/);
+  assert.match(markup, /external_markets table/);
+  assert.doesNotMatch(markup, /暫時未有 Polymarket 市場資料/);
 });
 
 test("Polymarket page renders synced rows when markets exist", async (t) => {
@@ -215,7 +258,7 @@ test("Polymarket page renders synced rows when markets exist", async (t) => {
   assert.match(markup, /Will CPI be above 3%/);
   assert.match(markup, /polymarket/);
   assert.doesNotMatch(markup, /Legacy non-Polymarket row/);
-  assert.doesNotMatch(markup, /暫無已同步市場資料/);
+  assert.doesNotMatch(markup, /暫時未有 Polymarket 市場資料/);
 });
 
 test("Polymarket page renders load error when configured API base is unavailable", async (t) => {
@@ -249,16 +292,58 @@ test("Polymarket page renders load error when configured API base is unavailable
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /無法載入已同步市場資料/);
+  assert.match(markup, /無法載入 Polymarket 市場資料/);
+  assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL/);
+  assert.match(markup, /\/external\/markets/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
   assert.equal(calls.length, 1);
 });
 
+test("Polymarket page renders operator-visible error when production API base is missing", async (t) => {
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  t.after(() => {
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await withNodeEnv("production", async () => {
+    const markup = renderToStaticMarkup(await PolymarketPage());
+    assert.match(markup, /無法載入 Polymarket 市場資料/);
+    assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL/);
+    assert.match(markup, /\/external\/markets/);
+    assert.match(markup, /external_markets table/);
+  });
+});
 
 test("Polymarket page defaults routed trading disabled", async () => {
+  const originalFetch = globalThis.fetch;
   const original = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
-  const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">否/);
-  if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  try {
+    const markup = renderToStaticMarkup(await PolymarketPage());
+    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">否/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
+  }
 });

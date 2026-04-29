@@ -5,17 +5,22 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { AppShell } from "./app-shell";
 
-test("app shell localizes nav links and keeps zh-HK on default paths", () => {
+test("app shell points the public nav at the Polymarket funnel", () => {
   const markup = renderToStaticMarkup(
     <AppShell locale="zh-HK">
       <main>content</main>
     </AppShell>,
   );
 
-  assert.match(markup, /市場/);
-  assert.match(markup, /資產/);
-  assert.match(markup, /href="\/markets"/);
-  assert.match(markup, /href="\/portfolio"/);
+  assert.match(markup, /Polymarket 市場/);
+  assert.match(markup, /href="\/"/);
   assert.match(markup, /href="\/polymarket"/);
+  assert.match(markup, /href="\/ambassador"/);
+  assert.match(markup, /href="\/rewards"/);
+  assert.match(markup, /href="\/account"/);
+  assert.match(markup, /href="\/admin"/);
+  assert.doesNotMatch(markup, /href="\/markets"/);
+  assert.doesNotMatch(markup, /href="\/portfolio"/);
+  assert.doesNotMatch(markup, /href="\/claims"/);
   assert.doesNotMatch(markup, /external-markets/);
 });

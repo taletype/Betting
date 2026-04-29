@@ -18,9 +18,36 @@ This app is a zh-HK first Polymarket market portal with referral/invite acquisit
 
 - `/` redirects into the market experience.
 - `/polymarket` is the canonical public Polymarket market portal.
+- `/external-markets` remains a compatibility alias for `/polymarket`.
 - `/polymarket/[slug]` is reserved for external market deep links and redirects into the portal.
 - `/ambassador`, `/rewards`, `/account`, and valid `/admin/*` pages remain part of the referral/reward/admin workflow.
 - Public market browsing must work without `POLY_BUILDER_CODE`.
+
+## Polymarket Market Visibility Deployment
+
+Public market browsing depends on the deployed web app being able to call the backend `GET /external/markets` endpoint. On Vercel, configure:
+
+- `API_BASE_URL` - required server-side API origin for `/polymarket`.
+- `NEXT_PUBLIC_API_BASE_URL` - required only if client/browser calls need the API directly.
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `DATABASE_URL` / `SUPABASE_DB_URL` where required by API or sync workers.
+- `POLYMARKET_GAMMA_URL`
+- `POLYMARKET_CLOB_URL`
+
+Run the read-only external market sync before expecting visible rows:
+
+```sh
+pnpm sync:external
+```
+
+Verify the backend before checking the UI:
+
+```sh
+curl "$API_BASE_URL/external/markets"
+```
+
+An empty `[]` response means the route is reachable but `external_markets` has no synced rows yet.
 
 ## Disabled By Default
 
