@@ -5,6 +5,24 @@ import { getMlmDashboard, listExternalMarkets, listMarkets } from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
 
+const withNodeEnv = (value: string | undefined, run: () => Promise<void> | void): Promise<void> | void => {
+  const originalEnv = process.env;
+  process.env = { ...originalEnv };
+
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  if (value === undefined) {
+    delete mutableEnv.NODE_ENV;
+  } else {
+    mutableEnv.NODE_ENV = value;
+  }
+
+  try {
+    return run();
+  } finally {
+    process.env = originalEnv;
+  }
+};
+
 const createFetchMock = (payload: unknown, calls: FetchCall[]): typeof globalThis.fetch =>
   (async (...args: FetchCall) => {
     calls.push(args);
@@ -207,11 +225,9 @@ test("listExternalMarkets surfaces network error when configured API base is unr
 test("listExternalMarkets fails fast in production when API_BASE_URL is not configured", async (t) => {
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const originalNodeEnv = process.env.NODE_ENV;
 
   delete process.env.API_BASE_URL;
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
-  process.env.NODE_ENV = "production";
 
   t.after(() => {
     if (originalApiBaseUrl === undefined) {
@@ -224,14 +240,11 @@ test("listExternalMarkets fails fast in production when API_BASE_URL is not conf
     } else {
       process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
     }
-    if (originalNodeEnv === undefined) {
-      delete process.env.NODE_ENV;
-    } else {
-      process.env.NODE_ENV = originalNodeEnv;
-    }
   });
 
-  await assert.rejects(() => listExternalMarkets(), /Missing API base URL/);
+  await withNodeEnv("production", async () => {
+    await assert.rejects(() => listExternalMarkets(), /Missing API base URL/);
+  });
 });
 
 test("getMlmDashboard uses local Next API route when API base is not configured", async (t) => {
