@@ -51,6 +51,17 @@ interface ExternalTradeRow {
   executed_at?: string | null;
 }
 
+interface ExternalOrderbookSnapshotRow {
+  external_market_id: string;
+  external_outcome_id: string;
+  bids_json: unknown;
+  asks_json: unknown;
+  captured_at: string;
+  last_trade_price: string | number | null;
+  best_bid: string | number | null;
+  best_ask: string | number | null;
+}
+
 const toNumber = (value: string | number | null): number | null => {
   if (value === null) {
     return null;
@@ -124,6 +135,16 @@ const mapExternalTrade = (row: ExternalTradeRow) => ({
   tradedAt: row.executed_at ?? row.traded_at,
 });
 
+const mapExternalOrderbookSnapshot = (row: ExternalOrderbookSnapshotRow) => ({
+  externalOutcomeId: row.external_outcome_id,
+  bids: row.bids_json,
+  asks: row.asks_json,
+  capturedAt: row.captured_at,
+  lastTradePrice: toNumber(row.last_trade_price),
+  bestBid: toNumber(row.best_bid),
+  bestAsk: toNumber(row.best_ask),
+});
+
 const EXTERNAL_MARKET_CHILD_QUERY_BATCH_SIZE = 50;
 
 const chunk = <T>(values: T[], size: number): T[][] => {
@@ -168,6 +189,7 @@ export async function readExternalMarkets(supabase: {
   const marketIds = marketRows.map((market) => market.id);
   const outcomeRows: ExternalOutcomeRow[] = [];
   const tradeRows: ExternalTradeRow[] = [];
+  const orderbookRows: ExternalOrderbookSnapshotRow[] = [];
 
   for (const batch of chunk(marketIds, EXTERNAL_MARKET_CHILD_QUERY_BATCH_SIZE)) {
     const [outcomeResult, tradeResult] = await Promise.all([
@@ -190,10 +212,27 @@ export async function readExternalMarkets(supabase: {
           };
         };
       })
-        .select("external_market_id, external_trade_id, external_outcome_id, side, price, size, traded_at")
+        .select("external_market_id, external_trade_id, external_outcome_id, side, price, price_ppm, size, size_atoms, traded_at, executed_at")
         .in("external_market_id", batch)
         .order("traded_at", { ascending: false }),
     ]);
+
+    const orderbookResult = await (async () => {
+      try {
+        return await (supabase.from("external_orderbook_snapshots") as {
+          select: (columns: string) => {
+            in: (column: string, values: string[]) => {
+              order: (column: string, options?: Record<string, unknown>) => Promise<{ data: ExternalOrderbookSnapshotRow[] | null; error: Error | null }>;
+            };
+          };
+        })
+          .select("external_market_id, external_outcome_id, bids_json, asks_json, captured_at, last_trade_price, best_bid, best_ask")
+          .in("external_market_id", batch)
+          .order("captured_at", { ascending: false });
+      } catch (error) {
+        return { data: null, error: error instanceof Error ? error : new Error("external_orderbook_snapshots read failed") };
+      }
+    })();
 
     if (outcomeResult.error) {
       throw outcomeResult.error;
@@ -203,8 +242,13 @@ export async function readExternalMarkets(supabase: {
       throw tradeResult.error;
     }
 
+    if (orderbookResult.error) {
+      console.warn("external_orderbook_snapshots read failed; continuing without orderbook snapshots", orderbookResult.error);
+    }
+
     outcomeRows.push(...(outcomeResult.data ?? []));
     tradeRows.push(...(tradeResult.data ?? []));
+    orderbookRows.push(...(orderbookResult.data ?? []));
   }
 
   const markets = marketRows.map(mapExternalMarket);
@@ -249,6 +293,17 @@ export async function readExternalMarkets(supabase: {
 
     market?.recentTrades.push(mappedTrade);
     tradeCounts.set(trade.external_market_id, current + 1);
+  }
+
+  const latestOrderbookByOutcome = new Set<string>();
+  for (const snapshot of orderbookRows) {
+    const key = `${snapshot.external_market_id}:${snapshot.external_outcome_id}`;
+    if (latestOrderbookByOutcome.has(key)) {
+      continue;
+    }
+
+    byId.get(snapshot.external_market_id)?.latestOrderbook.push(mapExternalOrderbookSnapshot(snapshot));
+    latestOrderbookByOutcome.add(key);
   }
 
   if (!markets.some((market) => market.source === "polymarket")) {

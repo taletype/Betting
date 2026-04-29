@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AppShell } from "./app-shell";
 import { getCurrentWebUser } from "./auth-session";
 import { ReferralCapture } from "./referral-capture";
+import { OptionalThirdwebProvider } from "./thirdweb-provider";
 import { defaultLocale } from "../lib/locale";
 import "./globals.css";
 
@@ -20,7 +21,9 @@ export default async function RootLayout({
     <html lang={defaultLocale}>
       <body>
         <ReferralCapture />
-        <AppShell locale={defaultLocale} showAdmin={showAdmin}>{children}</AppShell>
+        <OptionalThirdwebProvider>
+          <AppShell locale={defaultLocale} showAdmin={showAdmin}>{children}</AppShell>
+        </OptionalThirdwebProvider>
       </body>
     </html>
   );

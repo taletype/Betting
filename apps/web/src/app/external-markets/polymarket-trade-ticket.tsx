@@ -13,6 +13,7 @@ import {
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { trackFunnelEvent } from "../funnel-analytics";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
+import { useThirdwebWalletStatus } from "../thirdweb-provider";
 import { getLocaleCopy, type AppLocale } from "../../lib/locale";
 
 interface Props {
@@ -60,6 +61,8 @@ const initialGeoblockStatus = (allowed: boolean | undefined): PolymarketGeoblock
 
 export function PolymarketTradeTicket(props: Props) {
   const copy = getLocaleCopy(props.locale).research;
+  const thirdweb = useThirdwebWalletStatus();
+  const walletConnected = thirdweb.configured ? thirdweb.connected : props.walletConnected;
   const [selectedTokenId, setSelectedTokenId] = useState(props.tokenId ?? props.outcomes?.[0]?.tokenId ?? "");
   const [side, setSide] = useState<"buy" | "sell">(props.side);
   const [orderStyle, setOrderStyle] = useState<"limit" | "marketable_limit">("limit");
@@ -96,6 +99,7 @@ export function PolymarketTradeTicket(props: Props) {
   const readinessInput = {
     ...props,
     loggedIn: props.loggedIn,
+    walletConnected,
     geoblockStatus,
     geoblockAllowed: geoblockStatus === "allowed" ? true : geoblockStatus === "blocked" ? false : undefined,
     userSigningAvailable: props.userSigningAvailable,
@@ -162,7 +166,7 @@ export function PolymarketTradeTicket(props: Props) {
         market: props.marketTitle,
         builderCodeConfigured: props.hasBuilderCode,
         routedTradingEnabled: props.featureEnabled,
-        walletConnected: props.walletConnected,
+        walletConnected,
         hasCredentials: props.hasCredentials,
         marketTradable: props.marketTradable,
         submitterAvailable: props.submitterAvailable,
@@ -177,7 +181,7 @@ export function PolymarketTradeTicket(props: Props) {
     props.marketTitle,
     props.marketTradable,
     props.submitterAvailable,
-    props.walletConnected,
+    walletConnected,
     readiness,
   ]);
 
@@ -192,7 +196,7 @@ export function PolymarketTradeTicket(props: Props) {
       </div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
-      <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={props.walletConnected} />
+      <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={walletConnected} />
       <BuilderFeeDisclosureCard
         locale={props.locale}
         hasBuilderCode={props.hasBuilderCode}
@@ -228,7 +232,7 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">路由交易介面</span><span className="kv-value">已顯示</span></div>
         <div className="kv"><span className="kv-key">實際訂單提交</span><span className="kv-value">{props.featureEnabled && props.submitModeEnabled && props.submitterAvailable ? "已啟用" : "已停用"}</span></div>
         <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{props.hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
-        <div className="kv"><span className="kv-key">錢包狀態</span><span className="kv-value">{props.walletConnected ? "已連接" : "尚未連接"}</span></div>
+        <div className="kv"><span className="kv-key">錢包狀態</span><span className="kv-value">{walletConnected ? "已連接" : "尚未連接"}</span></div>
         <div className="kv"><span className="kv-key">Polymarket 憑證</span><span className="kv-value">{props.hasCredentials ? "已就緒" : "需要"}</span></div>
         <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "暫時不可交易"}</span></div>
         <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>

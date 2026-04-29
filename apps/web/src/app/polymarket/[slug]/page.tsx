@@ -54,6 +54,18 @@ const findMarket = (markets: ExternalMarketApiRecord[], slug: string) => {
   ) ?? null;
 };
 
+const formatSlugTitle = (slug: string): string => {
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(slug);
+    } catch {
+      return slug;
+    }
+  })();
+
+  return decoded.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim() || slug;
+};
+
 const formatProvenance = (market: ExternalMarketApiRecord): string => {
   const provenance = market.sourceProvenance ?? market.provenance;
   if (provenance && typeof provenance === "object") {
@@ -89,13 +101,59 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     console.error("failed to load Polymarket market detail", error);
   }
   if (failed) {
+    const fallbackTitle = formatSlugTitle(slug);
+    const unavailableTicketProps = {
+      locale: defaultLocale,
+      hasBuilderCode,
+      featureEnabled: routedTradingEnabled,
+      submitModeEnabled,
+      loggedIn: Boolean(currentUser),
+      walletConnected: false,
+      hasCredentials: false,
+      userSigningAvailable: false,
+      marketTradable: false,
+      orderValid: false,
+      submitterAvailable,
+      marketTitle: fallbackTitle,
+      outcomes: [],
+      outcome: copy.yes,
+      side: "buy" as const,
+      price: null,
+      size: 10,
+    };
+
     return (
       <main className="stack">
+        {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
         <section className="hero">
           <h1>{copy.loadError}</h1>
-          <p>{copy.subtitle}</p>
+          <p>外部 Polymarket / Gamma / CLOB 資料暫時不可用；頁面已改用安全瀏覽狀態，不會提交交易或更改任何平台餘額。</p>
+          {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         </section>
-        <div className="panel empty-state">{copy.loadError}</div>
+        <div className="panel empty-state">
+          <p>{copy.loadError}</p>
+          <ul>
+            <li>市場 slug：<span className="mono">{slug}</span></li>
+            <li>外部資料逾時或暫時未能取得。</li>
+            <li>路由交易保持停用；用戶需要自行簽署訂單，平台不託管資金。</li>
+          </ul>
+        </div>
+        <section className="market-detail-layout">
+          <div className="market-detail-primary stack">
+            <section className="panel stack">
+              <h2 className="section-title">外部資料暫時不可用</h2>
+              <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{slug}</span></div>
+              <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">Gamma / CLOB unavailable</span></div>
+              <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{copy.never}</span></div>
+            </section>
+          </div>
+          <aside className="market-detail-sidebar">
+            <section className="panel sticky-ticket">
+              <PolymarketTradeTicket {...unavailableTicketProps} />
+            </section>
+          </aside>
+        </section>
+        <Link href={refCode ? `/polymarket?ref=${encodeURIComponent(refCode)}` : "/polymarket"}>返回 Polymarket 市場</Link>
       </main>
     );
   }
@@ -103,9 +161,11 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   if (!market) {
     return (
       <main className="stack">
+        {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
         <section className="hero">
           <h1>暫時未有市場資料</h1>
           <p>{copy.empty}</p>
+          {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         </section>
         <div className="panel empty-state">{copy.empty}</div>
         <Link href={refCode ? `/polymarket?ref=${encodeURIComponent(refCode)}` : "/polymarket"}>返回 Polymarket 市場</Link>
@@ -126,6 +186,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   const liquidityPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.liquidity }));
   const tradePoints = visibleTrades.map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
   const stale = stats?.stale;
+  const externalDataUnavailable = stale || !stats || history.length === 0 || visibleOrderbook.length === 0;
 
   const routingInput: PolymarketRoutingReadinessInput = {
     hasBuilderCode,
@@ -196,6 +257,12 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
 
       <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
+      {externalDataUnavailable ? (
+        <section className="panel disclosure-card stack">
+          <strong>外部資料可能過時或暫時不可用</strong>
+          <p className="muted">頁面會顯示已同步的市場資料；Gamma / CLOB 即時資料不可用時，圖表、訂單簿或近期成交會以安全空狀態顯示。</p>
+        </section>
+      ) : null}
 
       <section className="market-detail-layout">
         <div className="market-detail-primary stack">

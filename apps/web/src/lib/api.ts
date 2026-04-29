@@ -113,6 +113,11 @@ const getPublicRouteUrl = (path: string): string => {
 const isProductionRuntime = (): boolean =>
   process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 
+const getApiRequestTimeoutMs = (): number => {
+  const parsed = Number(process.env.NEXT_PUBLIC_API_REQUEST_TIMEOUT_MS ?? process.env.API_REQUEST_TIMEOUT_MS ?? 4_500);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 4_500;
+};
+
 const getApiUrl = (path: string, options?: { requireConfiguredBaseUrl?: boolean }): string => {
   const base = getConfiguredApiBaseUrl();
   if (base) {
@@ -164,15 +169,24 @@ const executeApiRequest = async <T>(
   url: string,
   init?: RequestInit & { allowNotFound?: boolean },
 ): Promise<T | null> => {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(await getOptionalProxyHeaders()),
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getApiRequestTimeoutMs());
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        "content-type": "application/json",
+        ...(await getOptionalProxyHeaders()),
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+      signal: init?.signal ?? controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (init?.allowNotFound && response.status === 404) {
     return null;
@@ -551,7 +565,10 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
       if (error.code === "SUPABASE_ENV_MISSING" || /SUPABASE_/.test(error.message)) {
         diagnostics.push("supabase_env_missing");
       }
-    } else if (error instanceof Error && /ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(error.message)) {
+    } else if (
+      error instanceof Error &&
+      (error.name === "AbortError" || /ECONNREFUSED|ENOTFOUND|fetch failed|network|aborted/i.test(error.message))
+    ) {
       diagnostics.push("api_unreachable");
     }
 

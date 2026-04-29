@@ -11,6 +11,11 @@ export async function GET() {
     return NextResponse.json(await readExternalMarkets(createSupabaseAdminClient()));
   } catch (error) {
     console.warn("serving /external/markets from Polymarket Gamma fallback", error);
-    return NextResponse.json(await readPolymarketGammaFallbackMarkets());
+    try {
+      return NextResponse.json(await readPolymarketGammaFallbackMarkets());
+    } catch (fallbackError) {
+      console.warn("Polymarket Gamma fallback unavailable; serving safe empty list", fallbackError);
+      return NextResponse.json([]);
+    }
   }
 }

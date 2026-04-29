@@ -286,6 +286,78 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /複製市場推薦連結/);
 });
 
+test("Polymarket detail page renders safe not-found state", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.includes("/external/markets/polymarket/missing-market")) {
+      return new Response(JSON.stringify({ market: null }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "missing-market" }),
+    searchParams: Promise.resolve({ ref: "hkref001" }),
+  }));
+
+  assert.match(markup, /暫時未有市場資料/);
+  assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
+});
+
+test("Polymarket detail page renders safe unavailable state when external fetch times out", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalTimeout = process.env.API_REQUEST_TIMEOUT_MS;
+  process.env.API_REQUEST_TIMEOUT_MS = "20";
+
+  globalThis.fetch = ((input, init) => {
+    const signal = init?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalTimeout === undefined) {
+      delete process.env.API_REQUEST_TIMEOUT_MS;
+    } else {
+      process.env.API_REQUEST_TIMEOUT_MS = originalTimeout;
+    }
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "will-the-philadelphia-76ers-win-the-2026-nba-finals" }),
+    searchParams: Promise.resolve({ ref: "timeoutref" }),
+  }));
+
+  assert.match(markup, /市場資料暫時未能更新/);
+  assert.match(markup, /外部 Polymarket \/ Gamma \/ CLOB 資料暫時不可用/);
+  assert.match(markup, /你正在使用推薦碼：TIMEOUTREF/);
+  assert.match(markup, /透過 Polymarket 交易/);
+  assert.match(markup, /disabled=""/);
+  assert.match(markup, /路由交易保持停用/);
+});
+
 test("Polymarket detail page renders chart panels and keeps trade shell disabled", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -376,6 +448,58 @@ test("Polymarket detail page renders chart panels and keeps trade shell disabled
   assert.match(markup, /disabled=""/);
   assert.match(markup, /實際訂單提交<\/span><span class="kv-value">已停用/);
   assert.match(markup, /你正在使用推薦碼：FRIENDCODE/);
+});
+
+test("Polymarket detail browsing works without POLY_BUILDER_CODE", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        market: {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLY-NO-BUILDER",
+          slug: "poly-no-builder",
+          title: "Will browsing work without builder code?",
+          description: "Builder code safety",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-no-builder",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.4,
+          bestAsk: 0.43,
+          lastTradePrice: 0.42,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.4, bestAsk: 0.43, lastPrice: 0.42, volume: null }],
+          recentTrades: [],
+          latestOrderbook: [],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await withBuilderCode(null, async () => {
+    const { default: DetailPage } = await import("../polymarket/[slug]/page");
+    const markup = renderToStaticMarkup(await DetailPage({
+      params: Promise.resolve({ slug: "poly-no-builder" }),
+      searchParams: Promise.resolve({}),
+    }));
+
+    assert.match(markup, /Will browsing work without builder code/);
+    assert.match(markup, /Builder Code 未設定/);
+    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /disabled=""/);
+  });
 });
 
 test("admin Polymarket chart page renders without crashing on safe empty market data", async (t) => {

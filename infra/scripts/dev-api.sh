@@ -6,6 +6,19 @@ cd "$ROOT_DIR"
 
 ./infra/scripts/check-env.sh
 
+if [[ -z "${ENV_FILE:-}" ]]; then
+  if [[ -f .env.local ]]; then
+    ENV_FILE=.env.local
+  elif [[ -f .env ]]; then
+    ENV_FILE=.env
+  else
+    ENV_FILE=.env.example
+  fi
+fi
+set -a
+source "$ENV_FILE"
+set +a
+
 pids=()
 
 cleanup() {
