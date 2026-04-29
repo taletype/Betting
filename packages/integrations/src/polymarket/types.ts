@@ -68,6 +68,8 @@ export interface PolymarketBookPayload {
   asset_id?: string;
   market?: string;
   timestamp?: string | number;
+  tick_size?: string | number;
+  min_order_size?: string | number;
   bids?: PolymarketBookLevel[];
   asks?: PolymarketBookLevel[];
 }

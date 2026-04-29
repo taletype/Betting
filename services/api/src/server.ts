@@ -189,6 +189,15 @@ const handleRequest = async (request: Request): Promise<Response> => {
         return unauthorized;
       }
 
+      const rateLimit = checkRateLimit("polymarketRoutedTrade", actorIdentity);
+      if (!rateLimit.allowed) {
+        incrementCounter("rate_limited_total", { scope: "polymarket_routed_trade" });
+        return Response.json(
+          { error: "rate limit exceeded" },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
+        );
+      }
+
       const body = await parseBody(request);
 
       try {

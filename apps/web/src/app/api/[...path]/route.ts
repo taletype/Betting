@@ -5,6 +5,8 @@ import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_share
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
 import { readExternalMarkets } from "../_shared/external-market-read";
+import { previewPolymarketOrder } from "../_shared/polymarket-orders";
+import type { ExternalMarketApiRecord } from "../../../lib/api";
 import {
   approveRewardPayoutDb,
   captureAmbassadorReferralDb,
@@ -102,6 +104,25 @@ async function handleRequest(
 
     const user = await getAuthenticatedUser(request);
     const userId = user?.id ?? null;
+
+    if (apiPath === "polymarket/orders/preview" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+      const markets = ((await readExternalMarkets(adminSupabase)) as ExternalMarketApiRecord[])
+        .filter((market) => market.source === "polymarket");
+      const preview = await previewPolymarketOrder(
+        {
+          ...body,
+          loggedIn: Boolean(userId),
+          walletConnected: body.walletConnected === true,
+          geoblockAllowed: body.geoblockAllowed === true,
+          l2CredentialsPresent: body.l2CredentialsPresent === true,
+          userSigningAvailable: body.userSigningAvailable === true,
+          submitterAvailable: process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true",
+        },
+        markets,
+      );
+      return NextResponse.json(preview);
+    }
 
     if (!userId) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });

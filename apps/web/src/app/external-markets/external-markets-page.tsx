@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { PolymarketTradeTicket } from "./polymarket-trade-ticket";
+import { getCurrentWebUser } from "../auth-session";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
@@ -104,6 +105,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" ? "enabled" : "disabled";
   const submitterAvailable = submitterMode === "enabled";
   const refCode = normalizeReferralCode(params?.ref);
+  const currentUser = await getCurrentWebUser();
 
   try {
     markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
@@ -117,9 +119,13 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     hasBuilderCode,
     featureEnabled: routedTradingEnabled,
     submitModeEnabled: submitterMode === "enabled",
+    loggedIn: Boolean(currentUser),
     walletConnected: false,
+    geoblockAllowed: false,
     hasCredentials: false,
+    userSigningAvailable: false,
     marketTradable: visibleMarkets.some((market) => market.status === "open"),
+    orderValid: true,
     submitterAvailable,
   };
   const routingFullyEnabled = isPolymarketRoutingFullyEnabled(statusInput);
@@ -240,11 +246,23 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   hasBuilderCode={hasBuilderCode}
                   featureEnabled={routedTradingEnabled}
                   submitModeEnabled={submitterMode === "enabled"}
+                  loggedIn={Boolean(currentUser)}
                   walletConnected={false}
+                  geoblockAllowed={false}
                   hasCredentials={false}
+                  userSigningAvailable={false}
                   marketTradable={market.status === "open"}
+                  orderValid={Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice)}
                   submitterAvailable={submitterAvailable}
                  marketTitle={market.title}
+                  outcomes={market.outcomes.map((outcome) => ({
+                    tokenId: outcome.externalOutcomeId,
+                    title: outcome.title,
+                    bestBid: outcome.bestBid,
+                    bestAsk: outcome.bestAsk,
+                    lastPrice: outcome.lastPrice,
+                  }))}
+                  tokenId={market.outcomes[0]?.externalOutcomeId}
                   outcome={market.outcomes[0]?.title ?? "Yes"}
                   side="buy"
                   price={market.lastTradePrice}

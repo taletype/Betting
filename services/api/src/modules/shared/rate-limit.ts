@@ -24,6 +24,10 @@ export const rateLimitConfig = {
     windowMs: defaultWindowMs,
     maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_CANCEL_MAX, 60),
   },
+  polymarketRoutedTrade: {
+    windowMs: defaultWindowMs,
+    maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_POLYMARKET_ROUTE_MAX, 30),
+  },
   claims: {
     windowMs: defaultWindowMs,
     maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_CLAIM_MAX, 30),

@@ -75,10 +75,11 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "尚未連接錢包",
     "需要 Polymarket 憑證",
     "Builder Code 未設定",
-    "市場暫不可交易",
-    "訂單提交模式已停用",
-    "提交器未準備好",
-    "準備用戶自行簽署訂單",
+    "市場暫時不可交易",
+    "你目前所在地區暫不支援 Polymarket 下單",
+    "價格或數量無效",
+    "提交器暫時不可用",
+    "需要用戶自行簽署訂單",
     "透過 Polymarket 交易",
     "已提交到 Polymarket",
   ]) {
@@ -88,4 +89,9 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     getLocaleCopy("zh-HK").research.nonCustodialNotice,
     "用戶需要自行簽署訂單。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。",
   );
+  assert.equal(
+    getLocaleCopy("zh-HK").research.routedExecutionNotice,
+    "交易會透過 Polymarket 執行。本平台只提供市場資料、下單介面及路由，不持有你的 Polymarket 資金。",
+  );
+  assert.match(getLocaleCopy("zh-HK").research.feeNotice, /費率只適用於合資格並成功成交的 Polymarket 路由訂單/);
 });

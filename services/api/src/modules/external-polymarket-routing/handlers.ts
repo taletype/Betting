@@ -42,11 +42,19 @@ export interface ExternalPolymarketUserConfirmation {
   confirmedAt: string;
 }
 
+export interface ExternalPolymarketGeoblockProof {
+  blocked: false;
+  checkedAt: string;
+  country?: string | null;
+  region?: string | null;
+}
+
 export interface ExternalPolymarketOrderRouteInput {
   userWalletAddress?: unknown;
   marketSource?: unknown;
   marketExternalId?: unknown;
   outcomeExternalId?: unknown;
+  geoblock?: unknown;
   orderInput?: unknown;
   signedOrder?: unknown;
   orderType?: unknown;
@@ -61,6 +69,7 @@ export interface ExternalPolymarketOrderRoutePayload {
   l2Credentials: PolymarketL2Credentials;
   market: ExternalMarketView;
   constraints: PolymarketMarketConstraints;
+  geoblock: ExternalPolymarketGeoblockProof;
   orderInput: Record<string, unknown> & { builderCode: string };
   signedOrder: Record<string, unknown> & {
     signer: string;
@@ -105,6 +114,7 @@ export interface ExternalPolymarketOrderRouteDependencies {
     expectedSigner: string;
     builderCode: string;
   }) => Promise<boolean>;
+  auditRecorder?: (payload: ExternalPolymarketOrderRoutePayload, upstream: PolymarketOrderSubmitterResponse) => Promise<void>;
   now?: () => Date;
   allowNonProductionSubmissionForTests?: boolean;
 }
@@ -214,6 +224,24 @@ const readUserConfirmation = (value: unknown): ExternalPolymarketUserConfirmatio
   };
 };
 
+const readGeoblockProof = (value: unknown): ExternalPolymarketGeoblockProof => {
+  const geoblock = toObject(value, "geoblock");
+  if (geoblock.blocked !== false) {
+    throw new ExternalPolymarketRoutingError(
+      403,
+      "POLYMARKET_GEOBLOCK_RESTRICTED",
+      "Polymarket trading is not available in the user's current region",
+    );
+  }
+
+  return {
+    blocked: false,
+    checkedAt: toTrimmedString(geoblock.checkedAt, "geoblock.checkedAt"),
+    country: typeof geoblock.country === "string" ? geoblock.country : null,
+    region: typeof geoblock.region === "string" ? geoblock.region : null,
+  };
+};
+
 const isProductionLikeRuntime = (): boolean => {
   const runtime = process.env.DEPLOY_ENV ?? process.env.APP_ENV ?? process.env.NODE_ENV;
   return runtime === "production" || runtime === "staging";
@@ -236,6 +264,46 @@ const assertRecentIso = (value: string, label: string, maxAgeMs: number, now: Da
   if (parsed > now.getTime() + 5_000 || now.getTime() - parsed > maxAgeMs) {
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_ORDER_STALE", "Polymarket order confirmation is stale");
   }
+};
+
+const recordRoutedOrderAudit = async (
+  payload: ExternalPolymarketOrderRoutePayload,
+  upstream: PolymarketOrderSubmitterResponse,
+): Promise<void> => {
+  const db = createDatabaseClient();
+  const notional = Math.round((payload.userConfirmation.price * (payload.userConfirmation.size ?? payload.userConfirmation.amount ?? 0)) * 1_000_000);
+  const [referral] = await db.query<{ id: string }>(
+    `select id from public.referral_attributions where referred_user_id = $1::uuid limit 1`,
+    [payload.userId],
+  );
+
+  await db.query(
+    `insert into public.polymarket_routed_order_audits (
+       user_id, market_external_id, market_slug, token_id, side, price, size, notional_usdc_atoms,
+       builder_code_attached, polymarket_order_id, referral_attribution_id, raw_response, created_at
+     ) values ($1::uuid, $2, $3, $4, $5, $6, $7, $8::bigint, $9, $10, $11::uuid, $12::jsonb, now())`,
+    [
+      payload.userId,
+      payload.market.externalId,
+      payload.market.slug,
+      payload.userConfirmation.tokenID,
+      payload.userConfirmation.side,
+      payload.userConfirmation.price,
+      payload.userConfirmation.size ?? payload.userConfirmation.amount ?? 0,
+      String(notional),
+      payload.orderInput.builderCode === payload.signedOrder.builder,
+      upstream.orderId,
+      referral?.id ?? null,
+      JSON.stringify({
+        status: upstream.status,
+        success: upstream.success,
+        orderId: upstream.orderId,
+        transactionHashCount: upstream.transactionHashes.length,
+        takingAmount: upstream.takingAmount,
+        makingAmount: upstream.makingAmount,
+      }),
+    ],
+  );
 };
 
 const assertRecentOrderTimestamp = (timestamp: string, now: Date): void => {
@@ -365,6 +433,7 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   const marketSource = toTrimmedString(input.marketSource, "marketSource");
   const marketExternalId = toTrimmedString(input.marketExternalId, "marketExternalId");
   const outcomeExternalId = toTrimmedString(input.outcomeExternalId, "outcomeExternalId");
+  const geoblock = readGeoblockProof(input.geoblock);
   const orderInput = toObject(input.orderInput, "orderInput");
   const signedOrder = readSignedOrder(input.signedOrder);
   const orderType = toOrderType(input.orderType);
@@ -373,6 +442,7 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
 
   assertRecentOrderTimestamp(signedOrder.timestamp, now);
   assertRecentIso(confirmation.confirmedAt, "userConfirmation.confirmedAt", MAX_CONFIRMATION_AGE_MS, now);
+  assertRecentIso(geoblock.checkedAt, "geoblock.checkedAt", MAX_CONFIRMATION_AGE_MS, now);
   assertOrderMatchesConfirmation({ orderInput, signedOrder, confirmation, orderType, builderCode });
 
   const linkedWallet = await (dependencies.linkedWalletLookup ?? defaultLinkedWalletLookup)(userId);
@@ -415,6 +485,7 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
     l2Credentials: l2Lookup.credentials,
     market,
     constraints,
+    geoblock,
     orderInput: { ...orderInput, builderCode },
     signedOrder,
     orderType,
@@ -454,9 +525,10 @@ export const routeExternalPolymarketOrder = async (
 
     const payload = await prepareExternalPolymarketOrderRoutePayload(input, { ...dependencies, submitter });
     incrementCounter("builder_attribution_prepared", { status: "signed" });
-    incrementCounter("routed_trade_signature_requested", { status: "verified" });
-    incrementCounter("routed_trade_user_signed", { status: "verified" });
+    incrementCounter("user_order_signature_requested", { status: "verified" });
+    incrementCounter("user_order_signature_completed", { status: "verified" });
     const upstream = await submitter.submitOrder(payload);
+    await (dependencies.auditRecorder ?? recordRoutedOrderAudit)(payload, upstream);
 
     incrementCounter("routed_trade_submitted", { status: upstream.status || "submitted" });
     incrementCounter("polymarket_builder_order_attribution_total", { status: "submitted" });
@@ -470,7 +542,7 @@ export const routeExternalPolymarketOrder = async (
       upstream,
     };
   } catch (error) {
-    incrementCounter("routed_trade_failed", {
+    incrementCounter("routed_trade_submit_failed", {
       code: error instanceof Error && "code" in error ? String((error as { code: string }).code) : "POLYMARKET_ORDER_ATTRIBUTION_FAILED",
     });
     logger.error("polymarket_builder.order_attribution_failed", {

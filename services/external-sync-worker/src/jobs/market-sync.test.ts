@@ -157,6 +157,8 @@ const withEnv = async (env: Record<string, string | undefined>, callback: () => 
 
 const createOrderbookSnapshot = (tokenId: string) => ({
   tokenId,
+  tickSize: "0.01",
+  minOrderSize: "5",
   bidsJson: [],
   asksJson: [],
   bestBid: null,

@@ -311,6 +311,14 @@ export interface LocaleCopy {
     market: string;
     outcome: string;
     estimatedCostProceeds: string;
+    estimatedMaxFees: string;
+    orderType: string;
+    orderStyle: string;
+    slippageProtection: string;
+    expiration: string;
+    geoblockStatus: string;
+    finalSignatureWarning: string;
+    routedExecutionNotice: string;
     readiness: string;
     submitUserSignedOrder: string;
     readinessCopy: Record<string, string>;
@@ -682,17 +690,28 @@ const en: LocaleCopy = {
     market: "Market",
     outcome: "Outcome",
     estimatedCostProceeds: "Estimated cost/proceeds",
+    estimatedMaxFees: "Estimated max fees",
+    orderType: "Order type",
+    orderStyle: "Order style",
+    slippageProtection: "Slippage protection",
+    expiration: "Expiration",
+    geoblockStatus: "Geoblock status",
+    finalSignatureWarning: "Users must sign the final order before submission.",
+    routedExecutionNotice: "Trades execute through Polymarket. This platform only provides market data, an order ticket, and routing; it does not hold your Polymarket funds.",
     readiness: "Readiness",
     submitUserSignedOrder: "Submit user-signed order",
     readinessCopy: {
+      auth_required: "Login required",
       builder_code_missing: "Builder Code not configured",
       submit_mode_disabled: "Order submission mode is disabled",
       feature_disabled: "Trading not enabled",
       wallet_not_connected: "Wallet not connected",
+      geoblocked: "Polymarket trading is not available in your current region",
       credentials_missing: "Polymarket credentials required",
       market_not_tradable: "Market not tradable",
-      submitter_unavailable: "Submitter not ready",
-      signature_required: "Ready for user to sign order",
+      invalid_order: "Invalid price or size",
+      submitter_unavailable: "Submitter temporarily unavailable",
+      signature_required: "User order signature required",
       ready_to_submit: "Trade via Polymarket",
       submitted: "Submitted to Polymarket",
     },
@@ -1067,17 +1086,28 @@ const zhHK: DeepPartial<LocaleCopy> = {
     market: "市場",
     outcome: "結果",
     estimatedCostProceeds: "預計成本/所得",
+    estimatedMaxFees: "預計最高費用",
+    orderType: "訂單類型",
+    orderStyle: "下單方式",
+    slippageProtection: "滑價保護",
+    expiration: "到期時間",
+    geoblockStatus: "地區限制狀態",
+    finalSignatureWarning: "用戶需要自行簽署訂單。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。",
+    routedExecutionNotice: "交易會透過 Polymarket 執行。本平台只提供市場資料、下單介面及路由，不持有你的 Polymarket 資金。",
     readiness: "準備狀態",
     submitUserSignedOrder: "提交用戶自行簽署訂單",
     readinessCopy: {
+      auth_required: "尚未登入",
       builder_code_missing: "Builder Code 未設定",
-      submit_mode_disabled: "訂單提交模式已停用",
+      submit_mode_disabled: "提交器暫時不可用",
       feature_disabled: "交易功能尚未啟用",
       wallet_not_connected: "尚未連接錢包",
+      geoblocked: "你目前所在地區暫不支援 Polymarket 下單",
       credentials_missing: "需要 Polymarket 憑證",
-      market_not_tradable: "市場暫不可交易",
-      submitter_unavailable: "提交器未準備好",
-      signature_required: "準備用戶自行簽署訂單",
+      market_not_tradable: "市場暫時不可交易",
+      invalid_order: "價格或數量無效",
+      submitter_unavailable: "提交器暫時不可用",
+      signature_required: "需要用戶自行簽署訂單",
       ready_to_submit: "透過 Polymarket 交易",
       submitted: "已提交到 Polymarket",
     },

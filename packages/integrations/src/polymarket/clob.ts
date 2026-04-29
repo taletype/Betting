@@ -5,6 +5,8 @@ const CLOB_BASE_URL = "https://clob.polymarket.com";
 
 export interface PolymarketOrderBookSnapshot {
   tokenId: string;
+  tickSize: string | null;
+  minOrderSize: string | null;
   bidsJson: unknown;
   asksJson: unknown;
   bestBid: number | null;
@@ -37,6 +39,8 @@ export const fetchPolymarketOrderBook = async (tokenId: string): Promise<Polymar
 
   return {
     tokenId,
+    tickSize: payload.tick_size === undefined ? null : String(payload.tick_size),
+    minOrderSize: payload.min_order_size === undefined ? null : String(payload.min_order_size),
     bidsJson: bids,
     asksJson: asks,
     bestBid: parseNumber(bids[0]?.price),

@@ -178,6 +178,11 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /交易功能尚未啟用/);
+    assert.match(markup, /尚未登入/);
+    assert.match(markup, /尚未連接錢包/);
+    assert.match(markup, /需要 Polymarket 憑證/);
+    assert.match(markup, /需要用戶自行簽署訂單/);
+    assert.match(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
 });
@@ -546,7 +551,7 @@ test("Polymarket page keeps routed trade CTA disabled when submitter is unavaila
     assert.doesNotMatch(markup, /路由交易已啟用<\/span><span class="kv-value">是/);
     assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">交易功能尚未啟用/);
     assert.match(markup, /訂單提交模式<\/span><span class="kv-value">已停用/);
-    assert.match(markup, /訂單提交模式已停用/);
+    assert.match(markup, /提交器暫時不可用/);
     assert.match(markup, /disabled=""/);
   });
 });

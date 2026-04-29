@@ -49,9 +49,11 @@ test("external Polymarket UI and read API do not import internal ledger or balan
     "apps/web/src/app/external-markets/polymarket-trade-ticket.tsx",
     "apps/web/src/app/external-markets/polymarket-routing-readiness.ts",
     "apps/web/src/app/api/_shared/external-market-read.ts",
+    "apps/web/src/app/api/_shared/polymarket-orders.ts",
     "services/api/src/modules/external-markets/handlers.ts",
     "services/api/src/modules/external-markets/repository.ts",
     "services/api/src/modules/external-polymarket-routing/handlers.ts",
+    "services/api/src/modules/external-polymarket-routing/submitter.ts",
   ];
 
   for (const file of files) {

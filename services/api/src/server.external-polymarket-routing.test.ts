@@ -123,6 +123,12 @@ const baseInput = (overrides: Partial<ExternalPolymarketOrderRouteInput> = {}): 
     builderFeeAcknowledged: true,
     confirmedAt: NOW.toISOString(),
   },
+  geoblock: {
+    blocked: false,
+    checkedAt: NOW.toISOString(),
+    country: "HK",
+    region: null,
+  },
   ...overrides,
 });
 
@@ -132,6 +138,7 @@ const liveDeps = (submitter: PolymarketOrderSubmitter) => ({
   linkedWalletLookup: async () => ({ walletAddress: USER_WALLET }),
   l2CredentialLookup: async () => ({ status: "present" as const, credentials: { key: "user-key", secret: "dXNlci1zZWNyZXQ=", passphrase: "user-passphrase" } }),
   signatureVerifier: async () => true,
+  auditRecorder: async () => {},
   now: () => NOW,
   allowNonProductionSubmissionForTests: true,
 });
@@ -182,13 +189,33 @@ test("setting routed trading true without real submitter still fails", async () 
 
 test("builderCode must be included before signing and is preserved through submission", async () => {
   let submittedPayload: ExternalPolymarketOrderRoutePayload | null = null;
+  let auditedPayload: ExternalPolymarketOrderRoutePayload | null = null;
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
     await withMarket(baseMarket(), async () => {
-      const result = await routeExternalPolymarketOrder(baseInput(), liveDeps(mockSubmitter((payload) => { submittedPayload = payload; })));
+      const result = await routeExternalPolymarketOrder(baseInput(), {
+        ...liveDeps(mockSubmitter((payload) => { submittedPayload = payload; })),
+        auditRecorder: async (payload) => {
+          auditedPayload = payload;
+        },
+      });
       assert.equal(result.status, "submitted");
       assert.equal(result.attribution.attachedBeforeUserSignature, true);
       assert.equal(submittedPayload?.orderInput.builderCode, VALID_BUILDER_CODE);
       assert.equal(submittedPayload?.signedOrder.builder, VALID_BUILDER_CODE);
+      assert.equal(auditedPayload?.userId, USER_ID);
+      assert.equal(auditedPayload?.market.externalId, "condition-1");
+      assert.equal(auditedPayload?.userConfirmation.tokenID, TOKEN_ID);
+    });
+  });
+});
+
+test("geoblock proof is required before routed submission", async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput({ geoblock: { blocked: true, checkedAt: NOW.toISOString(), country: "US" } }), liveDeps(mockSubmitter())),
+        /current region/,
+      );
     });
   });
 });
@@ -254,8 +281,19 @@ test("invalid tokenId/outcome mapping blocks submission", async () => {
 test("external Polymarket routing modules do not import internal ledger or balance mutation paths", () => {
   for (const file of ["handlers.ts", "submitter.ts"]) {
     const source = readFileSync(resolve(process.cwd(), `src/modules/external-polymarket-routing/${file}`), "utf8");
-    assert.doesNotMatch(source, /@bet\/ledger|@bet\/trading|ledger_journals|ledger_entries|balanceDeltas|rpc_place_order/);
+    assert.doesNotMatch(source, /@bet\/ledger|@bet\/trading|ledger_journals|ledger_entries|balanceDeltas|rpc_place_order|public\.ledger/);
   }
+});
+
+test("external Polymarket routing logs do not include secrets or full signatures", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/handlers.ts"), "utf8");
+  assert.doesNotMatch(source, /logger\.(error|info|warn)\([^)]*(signature|secret|passphrase|auth|signedOrder|l2Credentials)/is);
+});
+
+test("submitter uses only user-scoped L2 credentials from the route payload", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/submitter.ts"), "utf8");
+  assert.match(source, /creds: toApiCreds\(payload\.l2Credentials\)/);
+  assert.doesNotMatch(source, /process\.env\.POLYMARKET_(API_KEY|API_SECRET|API_PASSPHRASE|CLOB_API_KEY|CLOB_SECRET|CLOB_PASSPHRASE)/);
 });
 
 test("external Polymarket trading path does not mutate internal balances or log secrets", () => {

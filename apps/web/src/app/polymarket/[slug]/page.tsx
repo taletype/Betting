@@ -4,6 +4,7 @@ import React from "react";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
+import { getCurrentWebUser } from "../../auth-session";
 import { isPolymarketRoutingFullyEnabled, type PolymarketRoutingReadinessInput } from "../../external-markets/polymarket-routing-readiness";
 import { PolymarketTradeTicket } from "../../external-markets/polymarket-trade-ticket";
 import { FunnelEventTracker } from "../../funnel-analytics";
@@ -60,6 +61,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitModeEnabled = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
   const submitterAvailable = submitModeEnabled;
+  const currentUser = await getCurrentWebUser();
   let market: ExternalMarketApiRecord | null = null;
   let failed = false;
 
@@ -99,9 +101,13 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     hasBuilderCode,
     featureEnabled: routedTradingEnabled,
     submitModeEnabled,
+    loggedIn: Boolean(currentUser),
     walletConnected: false,
+    geoblockAllowed: false,
     hasCredentials: false,
+    userSigningAvailable: false,
     marketTradable: market.status === "open",
+    orderValid: true,
     submitterAvailable,
   };
   const routingFullyEnabled = isPolymarketRoutingFullyEnabled(routingInput);
@@ -220,11 +226,23 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
           hasBuilderCode={hasBuilderCode}
           featureEnabled={routedTradingEnabled}
           submitModeEnabled={submitModeEnabled}
+          loggedIn={Boolean(currentUser)}
           walletConnected={false}
+          geoblockAllowed={false}
           hasCredentials={false}
+          userSigningAvailable={false}
           marketTradable={market.status === "open"}
+          orderValid={Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice)}
           submitterAvailable={submitterAvailable}
           marketTitle={market.title}
+          outcomes={market.outcomes.map((outcome) => ({
+            tokenId: outcome.externalOutcomeId,
+            title: outcome.title,
+            bestBid: outcome.bestBid,
+            bestAsk: outcome.bestAsk,
+            lastPrice: outcome.lastPrice,
+          }))}
+          tokenId={market.outcomes[0]?.externalOutcomeId}
           outcome={market.outcomes[0]?.title ?? "Yes"}
           side="buy"
           price={market.lastTradePrice}
