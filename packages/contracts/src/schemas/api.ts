@@ -259,90 +259,107 @@ export const GetDepositsResponseSchema = z.object({
   deposits: z.array(ApiDepositRecordSchema),
 });
 
-export const ApiReferralCodeSchema = z.object({
+export const ApiAmbassadorCodeSchema = z.object({
   id: UuidSchema,
   code: z.string().min(1),
+  ownerUserId: UuidSchema,
+  status: z.enum(["active", "disabled"]),
   inviteUrl: z.string().min(1),
   createdAt: TimestampSchema,
+  disabledAt: TimestampSchema.nullable(),
 });
 
-export const ApiReferralSponsorSchema = z.object({
-  userId: UuidSchema,
-  username: z.string().nullable(),
-  displayName: z.string().nullable(),
-  referralCode: z.string().nullable(),
-  assignedAt: TimestampSchema,
-});
-
-export const ApiReferralMemberSchema = z.object({
-  userId: UuidSchema,
-  username: z.string().nullable(),
-  displayName: z.string().nullable(),
-  joinedAt: TimestampSchema,
-});
-
-export const ApiMlmDashboardMetricsSchema = z.object({
-  directReferralCount: z.number().int().nonnegative(),
-  totalDownlineCount: z.number().int().nonnegative(),
-  lifetimeCommission: BigIntStringSchema,
-  recentCommission30d: BigIntStringSchema,
-});
-
-export const ApiMlmCommissionPlanLevelSchema = z.object({
-  id: UuidSchema,
-  levelDepth: z.number().int().positive(),
-  rateBps: z.number().int().nonnegative(),
-});
-
-export const ApiMlmCommissionPlanSchema = z.object({
-  id: UuidSchema,
-  version: z.number().int().positive(),
-  name: z.string().min(1),
-  payableDepth: z.number().int().positive(),
-  isActive: z.boolean(),
-  activatedAt: TimestampSchema.nullable(),
-  createdAt: TimestampSchema,
-  levels: z.array(ApiMlmCommissionPlanLevelSchema),
-});
-
-export const ApiMlmCommissionEventSchema = z.object({
-  id: UuidSchema,
-  depositId: UuidSchema,
-  sourceUserId: UuidSchema,
-  sourceDisplayName: z.string().nullable(),
-  beneficiaryUserId: UuidSchema,
-  levelDepth: z.number().int().positive(),
-  amount: BigIntStringSchema,
-  currency: z.string().min(1),
-  payoutStatus: z.enum(["credited", "skipped"]),
-  createdAt: TimestampSchema,
-  journalId: UuidSchema.nullable(),
-});
-
-export const GetMlmDashboardResponseSchema = z.object({
-  referralCode: ApiReferralCodeSchema,
-  sponsor: ApiReferralSponsorSchema.nullable(),
-  directReferrals: z.array(ApiReferralMemberSchema),
-  metrics: ApiMlmDashboardMetricsSchema,
-  commissions: z.array(ApiMlmCommissionEventSchema),
-});
-
-export const ApiAdminReferralRelationshipSchema = z.object({
+export const ApiReferralAttributionSchema = z.object({
   id: UuidSchema,
   referredUserId: UuidSchema,
-  referredDisplayName: z.string().nullable(),
-  sponsorUserId: UuidSchema,
-  sponsorDisplayName: z.string().nullable(),
-  referralCode: z.string().nullable(),
-  source: z.enum(["invite_code", "admin_override"]),
-  assignedAt: TimestampSchema,
+  referrerUserId: UuidSchema,
+  ambassadorCode: z.string().min(1),
+  attributedAt: TimestampSchema,
+  qualificationStatus: z.enum(["pending", "qualified", "rejected"]),
+  rejectionReason: z.string().nullable(),
 });
 
-export const GetAdminMlmOverviewResponseSchema = z.object({
-  activePlan: ApiMlmCommissionPlanSchema.nullable(),
-  plans: z.array(ApiMlmCommissionPlanSchema),
-  recentCommissions: z.array(ApiMlmCommissionEventSchema),
-  relationships: z.array(ApiAdminReferralRelationshipSchema),
+export const ApiAmbassadorDirectReferralSchema = z.object({
+  userId: UuidSchema,
+  username: z.string().nullable(),
+  displayName: z.string().nullable(),
+  attributedAt: TimestampSchema,
+  qualificationStatus: z.enum(["pending", "qualified", "rejected"]),
+  tradingVolumeUsdcAtoms: BigIntStringSchema,
+});
+
+export const ApiBuilderTradeAttributionSchema = z.object({
+  id: UuidSchema,
+  userId: UuidSchema,
+  directReferrerUserId: UuidSchema.nullable(),
+  polymarketOrderId: z.string().nullable(),
+  polymarketTradeId: z.string().nullable(),
+  conditionId: z.string().nullable(),
+  marketSlug: z.string().nullable(),
+  notionalUsdcAtoms: BigIntStringSchema,
+  builderFeeUsdcAtoms: BigIntStringSchema,
+  status: z.enum(["pending", "confirmed", "void"]),
+  rawJson: z.record(z.unknown()),
+  observedAt: TimestampSchema,
+  confirmedAt: TimestampSchema.nullable(),
+});
+
+export const ApiAmbassadorRewardLedgerSchema = z.object({
+  id: UuidSchema,
+  recipientUserId: UuidSchema.nullable(),
+  sourceTradeAttributionId: UuidSchema,
+  rewardType: z.enum(["platform_revenue", "direct_referrer_commission", "trader_cashback"]),
+  amountUsdcAtoms: BigIntStringSchema,
+  status: z.enum(["pending", "payable", "approved", "paid", "void"]),
+  createdAt: TimestampSchema,
+  payableAt: TimestampSchema.nullable(),
+  approvedAt: TimestampSchema.nullable(),
+  paidAt: TimestampSchema.nullable(),
+  voidedAt: TimestampSchema.nullable(),
+  voidReason: z.string().nullable(),
+});
+
+export const ApiAmbassadorRewardSummarySchema = z.object({
+  pendingRewards: BigIntStringSchema,
+  payableRewards: BigIntStringSchema,
+  approvedRewards: BigIntStringSchema,
+  paidRewards: BigIntStringSchema,
+  voidRewards: BigIntStringSchema,
+  directReferralCount: z.number().int().nonnegative(),
+  directTradingVolumeUsdcAtoms: BigIntStringSchema,
+});
+
+export const ApiAmbassadorRewardPayoutSchema = z.object({
+  id: UuidSchema,
+  recipientUserId: UuidSchema,
+  amountUsdcAtoms: BigIntStringSchema,
+  status: z.enum(["requested", "approved", "paid", "failed", "cancelled"]),
+  destinationType: z.enum(["wallet", "manual"]),
+  destinationValue: z.string().min(1),
+  reviewedBy: UuidSchema.nullable(),
+  reviewedAt: TimestampSchema.nullable(),
+  paidAt: TimestampSchema.nullable(),
+  txHash: z.string().nullable(),
+  notes: z.string().nullable(),
+  createdAt: TimestampSchema,
+});
+
+export const GetAmbassadorDashboardResponseSchema = z.object({
+  ambassadorCode: ApiAmbassadorCodeSchema,
+  attribution: ApiReferralAttributionSchema.nullable(),
+  directReferrals: z.array(ApiAmbassadorDirectReferralSchema),
+  rewards: ApiAmbassadorRewardSummarySchema,
+  rewardLedger: z.array(ApiAmbassadorRewardLedgerSchema),
+  payouts: z.array(ApiAmbassadorRewardPayoutSchema),
+});
+
+export const GetAdminAmbassadorOverviewResponseSchema = z.object({
+  codes: z.array(ApiAmbassadorCodeSchema.omit({ inviteUrl: true })),
+  attributions: z.array(ApiReferralAttributionSchema),
+  tradeAttributions: z.array(ApiBuilderTradeAttributionSchema),
+  rewardLedger: z.array(ApiAmbassadorRewardLedgerSchema),
+  payouts: z.array(ApiAmbassadorRewardPayoutSchema),
+  suspiciousAttributions: z.array(ApiReferralAttributionSchema),
 });
 
 export const CreateWithdrawalRequestSchema = z.object({
@@ -477,6 +494,8 @@ export type AdminResolveMarketResponse = z.infer<typeof AdminResolveMarketRespon
 export type AdminExecuteWithdrawalRequest = z.infer<typeof AdminExecuteWithdrawalRequestSchema>;
 export type AdminFailWithdrawalRequest = z.infer<typeof AdminFailWithdrawalRequestSchema>;
 export type AdminWithdrawalActionResponse = z.infer<typeof AdminWithdrawalActionResponseSchema>;
+export type GetAmbassadorDashboardResponse = z.infer<typeof GetAmbassadorDashboardResponseSchema>;
+export type GetAdminAmbassadorOverviewResponse = z.infer<typeof GetAdminAmbassadorOverviewResponseSchema>;
 export type GetExternalMarketsResponse = z.infer<typeof GetExternalMarketsResponseSchema>;
 export type GetExternalMarketBySourceAndIdResponse = z.infer<typeof GetExternalMarketBySourceAndIdResponseSchema>;
 export type GetExternalMarketTradesBySourceAndIdResponse = z.infer<typeof GetExternalMarketTradesBySourceAndIdResponseSchema>;

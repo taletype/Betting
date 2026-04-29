@@ -4,9 +4,8 @@ import {
   OrderBookSchema,
   PortfolioSnapshotSchema,
   WithdrawalRecordSchema,
-  GetMlmDashboardResponseSchema,
-  GetAdminMlmOverviewResponseSchema,
-  ApiMlmCommissionPlanSchema,
+  GetAmbassadorDashboardResponseSchema,
+  GetAdminAmbassadorOverviewResponseSchema,
   CreateOrderRequestSchema,
   PostOrdersResponseSchema,
 } from "@bet/contracts";
@@ -288,45 +287,96 @@ export const createOrder = async (input: {
   );
 };
 
-export const getMlmDashboard = async () =>
-  GetMlmDashboardResponseSchema.parse(await readApiJson("/mlm/dashboard"));
+export const getAmbassadorDashboard = async () =>
+  GetAmbassadorDashboardResponseSchema.parse(await readApiJson("/ambassador/dashboard"));
 
-export const joinReferralProgram = async (code: string) =>
-  GetMlmDashboardResponseSchema.parse(
-    await readApiJson("/mlm/join", {
+export const captureAmbassadorReferral = async (code: string) =>
+  GetAmbassadorDashboardResponseSchema.parse(
+    await readApiJson("/ambassador/capture", {
       method: "POST",
       body: { code },
     }),
   );
 
-export const getAdminMlmOverview = async () =>
-  GetAdminMlmOverviewResponseSchema.parse(await readApiJson("/admin/mlm"));
+export const getAdminAmbassadorOverview = async () =>
+  GetAdminAmbassadorOverviewResponseSchema.parse(await readApiJson("/admin/ambassador"));
 
-export const createAdminMlmPlan = async (input: {
-  name: string;
-  levels: { levelDepth: number; rateBps: number }[];
-  activate: boolean;
+export const overrideAdminReferralAttribution = async (input: {
+  referredUserId: string;
+  ambassadorCode: string;
+  reason: string;
 }) =>
-  ApiMlmCommissionPlanSchema.parse(
-    await readApiJson("/admin/mlm/plans", {
-      method: "POST",
-      body: input,
-    }),
-  );
+  readApiJson("/admin/ambassador/referral-attributions/override", {
+    method: "POST",
+    body: input,
+  });
 
-export const activateAdminMlmPlan = async (planId: string) =>
-  readApiJson(`/admin/mlm/plans/${planId}`, {
+export const recordAdminMockBuilderTradeAttribution = async (input: {
+  userId: string;
+  notionalUsdcAtoms: string;
+  builderFeeUsdcAtoms: string;
+  status: "pending" | "confirmed" | "void";
+  conditionId?: string | null;
+  marketSlug?: string | null;
+  polymarketOrderId?: string | null;
+  polymarketTradeId?: string | null;
+}) =>
+  readApiJson("/admin/ambassador/trade-attributions/mock", {
+    method: "POST",
+    body: input,
+  });
+
+export const createAdminAmbassadorCode = async (input: { ownerUserId: string; code?: string | null }) =>
+  readApiJson("/admin/ambassador/codes", {
+    method: "POST",
+    body: input,
+  });
+
+export const disableAdminAmbassadorCode = async (codeId: string, reason: string) =>
+  readApiJson(`/admin/ambassador/codes/${codeId}/disable`, {
+    method: "POST",
+    body: { reason },
+  });
+
+export const markAdminRewardsPayable = async (tradeAttributionId: string) =>
+  readApiJson(`/admin/ambassador/trade-attributions/${tradeAttributionId}/payable`, {
     method: "POST",
   });
 
-export const overrideAdminReferralSponsor = async (input: {
-  referredUserId: string;
-  sponsorCode: string;
-  reason: string;
-}) =>
-  readApiJson("/admin/mlm/relationships/override", {
+export const voidAdminTradeAttributionRewards = async (tradeAttributionId: string, reason: string) =>
+  readApiJson(`/admin/ambassador/trade-attributions/${tradeAttributionId}/void`, {
+    method: "POST",
+    body: { reason },
+  });
+
+export const requestAmbassadorPayout = async (input: { destinationType: "wallet" | "manual"; destinationValue: string }) =>
+  readApiJson("/ambassador/payouts", {
     method: "POST",
     body: input,
+  });
+
+export const approveAdminRewardPayout = async (payoutId: string, notes?: string | null) =>
+  readApiJson(`/admin/ambassador/payouts/${payoutId}/approve`, {
+    method: "POST",
+    body: { notes },
+  });
+
+export const markAdminRewardPayoutPaid = async (payoutId: string, input: { txHash?: string | null; notes?: string | null }) =>
+  readApiJson(`/admin/ambassador/payouts/${payoutId}/paid`, {
+    method: "POST",
+    body: input,
+  });
+
+export const failAdminRewardPayout = async (payoutId: string, notes: string) =>
+  readApiJson(`/admin/ambassador/payouts/${payoutId}/failed`, {
+    method: "POST",
+    body: { notes },
+  });
+
+export const cancelAdminRewardPayout = async (payoutId: string, notes: string) =>
+  readApiJson(`/admin/ambassador/payouts/${payoutId}/cancelled`, {
+    method: "POST",
+    body: { notes },
   });
 
 

@@ -12,6 +12,8 @@ import {
   readSecret,
 } from "@bet/config";
 
+import { getAmbassadorRewardsConfig } from "./modules/ambassador/repository";
+
 const localAdminToken = "dev-admin-token";
 
 export const getAdminApiToken = (): string =>
@@ -35,4 +37,5 @@ export const validateApiEnvironment = (): void => {
 
   readOptionalBytes32Hex("POLY_BUILDER_CODE");
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
+  getAmbassadorRewardsConfig();
 };

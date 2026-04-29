@@ -232,90 +232,107 @@ export const PortfolioSnapshotSchema = z.object({
   withdrawals: z.array(WithdrawalRecordSchema).default([]),
 });
 
-export const ReferralCodeSchema = z.object({
+export const AmbassadorCodeSchema = z.object({
   id: UuidSchema,
   code: z.string().min(1),
+  ownerUserId: UuidSchema,
+  status: z.enum(["active", "disabled"]),
   inviteUrl: z.string().min(1),
   createdAt: TimestampSchema,
+  disabledAt: TimestampSchema.nullable(),
 });
 
-export const ReferralSponsorSchema = z.object({
-  userId: UuidSchema,
-  username: z.string().nullable(),
-  displayName: z.string().nullable(),
-  referralCode: z.string().nullable(),
-  assignedAt: TimestampSchema,
-});
-
-export const ReferralMemberSchema = z.object({
-  userId: UuidSchema,
-  username: z.string().nullable(),
-  displayName: z.string().nullable(),
-  joinedAt: TimestampSchema,
-});
-
-export const MlmCommissionPlanLevelSchema = z.object({
-  id: UuidSchema,
-  levelDepth: z.number().int().positive(),
-  rateBps: z.number().int().nonnegative(),
-});
-
-export const MlmCommissionPlanSchema = z.object({
-  id: UuidSchema,
-  version: z.number().int().positive(),
-  name: z.string().min(1),
-  payableDepth: z.number().int().positive(),
-  isActive: z.boolean(),
-  activatedAt: TimestampSchema.nullable(),
-  createdAt: TimestampSchema,
-  levels: z.array(MlmCommissionPlanLevelSchema).default([]),
-});
-
-export const MlmCommissionEventSchema = z.object({
-  id: UuidSchema,
-  depositId: UuidSchema,
-  sourceUserId: UuidSchema,
-  sourceDisplayName: z.string().nullable(),
-  beneficiaryUserId: UuidSchema,
-  levelDepth: z.number().int().positive(),
-  amount: MoneySchema,
-  currency: z.string().min(1),
-  payoutStatus: z.enum(["credited", "skipped"]),
-  createdAt: TimestampSchema,
-  journalId: UuidSchema.nullable(),
-});
-
-export const MlmDashboardMetricsSchema = z.object({
-  directReferralCount: z.number().int().nonnegative(),
-  totalDownlineCount: z.number().int().nonnegative(),
-  lifetimeCommission: MoneySchema,
-  recentCommission30d: MoneySchema,
-});
-
-export const MlmDashboardSchema = z.object({
-  referralCode: ReferralCodeSchema,
-  sponsor: ReferralSponsorSchema.nullable(),
-  directReferrals: z.array(ReferralMemberSchema).default([]),
-  metrics: MlmDashboardMetricsSchema,
-  commissions: z.array(MlmCommissionEventSchema).default([]),
-});
-
-export const AdminReferralRelationshipSchema = z.object({
+export const ReferralAttributionSchema = z.object({
   id: UuidSchema,
   referredUserId: UuidSchema,
-  referredDisplayName: z.string().nullable(),
-  sponsorUserId: UuidSchema,
-  sponsorDisplayName: z.string().nullable(),
-  referralCode: z.string().nullable(),
-  source: z.enum(["invite_code", "admin_override"]),
-  assignedAt: TimestampSchema,
+  referrerUserId: UuidSchema,
+  ambassadorCode: z.string().min(1),
+  attributedAt: TimestampSchema,
+  qualificationStatus: z.enum(["pending", "qualified", "rejected"]),
+  rejectionReason: z.string().nullable(),
 });
 
-export const AdminMlmOverviewSchema = z.object({
-  activePlan: MlmCommissionPlanSchema.nullable(),
-  plans: z.array(MlmCommissionPlanSchema).default([]),
-  recentCommissions: z.array(MlmCommissionEventSchema).default([]),
-  relationships: z.array(AdminReferralRelationshipSchema).default([]),
+export const AmbassadorDirectReferralSchema = z.object({
+  userId: UuidSchema,
+  username: z.string().nullable(),
+  displayName: z.string().nullable(),
+  attributedAt: TimestampSchema,
+  qualificationStatus: z.enum(["pending", "qualified", "rejected"]),
+  tradingVolumeUsdcAtoms: MoneySchema,
+});
+
+export const BuilderTradeAttributionSchema = z.object({
+  id: UuidSchema,
+  userId: UuidSchema,
+  directReferrerUserId: UuidSchema.nullable(),
+  polymarketOrderId: z.string().nullable(),
+  polymarketTradeId: z.string().nullable(),
+  conditionId: z.string().nullable(),
+  marketSlug: z.string().nullable(),
+  notionalUsdcAtoms: MoneySchema,
+  builderFeeUsdcAtoms: MoneySchema,
+  status: z.enum(["pending", "confirmed", "void"]),
+  rawJson: z.record(z.unknown()),
+  observedAt: TimestampSchema,
+  confirmedAt: TimestampSchema.nullable(),
+});
+
+export const AmbassadorRewardLedgerSchema = z.object({
+  id: UuidSchema,
+  recipientUserId: UuidSchema.nullable(),
+  sourceTradeAttributionId: UuidSchema,
+  rewardType: z.enum(["platform_revenue", "direct_referrer_commission", "trader_cashback"]),
+  amountUsdcAtoms: MoneySchema,
+  status: z.enum(["pending", "payable", "approved", "paid", "void"]),
+  createdAt: TimestampSchema,
+  payableAt: TimestampSchema.nullable(),
+  approvedAt: TimestampSchema.nullable(),
+  paidAt: TimestampSchema.nullable(),
+  voidedAt: TimestampSchema.nullable(),
+  voidReason: z.string().nullable(),
+});
+
+export const AmbassadorRewardSummarySchema = z.object({
+  pendingRewards: MoneySchema,
+  payableRewards: MoneySchema,
+  approvedRewards: MoneySchema,
+  paidRewards: MoneySchema,
+  voidRewards: MoneySchema,
+  directReferralCount: z.number().int().nonnegative(),
+  directTradingVolumeUsdcAtoms: MoneySchema,
+});
+
+export const AmbassadorRewardPayoutSchema = z.object({
+  id: UuidSchema,
+  recipientUserId: UuidSchema,
+  amountUsdcAtoms: MoneySchema,
+  status: z.enum(["requested", "approved", "paid", "failed", "cancelled"]),
+  destinationType: z.enum(["wallet", "manual"]),
+  destinationValue: z.string().min(1),
+  reviewedBy: UuidSchema.nullable(),
+  reviewedAt: TimestampSchema.nullable(),
+  paidAt: TimestampSchema.nullable(),
+  txHash: z.string().nullable(),
+  notes: z.string().nullable(),
+  createdAt: TimestampSchema,
+});
+
+export const AmbassadorDashboardSchema = z.object({
+  ambassadorCode: AmbassadorCodeSchema,
+  attribution: ReferralAttributionSchema.nullable(),
+  directReferrals: z.array(AmbassadorDirectReferralSchema).default([]),
+  rewards: AmbassadorRewardSummarySchema,
+  rewardLedger: z.array(AmbassadorRewardLedgerSchema).default([]),
+  payouts: z.array(AmbassadorRewardPayoutSchema).default([]),
+});
+
+export const AdminAmbassadorOverviewSchema = z.object({
+  codes: z.array(AmbassadorCodeSchema.omit({ inviteUrl: true })).default([]),
+  attributions: z.array(ReferralAttributionSchema).default([]),
+  tradeAttributions: z.array(BuilderTradeAttributionSchema).default([]),
+  rewardLedger: z.array(AmbassadorRewardLedgerSchema).default([]),
+  payouts: z.array(AmbassadorRewardPayoutSchema).default([]),
+  suspiciousAttributions: z.array(ReferralAttributionSchema).default([]),
 });
 
 export type Market = z.infer<typeof MarketSchema>;
@@ -339,12 +356,12 @@ export type DepositRecord = z.infer<typeof DepositRecordSchema>;
 export type WithdrawalRecord = z.infer<typeof WithdrawalRecordSchema>;
 export type PortfolioBalance = z.infer<typeof PortfolioBalanceSchema>;
 export type PortfolioSnapshot = z.infer<typeof PortfolioSnapshotSchema>;
-export type ReferralCode = z.infer<typeof ReferralCodeSchema>;
-export type ReferralSponsor = z.infer<typeof ReferralSponsorSchema>;
-export type ReferralMember = z.infer<typeof ReferralMemberSchema>;
-export type MlmCommissionPlanLevel = z.infer<typeof MlmCommissionPlanLevelSchema>;
-export type MlmCommissionPlan = z.infer<typeof MlmCommissionPlanSchema>;
-export type MlmCommissionEvent = z.infer<typeof MlmCommissionEventSchema>;
-export type MlmDashboard = z.infer<typeof MlmDashboardSchema>;
-export type AdminReferralRelationship = z.infer<typeof AdminReferralRelationshipSchema>;
-export type AdminMlmOverview = z.infer<typeof AdminMlmOverviewSchema>;
+export type AmbassadorCode = z.infer<typeof AmbassadorCodeSchema>;
+export type ReferralAttribution = z.infer<typeof ReferralAttributionSchema>;
+export type AmbassadorDirectReferral = z.infer<typeof AmbassadorDirectReferralSchema>;
+export type BuilderTradeAttribution = z.infer<typeof BuilderTradeAttributionSchema>;
+export type AmbassadorRewardLedger = z.infer<typeof AmbassadorRewardLedgerSchema>;
+export type AmbassadorRewardSummary = z.infer<typeof AmbassadorRewardSummarySchema>;
+export type AmbassadorRewardPayout = z.infer<typeof AmbassadorRewardPayoutSchema>;
+export type AmbassadorDashboard = z.infer<typeof AmbassadorDashboardSchema>;
+export type AdminAmbassadorOverview = z.infer<typeof AdminAmbassadorOverviewSchema>;

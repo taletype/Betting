@@ -5,15 +5,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { AppShell } from "./app-shell";
 
-test("app shell localizes nav links and keeps chinese paths prefixed", () => {
+test("app shell localizes nav links and keeps zh-HK on default paths", () => {
   const markup = renderToStaticMarkup(
-    <AppShell locale="zh-CN">
+    <AppShell locale="zh-HK">
       <main>content</main>
     </AppShell>,
   );
 
-  assert.match(markup, /市场/);
-  assert.match(markup, /资产/);
-  assert.match(markup, /href="\/zh-CN\/markets"/);
-  assert.match(markup, /href="\/zh-CN\/portfolio"/);
+  assert.match(markup, /市場/);
+  assert.match(markup, /資產/);
+  assert.match(markup, /href="\/markets"/);
+  assert.match(markup, /href="\/portfolio"/);
 });

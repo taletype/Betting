@@ -13,8 +13,7 @@ export type LedgerJournalKind =
   | "withdrawal_completed"
   | "withdrawal_failed"
   | "reconciliation_adjustment"
-  | "claim_payout"
-  | "mlm_commission";
+  | "claim_payout";
 
 export interface LedgerJournal {
   id: string;

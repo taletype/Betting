@@ -85,90 +85,6 @@ set username = excluded.username,
     wallet_address = excluded.wallet_address,
     updated_at = now();
 
-insert into public.referral_codes (
-  id,
-  user_id,
-  code,
-  created_at,
-  updated_at
-) values
-  (
-    'c1111111-1111-4111-8111-111111111111',
-    '00000000-0000-4000-8000-000000000001',
-    'DEMO1001',
-    now(),
-    now()
-  ),
-  (
-    'c2222222-2222-4222-8222-222222222222',
-    '00000000-0000-4000-8000-000000000002',
-    'INTG2002',
-    now(),
-    now()
-  )
-on conflict (user_id) do update
-set code = excluded.code,
-    updated_at = now();
-
-insert into public.mlm_commission_plans (
-  id,
-  version,
-  name,
-  payable_depth,
-  is_active,
-  activated_at,
-  created_by_user_id,
-  created_at,
-  updated_at
-) values (
-  'd1111111-1111-4111-8111-111111111111',
-  1,
-  'Launch Plan',
-  3,
-  true,
-  now(),
-  '00000000-0000-4000-8000-000000000001',
-  now(),
-  now()
-)
-on conflict (version) do update
-set name = excluded.name,
-    payable_depth = excluded.payable_depth,
-    is_active = excluded.is_active,
-    activated_at = excluded.activated_at,
-    updated_at = now();
-
-insert into public.mlm_commission_plan_levels (
-  id,
-  plan_id,
-  level_depth,
-  rate_bps,
-  created_at
-) values
-  (
-    'e1111111-1111-4111-8111-111111111111',
-    'd1111111-1111-4111-8111-111111111111',
-    1,
-    1000,
-    now()
-  ),
-  (
-    'e2222222-2222-4222-8222-222222222222',
-    'd1111111-1111-4111-8111-111111111111',
-    2,
-    500,
-    now()
-  ),
-  (
-    'e3333333-3333-4333-8333-333333333333',
-    'd1111111-1111-4111-8111-111111111111',
-    3,
-    250,
-    now()
-  )
-on conflict (plan_id, level_depth) do update
-set rate_bps = excluded.rate_bps;
-
 insert into public.profiles (
   id,
   username,
@@ -185,6 +101,36 @@ set username = excluded.username,
     display_name = excluded.display_name,
     wallet_address = excluded.wallet_address,
     updated_at = now();
+
+insert into public.ambassador_codes (
+  id,
+  owner_user_id,
+  code,
+  status,
+  created_at,
+  disabled_at
+) values
+  (
+    'c1111111-1111-4111-8111-111111111111',
+    '00000000-0000-4000-8000-000000000001',
+    'DEMO1001',
+    'active',
+    now(),
+    null
+  ),
+  (
+    'c2222222-2222-4222-8222-222222222222',
+    '00000000-0000-4000-8000-000000000002',
+    'INTG2002',
+    'active',
+    now(),
+    null
+  )
+on conflict (code) do update
+set code = excluded.code,
+    owner_user_id = excluded.owner_user_id,
+    status = excluded.status,
+    disabled_at = excluded.disabled_at;
 
 insert into public.markets (
   id,

@@ -106,6 +106,97 @@ export const apiOpenApiSource = {
         responses: { "201": { description: "Created" } },
       },
     },
+    "/ambassador/dashboard": {
+      get: {
+        summary: "Get direct Ambassador Rewards dashboard",
+        responses: { "200": { description: "OK" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/ambassador/capture": {
+      post: {
+        summary: "Apply a first valid ambassador referral code",
+        responses: { "200": { description: "OK" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/ambassador/payouts": {
+      post: {
+        summary: "Request manual ambassador reward payout review",
+        responses: { "201": { description: "Created" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/admin/ambassador": {
+      get: {
+        summary: "Admin Ambassador Rewards overview",
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/codes": {
+      post: {
+        summary: "Create an ambassador code",
+        responses: { "201": { description: "Created" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/codes/{codeId}/disable": {
+      post: {
+        summary: "Disable an ambassador code",
+        parameters: [{ name: "codeId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/referral-attributions/override": {
+      post: {
+        summary: "Admin override for a referral attribution",
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/trade-attributions/mock": {
+      post: {
+        summary: "Record a mocked Builder-fee trade attribution",
+        responses: { "201": { description: "Created" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/trade-attributions/{tradeAttributionId}/void": {
+      post: {
+        summary: "Void rewards for a Builder-fee trade attribution",
+        parameters: [{ name: "tradeAttributionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/trade-attributions/{tradeAttributionId}/payable": {
+      post: {
+        summary: "Mark confirmed Builder-fee trade rewards payable",
+        parameters: [{ name: "tradeAttributionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/payouts/{payoutId}/approve": {
+      post: {
+        summary: "Approve an ambassador reward payout request",
+        parameters: [{ name: "payoutId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/payouts/{payoutId}/paid": {
+      post: {
+        summary: "Mark an approved ambassador reward payout paid",
+        parameters: [{ name: "payoutId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/payouts/{payoutId}/failed": {
+      post: {
+        summary: "Mark an ambassador reward payout failed",
+        parameters: [{ name: "payoutId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
+    "/admin/ambassador/payouts/{payoutId}/cancelled": {
+      post: {
+        summary: "Cancel an ambassador reward payout request",
+        parameters: [{ name: "payoutId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "OK" }, "401": { description: "Admin authorization required" } },
+      },
+    },
     "/admin/markets/{marketId}/resolve": {
       post: {
         summary: "Resolve a market",

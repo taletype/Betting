@@ -31,13 +31,20 @@ import { resolveMarket } from "./modules/admin/handlers";
 import { runExternalSync } from "./modules/admin/external-sync";
 import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
 import {
-  activateAdminCommissionPlan,
-  createAdminCommissionPlan,
-  getAdminMlmOverview,
-  getMlmDashboard,
-  joinReferralProgram,
-  overrideReferralSponsor,
-} from "./modules/mlm/handlers";
+  approveAdminRewardPayout,
+  captureAmbassadorReferral,
+  createAdminAmbassadorCode,
+  disableAdminAmbassadorCode,
+  getAdminAmbassadorOverview,
+  getAmbassadorDashboard,
+  markAdminRewardPayoutPaid,
+  markAdminBuilderTradeRewardsPayable,
+  overrideAdminReferralAttribution,
+  recordAdminMockBuilderTradeAttribution,
+  requestAmbassadorRewardPayout,
+  updateAdminRewardPayoutFailureState,
+  voidAdminBuilderTradeAttribution,
+} from "./modules/ambassador/handlers";
 import {
   claimMarket,
   getClaimableStateForMarket,
@@ -453,21 +460,49 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/mlm/dashboard") {
-      const payload = await getMlmDashboard(getRequestUserId(request));
+    if (request.method === "GET" && url.pathname === "/ambassador/dashboard") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const payload = await getAmbassadorDashboard(requestUserId);
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
-    if (request.method === "POST" && url.pathname === "/mlm/join") {
+    if (request.method === "POST" && url.pathname === "/ambassador/capture") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
       const body = await parseBody(request);
-      const payload = await joinReferralProgram({
-        userId: getRequestUserId(request),
-        code: String(body.code ?? ""),
+      const payload = await captureAmbassadorReferral({
+        userId: requestUserId,
+        code: String(body.code ?? body.ref ?? ""),
       });
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/ambassador/payouts") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseBody(request);
+      const payload = await requestAmbassadorRewardPayout({
+        userId: requestUserId,
+        destinationType: body.destinationType === "manual" ? "manual" : "wallet",
+        destinationValue: String(body.destinationValue ?? ""),
+      });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+        status: 201,
       });
     }
 
@@ -561,36 +596,45 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/admin/mlm") {
+    if (request.method === "GET" && url.pathname === "/admin/ambassador") {
       if (!isAdminRequest(request)) {
         const payload: ApiErrorResponse = { error: "admin authorization required" };
         return Response.json(payload, { status: 401 });
       }
 
-      const payload = await getAdminMlmOverview();
+      const payload = await getAdminAmbassadorOverview();
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
     }
 
-    if (request.method === "POST" && url.pathname === "/admin/mlm/plans") {
+    if (request.method === "POST" && url.pathname === "/admin/ambassador/referral-attributions/override") {
       if (!isAdminRequest(request)) {
         const payload: ApiErrorResponse = { error: "admin authorization required" };
         return Response.json(payload, { status: 401 });
       }
 
       const body = await parseBody(request);
-      const levels = Array.isArray(body.levels)
-        ? body.levels.map((level) => ({
-            levelDepth: Number((level as { levelDepth?: unknown }).levelDepth ?? 0),
-            rateBps: Number((level as { rateBps?: unknown }).rateBps ?? 0),
-          }))
-        : [];
-      const payload = await createAdminCommissionPlan({
+      await overrideAdminReferralAttribution({
         adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
-        name: String(body.name ?? "MLM Plan"),
-        levels,
-        activate: Boolean(body.activate),
+        referredUserId: String(body.referredUserId ?? ""),
+        ambassadorCode: String(body.ambassadorCode ?? body.code ?? ""),
+        reason: String(body.reason ?? ""),
+      });
+      return Response.json({ ok: true });
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/ambassador/codes") {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      const payload = await createAdminAmbassadorCode({
+        adminUserId: requestUserId ?? DEMO_USER_ID,
+        ownerUserId: String(body.ownerUserId ?? ""),
+        code: body.code ? String(body.code) : null,
       });
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
@@ -600,37 +644,161 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
     if (
       request.method === "POST" &&
-      segments.length === 4 &&
+      segments.length === 5 &&
       segments[0] === "admin" &&
-      segments[1] === "mlm" &&
-      segments[2] === "plans"
+      segments[1] === "ambassador" &&
+      segments[2] === "codes" &&
+      segments[4] === "disable"
     ) {
       if (!isAdminRequest(request)) {
         const payload: ApiErrorResponse = { error: "admin authorization required" };
         return Response.json(payload, { status: 401 });
       }
 
-      await activateAdminCommissionPlan({
-        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
-        planId: segments[3] ?? "",
+      const body = await parseBody(request);
+      const payload = await disableAdminAmbassadorCode({
+        adminUserId: requestUserId ?? DEMO_USER_ID,
+        codeId: segments[3] ?? "",
+        reason: String(body.reason ?? ""),
       });
-      return Response.json({ ok: true });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+      });
     }
 
-    if (request.method === "POST" && url.pathname === "/admin/mlm/relationships/override") {
+    if (request.method === "POST" && url.pathname === "/admin/ambassador/trade-attributions/mock") {
       if (!isAdminRequest(request)) {
         const payload: ApiErrorResponse = { error: "admin authorization required" };
         return Response.json(payload, { status: 401 });
       }
 
       const body = await parseBody(request);
-      await overrideReferralSponsor({
+      const payload = await recordAdminMockBuilderTradeAttribution({
         adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
-        referredUserId: String(body.referredUserId ?? ""),
-        sponsorCode: String(body.sponsorCode ?? ""),
+        userId: String(body.userId ?? ""),
+        polymarketOrderId: body.polymarketOrderId ? String(body.polymarketOrderId) : null,
+        polymarketTradeId: body.polymarketTradeId ? String(body.polymarketTradeId) : null,
+        marketSlug: body.marketSlug ? String(body.marketSlug) : null,
+        conditionId: body.conditionId ? String(body.conditionId) : null,
+        notionalUsdcAtoms: BigInt(String(body.notionalUsdcAtoms ?? "0")),
+        builderFeeUsdcAtoms: BigInt(String(body.builderFeeUsdcAtoms ?? "0")),
+        status: body.status === "confirmed" || body.status === "void" ? body.status : "pending",
+        rawJson: { requestBody: body },
+      });
+      return new Response(toJson(payload), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "admin" &&
+      segments[1] === "ambassador" &&
+      segments[2] === "trade-attributions" &&
+      segments[4] === "payable"
+    ) {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const payload = await markAdminBuilderTradeRewardsPayable({
+        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        tradeAttributionId: segments[3] ?? "",
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "admin" &&
+      segments[1] === "ambassador" &&
+      segments[2] === "trade-attributions" &&
+      segments[4] === "void"
+    ) {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      await voidAdminBuilderTradeAttribution({
+        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        tradeAttributionId: segments[3] ?? "",
         reason: String(body.reason ?? ""),
       });
       return Response.json({ ok: true });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "admin" &&
+      segments[1] === "ambassador" &&
+      segments[2] === "payouts" &&
+      segments[4] === "approve"
+    ) {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      const payload = await approveAdminRewardPayout({
+        adminUserId: requestUserId ?? DEMO_USER_ID,
+        payoutId: segments[3] ?? "",
+        notes: body.notes ? String(body.notes) : null,
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "admin" &&
+      segments[1] === "ambassador" &&
+      segments[2] === "payouts" &&
+      segments[4] === "paid"
+    ) {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      const payload = await markAdminRewardPayoutPaid({
+        adminUserId: requestUserId ?? DEMO_USER_ID,
+        payoutId: segments[3] ?? "",
+        txHash: body.txHash ? String(body.txHash) : null,
+        notes: body.notes ? String(body.notes) : null,
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "admin" &&
+      segments[1] === "ambassador" &&
+      segments[2] === "payouts" &&
+      (segments[4] === "failed" || segments[4] === "cancelled")
+    ) {
+      if (!isAdminRequest(request)) {
+        const payload: ApiErrorResponse = { error: "admin authorization required" };
+        return Response.json(payload, { status: 401 });
+      }
+
+      const body = await parseBody(request);
+      const payload = await updateAdminRewardPayoutFailureState({
+        adminUserId: requestUserId ?? DEMO_USER_ID,
+        payoutId: segments[3] ?? "",
+        status: segments[4],
+        notes: String(body.notes ?? ""),
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
     }
 
     if (

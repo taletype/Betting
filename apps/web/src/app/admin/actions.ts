@@ -3,12 +3,19 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  activateAdminMlmPlan,
   apiRequest,
-  createAdminMlmPlan,
+  approveAdminRewardPayout,
+  cancelAdminRewardPayout,
+  createAdminAmbassadorCode,
   executeAdminWithdrawal,
   failAdminWithdrawal,
-  overrideAdminReferralSponsor,
+  disableAdminAmbassadorCode,
+  failAdminRewardPayout,
+  markAdminRewardPayoutPaid,
+  markAdminRewardsPayable,
+  overrideAdminReferralAttribution,
+  recordAdminMockBuilderTradeAttribution,
+  voidAdminTradeAttributionRewards,
 } from "../../lib/api";
 
 export const resolveMarketAction = async (formData: FormData) => {
@@ -53,40 +60,82 @@ export const failWithdrawalAction = async (formData: FormData) => {
   revalidatePath("/portfolio");
 };
 
-export const createMlmPlanAction = async (formData: FormData) => {
-  const name = String(formData.get("name") ?? "");
-  const levelOneRateBps = Number(String(formData.get("levelOneRateBps") ?? "0"));
-  const levelTwoRateBps = Number(String(formData.get("levelTwoRateBps") ?? "0"));
-  const levelThreeRateBps = Number(String(formData.get("levelThreeRateBps") ?? "0"));
-  const activate = String(formData.get("activate") ?? "") === "on";
-
-  await createAdminMlmPlan({
-    name,
-    activate,
-    levels: [
-      { levelDepth: 1, rateBps: levelOneRateBps },
-      { levelDepth: 2, rateBps: levelTwoRateBps },
-      { levelDepth: 3, rateBps: levelThreeRateBps },
-    ],
+export const createAmbassadorCodeAction = async (formData: FormData) => {
+  await createAdminAmbassadorCode({
+    ownerUserId: String(formData.get("ownerUserId") ?? ""),
+    code: String(formData.get("code") ?? "").trim() || null,
   });
 
   revalidatePath("/admin");
-  revalidatePath("/referrals");
+  revalidatePath("/admin/ambassadors");
 };
 
-export const activateMlmPlanAction = async (formData: FormData) => {
-  const planId = String(formData.get("planId") ?? "");
-  await activateAdminMlmPlan(planId);
+export const disableAmbassadorCodeAction = async (formData: FormData) => {
+  await disableAdminAmbassadorCode(String(formData.get("codeId") ?? ""), String(formData.get("reason") ?? ""));
   revalidatePath("/admin");
+  revalidatePath("/admin/ambassadors");
 };
 
-export const overrideReferralSponsorAction = async (formData: FormData) => {
-  await overrideAdminReferralSponsor({
+export const overrideReferralAttributionAction = async (formData: FormData) => {
+  await overrideAdminReferralAttribution({
     referredUserId: String(formData.get("referredUserId") ?? ""),
-    sponsorCode: String(formData.get("sponsorCode") ?? ""),
+    ambassadorCode: String(formData.get("ambassadorCode") ?? ""),
     reason: String(formData.get("reason") ?? ""),
   });
 
   revalidatePath("/admin");
-  revalidatePath("/referrals");
+  revalidatePath("/admin/ambassadors");
+  revalidatePath("/ambassador");
+};
+
+export const recordMockBuilderTradeAction = async (formData: FormData) => {
+  await recordAdminMockBuilderTradeAttribution({
+    userId: String(formData.get("userId") ?? ""),
+    notionalUsdcAtoms: String(formData.get("notionalUsdcAtoms") ?? "0"),
+    builderFeeUsdcAtoms: String(formData.get("builderFeeUsdcAtoms") ?? "0"),
+    status: "confirmed",
+    conditionId: String(formData.get("conditionId") ?? "").trim() || null,
+    marketSlug: String(formData.get("marketSlug") ?? "").trim() || null,
+    polymarketOrderId: String(formData.get("polymarketOrderId") ?? "").trim() || null,
+    polymarketTradeId: String(formData.get("polymarketTradeId") ?? "").trim() || null,
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/rewards");
+};
+
+export const markRewardsPayableAction = async (formData: FormData) => {
+  await markAdminRewardsPayable(String(formData.get("tradeAttributionId") ?? ""));
+  revalidatePath("/admin/rewards");
+};
+
+export const voidTradeRewardsAction = async (formData: FormData) => {
+  await voidAdminTradeAttributionRewards(
+    String(formData.get("tradeAttributionId") ?? ""),
+    String(formData.get("reason") ?? ""),
+  );
+  revalidatePath("/admin/rewards");
+};
+
+export const approveRewardPayoutAction = async (formData: FormData) => {
+  await approveAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
+  revalidatePath("/admin/payouts");
+};
+
+export const markRewardPayoutPaidAction = async (formData: FormData) => {
+  await markAdminRewardPayoutPaid(String(formData.get("payoutId") ?? ""), {
+    txHash: String(formData.get("txHash") ?? ""),
+    notes: String(formData.get("notes") ?? ""),
+  });
+  revalidatePath("/admin/payouts");
+};
+
+export const failRewardPayoutAction = async (formData: FormData) => {
+  await failAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
+  revalidatePath("/admin/payouts");
+};
+
+export const cancelRewardPayoutAction = async (formData: FormData) => {
+  await cancelAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
+  revalidatePath("/admin/payouts");
 };

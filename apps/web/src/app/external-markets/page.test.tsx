@@ -40,7 +40,7 @@ test("Market Research page renders empty-state when no synced rows exist", async
   });
 
   const markup = renderToStaticMarkup(await ExternalMarketsPage());
-  assert.match(markup, /No synced market data yet/);
+  assert.match(markup, /暫無已同步市場資料/);
   assert.match(markup, /pnpm sync:external/);
 });
 
@@ -109,13 +109,13 @@ test("Market Research page shows disabled Polymarket trade CTA only when builder
 
   await withBuilderCode(null, async () => {
     const markup = renderToStaticMarkup(await ExternalMarketsPage());
-    assert.doesNotMatch(markup, /Trade via Polymarket/);
+    assert.doesNotMatch(markup, /透過 Polymarket 交易/);
   });
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await ExternalMarketsPage());
-    assert.match(markup, /Submit user-signed order/);
-    assert.match(markup, /Routed trading feature disabled/);
+    assert.match(markup, /提交用戶自行簽署訂單/);
+    assert.match(markup, /交易功能尚未啟用/);
     assert.match(markup, /disabled=""/);
   });
 });
@@ -132,8 +132,8 @@ test("Market Research page renders load error when external market fetch fails",
   });
 
   const markup = renderToStaticMarkup(await ExternalMarketsPage());
-  assert.match(markup, /Unable to load synced market data/);
-  assert.doesNotMatch(markup, /No synced market data yet/);
+  assert.match(markup, /無法載入已同步市場資料/);
+  assert.doesNotMatch(markup, /暫無已同步市場資料/);
 });
 
 test("Market Research page renders synced rows when external markets exist", async (t) => {
@@ -191,7 +191,7 @@ test("Market Research page renders synced rows when external markets exist", asy
   const markup = renderToStaticMarkup(await ExternalMarketsPage());
   assert.match(markup, /Will CPI be above 3%/);
   assert.match(markup, /kalshi/);
-  assert.doesNotMatch(markup, /No synced market data yet/);
+  assert.doesNotMatch(markup, /暫無已同步市場資料/);
 });
 
 test("Market Research page renders load error when configured API base is unavailable", async (t) => {
@@ -225,7 +225,7 @@ test("Market Research page renders load error when configured API base is unavai
   });
 
   const markup = renderToStaticMarkup(await ExternalMarketsPage());
-  assert.match(markup, /Unable to load synced market data/);
+  assert.match(markup, /無法載入已同步市場資料/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
   assert.equal(calls.length, 1);
 });
@@ -235,6 +235,6 @@ test("Market Research page defaults routed trading disabled", async () => {
   const original = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   const markup = renderToStaticMarkup(await ExternalMarketsPage());
-  assert.match(markup, /routed trading enabled<\/span><span class="kv-value">no/);
+  assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">否/);
   if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
 });

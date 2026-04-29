@@ -4,6 +4,8 @@
 
 Scaffolded only. This path is **not production-live** unless all required configuration and user-owned signing/auth pieces are wired. Routed trading remains disabled by default and returns clear typed errors when dependencies are missing.
 
+The default user-facing language is zh-HK Traditional Chinese with English fallback. External routing copy should describe the flow as non-custodial and user-signed.
+
 ## Required Environment
 
 ```env

@@ -19,6 +19,8 @@ import {
   GetExternalMarketBySourceAndIdResponseSchema,
   GetExternalMarketTradesBySourceAndIdResponseSchema,
   GetExternalMarketsResponseSchema,
+  GetAdminAmbassadorOverviewResponseSchema,
+  GetAmbassadorDashboardResponseSchema,
   GetMarketByIdResponseSchema,
   GetMarketsResponseSchema,
   GetMarketTradesResponseSchema,
@@ -41,6 +43,8 @@ const userId = "44444444-4444-4444-8444-444444444444";
 const claimId = "55555555-5555-4555-8555-555555555555";
 const resolutionId = "66666666-6666-4666-8666-666666666666";
 const withdrawalId = "77777777-7777-4777-8777-777777777777";
+const rewardId = "88888888-8888-4888-8888-888888888888";
+const tradeAttributionId = "99999999-9999-4999-8999-999999999999";
 
 const marketSnapshot = {
   id: marketId,
@@ -287,12 +291,119 @@ test("admin and external market schemas parse expected wire payloads", () => {
   );
 });
 
+test("ambassador reward schemas parse direct-only wire payloads", () => {
+  const code = {
+    id: rewardId,
+    code: "HKREF001",
+    ownerUserId: userId,
+    status: "active",
+    inviteUrl: "https://example.com/ambassador?ref=HKREF001",
+    createdAt: now,
+    disabledAt: null,
+  };
+  const attribution = {
+    id: orderId,
+    referredUserId: claimId,
+    referrerUserId: userId,
+    ambassadorCode: "HKREF001",
+    attributedAt: now,
+    qualificationStatus: "pending",
+    rejectionReason: null,
+  };
+  const reward = {
+    id: rewardId,
+    recipientUserId: userId,
+    sourceTradeAttributionId: tradeAttributionId,
+    rewardType: "direct_referrer_commission",
+    amountUsdcAtoms: "300000",
+    status: "pending",
+    createdAt: now,
+    payableAt: null,
+    approvedAt: null,
+    paidAt: null,
+    voidedAt: null,
+    voidReason: null,
+  };
+  const payout = {
+    id: withdrawalId,
+    recipientUserId: userId,
+    amountUsdcAtoms: "1000000",
+    status: "requested",
+    destinationType: "wallet",
+    destinationValue: "0xabc",
+    reviewedBy: null,
+    reviewedAt: null,
+    paidAt: null,
+    txHash: null,
+    notes: null,
+    createdAt: now,
+  };
+
+  assert.doesNotThrow(() =>
+    GetAmbassadorDashboardResponseSchema.parse({
+      ambassadorCode: code,
+      attribution,
+      directReferrals: [],
+      rewards: {
+        pendingRewards: "300000",
+        payableRewards: "0",
+        approvedRewards: "0",
+        paidRewards: "0",
+        voidRewards: "0",
+        directReferralCount: 0,
+        directTradingVolumeUsdcAtoms: "0",
+      },
+      rewardLedger: [reward],
+      payouts: [payout],
+    }),
+  );
+
+  assert.doesNotThrow(() =>
+    GetAdminAmbassadorOverviewResponseSchema.parse({
+      codes: [{ ...code, inviteUrl: undefined }],
+      attributions: [attribution],
+      tradeAttributions: [{
+        id: tradeAttributionId,
+        userId,
+        directReferrerUserId: claimId,
+        polymarketOrderId: null,
+        polymarketTradeId: null,
+        conditionId: null,
+        marketSlug: "example-market",
+        notionalUsdcAtoms: "10000000",
+        builderFeeUsdcAtoms: "1000000",
+        status: "confirmed",
+        rawJson: {},
+        observedAt: now,
+        confirmedAt: now,
+      }],
+      rewardLedger: [reward],
+      payouts: [payout],
+      suspiciousAttributions: [],
+    }),
+  );
+});
+
 test("openapi source only lists implemented HTTP routes", () => {
   const paths = Object.keys(apiOpenApiSource.paths);
   assert.deepEqual(paths.sort(), [
+    "/admin/ambassador",
+    "/admin/ambassador/codes",
+    "/admin/ambassador/codes/{codeId}/disable",
+    "/admin/ambassador/payouts/{payoutId}/approve",
+    "/admin/ambassador/payouts/{payoutId}/cancelled",
+    "/admin/ambassador/payouts/{payoutId}/failed",
+    "/admin/ambassador/payouts/{payoutId}/paid",
+    "/admin/ambassador/referral-attributions/override",
+    "/admin/ambassador/trade-attributions/mock",
+    "/admin/ambassador/trade-attributions/{tradeAttributionId}/payable",
+    "/admin/ambassador/trade-attributions/{tradeAttributionId}/void",
     "/admin/markets/{marketId}/resolve",
     "/admin/withdrawals/{withdrawalId}/execute",
     "/admin/withdrawals/{withdrawalId}/fail",
+    "/ambassador/capture",
+    "/ambassador/dashboard",
+    "/ambassador/payouts",
     "/claims",
     "/claims/{marketId}",
     "/claims/{marketId}/state",

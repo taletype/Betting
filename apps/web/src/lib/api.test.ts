@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getMlmDashboard, listExternalMarkets, listMarkets } from "./api";
+import { getAmbassadorDashboard, listExternalMarkets, listMarkets } from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
 
@@ -247,7 +247,7 @@ test("listExternalMarkets fails fast in production when API_BASE_URL is not conf
   });
 });
 
-test("getMlmDashboard uses local Next API route when API base is not configured", async (t) => {
+test("getAmbassadorDashboard uses local Next API route when API base is not configured", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -258,21 +258,28 @@ test("getMlmDashboard uses local Next API route when API base is not configured"
 
   globalThis.fetch = createFetchMock(
     {
-      referralCode: {
+      ambassadorCode: {
         id: "11111111-1111-4111-8111-111111111111",
         code: "DEMO1001",
-        inviteUrl: "http://127.0.0.1:3000/referrals?code=DEMO1001",
+        ownerUserId: "22222222-2222-4222-8222-222222222222",
+        status: "active",
+        inviteUrl: "http://127.0.0.1:3000/ambassador?ref=DEMO1001",
         createdAt: "2026-04-22T00:00:00.000Z",
+        disabledAt: null,
       },
-      sponsor: null,
+      attribution: null,
       directReferrals: [],
-      metrics: {
+      rewards: {
+        pendingRewards: "0",
+        payableRewards: "0",
+        approvedRewards: "0",
+        paidRewards: "0",
+        voidRewards: "0",
         directReferralCount: 0,
-        totalDownlineCount: 0,
-        lifetimeCommission: "0",
-        recentCommission30d: "0",
+        directTradingVolumeUsdcAtoms: "0",
       },
-      commissions: [],
+      rewardLedger: [],
+      payouts: [],
     },
     calls,
   );
@@ -291,8 +298,8 @@ test("getMlmDashboard uses local Next API route when API base is not configured"
     }
   });
 
-  await getMlmDashboard();
+  await getAmbassadorDashboard();
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/mlm/dashboard");
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/ambassador/dashboard");
 });

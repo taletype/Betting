@@ -1,5 +1,5 @@
-import { renderPortfolioPage } from "../../portfolio/portfolio-page";
+import { redirect } from "next/navigation";
 
 export default async function ChinesePortfolioPage() {
-  return renderPortfolioPage("zh-CN");
+  redirect("/portfolio");
 }

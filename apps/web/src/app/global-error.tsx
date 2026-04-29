@@ -12,9 +12,9 @@ export default function GlobalError({
   params?: { locale?: string };
 }>) {
   const locale = resolveLocale(params?.locale);
-  const title = locale === "zh-CN" ? "发生错误" : "Something went wrong";
-  const retry = locale === "zh-CN" ? "重试" : "Try again";
-  const fallback = locale === "zh-CN" ? "发生了意外错误。" : "An unexpected error occurred.";
+  const title = locale === "zh-HK" ? "發生錯誤" : "Something went wrong";
+  const retry = locale === "zh-HK" ? "重試" : "Try again";
+  const fallback = locale === "zh-HK" ? "發生未預期錯誤。" : "An unexpected error occurred.";
   return (
     <html lang={locale}>
       <body>

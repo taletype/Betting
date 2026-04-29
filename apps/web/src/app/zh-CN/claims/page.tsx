@@ -1,5 +1,5 @@
-import { renderClaimsPage } from "../../claims/claims-page";
+import { redirect } from "next/navigation";
 
 export default async function ChineseClaimsPage() {
-  return renderClaimsPage("zh-CN");
+  redirect("/claims");
 }

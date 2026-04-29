@@ -6,13 +6,21 @@ import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
 import { readExternalMarkets } from "../_shared/external-market-read";
 import {
-  activateAdminMlmPlanDb,
-  createAdminMlmPlanDb,
-  joinReferralProgramDb,
-  overrideReferralSponsorDb,
-  readAdminMlmOverview,
-  readMlmDashboard,
-} from "../_shared/mlm";
+  approveRewardPayoutDb,
+  captureAmbassadorReferralDb,
+  cancelRewardPayoutDb,
+  createAdminAmbassadorCodeDb,
+  disableAdminAmbassadorCodeDb,
+  failRewardPayoutDb,
+  markRewardPayoutPaidDb,
+  markRewardsPayableDb,
+  readAdminAmbassadorOverviewDb,
+  readAmbassadorDashboardDb,
+  recordAdminMockBuilderTradeAttributionDb,
+  requestAmbassadorPayoutDb,
+  overrideAdminReferralAttributionDb,
+  voidRewardsForTradeAttributionDb,
+} from "../_shared/ambassador";
 
 import {
   evaluateAdminAccess,
@@ -174,13 +182,29 @@ async function handleRequest(
       return NextResponse.json({ withdrawals: data ?? [] });
     }
 
-    if (apiPath === "mlm/dashboard" && request.method === "GET") {
-      return NextResponse.json(await readMlmDashboard(userId));
+    if (apiPath === "ambassador/dashboard" && request.method === "GET") {
+      return NextResponse.json(normalizeApiPayload(await readAmbassadorDashboardDb(userId)));
     }
 
-    if (apiPath === "mlm/join" && request.method === "POST") {
+    if (apiPath === "ambassador/capture" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { code?: string };
-      return NextResponse.json(await joinReferralProgramDb(userId, body.code ?? ""));
+      return NextResponse.json(normalizeApiPayload(await captureAmbassadorReferralDb(userId, body.code ?? "")));
+    }
+
+    if (apiPath === "ambassador/payouts" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as {
+        destinationType?: "wallet" | "manual";
+        destinationValue?: string;
+      };
+      return NextResponse.json(
+        normalizeApiPayload(
+          await requestAmbassadorPayoutDb(userId, {
+            destinationType: body.destinationType === "manual" ? "manual" : "wallet",
+            destinationValue: body.destinationValue ?? "",
+          }),
+        ),
+        { status: 201 },
+      );
     }
 
     if (apiPath === "deposits/verify" && request.method === "POST") {
@@ -263,49 +287,106 @@ async function handleRequest(
         return NextResponse.json({ withdrawals: data ?? [] });
       }
 
-      if (apiPath === "admin/mlm" && request.method === "GET") {
-        return NextResponse.json(await readAdminMlmOverview());
+      if (apiPath === "admin/ambassador" && request.method === "GET") {
+        void adminActorId;
+        return NextResponse.json(normalizeApiPayload(await readAdminAmbassadorOverviewDb()));
       }
 
-      if (apiPath === "admin/mlm/plans" && request.method === "POST") {
-        const body = (await request.json().catch(() => ({}))) as {
-          name?: string;
-          activate?: boolean;
-          levels?: { levelDepth?: number; rateBps?: number }[];
-        };
+      if (apiPath === "admin/ambassador/codes" && request.method === "POST") {
+        const body = (await request.json().catch(() => ({}))) as { ownerUserId?: string; code?: string | null };
         return NextResponse.json(
-          await createAdminMlmPlanDb(adminActorId, {
-            name: body.name ?? "MLM Plan",
-            activate: Boolean(body.activate),
-            levels: Array.isArray(body.levels)
-              ? body.levels.map((level) => ({
-                  levelDepth: Number(level.levelDepth ?? 0),
-                  rateBps: Number(level.rateBps ?? 0),
-                }))
-              : [],
-          }),
+          normalizeApiPayload(await createAdminAmbassadorCodeDb({
+            ownerUserId: String(body.ownerUserId ?? ""),
+            code: body.code ? String(body.code) : null,
+          })),
           { status: 201 },
         );
       }
 
-      if (apiPath.match(/^admin\/mlm\/plans\/[^/]+$/) && request.method === "POST") {
-        const planId = apiPath.split("/")[3] ?? "";
-        await activateAdminMlmPlanDb(planId);
-        return NextResponse.json({ ok: true });
+      if (apiPath.match(/^admin\/ambassador\/codes\/[^/]+\/disable$/) && request.method === "POST") {
+        const codeId = apiPath.split("/")[3] ?? "";
+        return NextResponse.json(normalizeApiPayload(await disableAdminAmbassadorCodeDb(codeId)));
       }
 
-      if (apiPath === "admin/mlm/relationships/override" && request.method === "POST") {
+      if (apiPath === "admin/ambassador/referral-attributions/override" && request.method === "POST") {
         const body = (await request.json().catch(() => ({}))) as {
           referredUserId?: string;
-          sponsorCode?: string;
+          ambassadorCode?: string;
+          code?: string;
           reason?: string;
         };
-        await overrideReferralSponsorDb(adminActorId, {
-          referredUserId: body.referredUserId ?? "",
-          sponsorCode: body.sponsorCode ?? "",
-          reason: body.reason ?? "",
-        });
-        return NextResponse.json({ ok: true });
+        return NextResponse.json(
+          normalizeApiPayload(
+            await overrideAdminReferralAttributionDb({
+              referredUserId: String(body.referredUserId ?? ""),
+              ambassadorCode: String(body.ambassadorCode ?? body.code ?? ""),
+              reason: String(body.reason ?? ""),
+            }),
+          ),
+        );
+      }
+
+      if (apiPath === "admin/ambassador/trade-attributions/mock" && request.method === "POST") {
+        const body = (await request.json().catch(() => ({}))) as {
+          userId?: string;
+          polymarketOrderId?: string | null;
+          polymarketTradeId?: string | null;
+          conditionId?: string | null;
+          marketSlug?: string | null;
+          notionalUsdcAtoms?: string;
+          builderFeeUsdcAtoms?: string;
+          status?: "pending" | "confirmed" | "void";
+        };
+        return NextResponse.json(
+          normalizeApiPayload(
+            await recordAdminMockBuilderTradeAttributionDb({
+              userId: String(body.userId ?? ""),
+              polymarketOrderId: body.polymarketOrderId ? String(body.polymarketOrderId) : null,
+              polymarketTradeId: body.polymarketTradeId ? String(body.polymarketTradeId) : null,
+              conditionId: body.conditionId ? String(body.conditionId) : null,
+              marketSlug: body.marketSlug ? String(body.marketSlug) : null,
+              notionalUsdcAtoms: BigInt(String(body.notionalUsdcAtoms ?? "0")),
+              builderFeeUsdcAtoms: BigInt(String(body.builderFeeUsdcAtoms ?? "0")),
+              status: body.status === "void" || body.status === "confirmed" ? body.status : "pending",
+            }),
+          ),
+          { status: 201 },
+        );
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/trade-attributions\/[^/]+\/payable$/) && request.method === "POST") {
+        const tradeAttributionId = apiPath.split("/")[3] ?? "";
+        return NextResponse.json(await markRewardsPayableDb(tradeAttributionId));
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/trade-attributions\/[^/]+\/void$/) && request.method === "POST") {
+        const tradeAttributionId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { reason?: string };
+        return NextResponse.json(await voidRewardsForTradeAttributionDb(tradeAttributionId, String(body.reason ?? "")));
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/approve$/) && request.method === "POST") {
+        const payoutId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { notes?: string };
+        return NextResponse.json(await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null }));
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/paid$/) && request.method === "POST") {
+        const payoutId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
+        return NextResponse.json(await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null }));
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/failed$/) && request.method === "POST") {
+        const payoutId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { notes?: string };
+        return NextResponse.json(await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") }));
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/cancelled$/) && request.method === "POST") {
+        const payoutId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { notes?: string };
+        return NextResponse.json(await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") }));
       }
 
       if (apiPath.match(/^admin\/withdrawals\/[^/]+\/execute$/) && request.method === "POST") {
