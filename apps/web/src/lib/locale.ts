@@ -221,6 +221,8 @@ export interface LocaleCopy {
     price: string;
     size: string;
     noRecentTrades: string;
+    tradeViaPolymarket: string;
+    polymarketRoutingPending: string;
     statuses: Record<string, string>;
     sides: Record<string, string>;
   };
@@ -442,6 +444,8 @@ const en: LocaleCopy = {
     price: "Price",
     size: "Size",
     noRecentTrades: "No recent external trades captured for this market yet.",
+    tradeViaPolymarket: "Trade via Polymarket",
+    polymarketRoutingPending: "POLYMARKET_ROUTED_TRADING_ENABLED is disabled until user signing/API credential flow is wired.",
     statuses: {
       open: "Active",
       resolved: "Resolved",
@@ -671,6 +675,8 @@ const zhCN: LocaleCopy = {
     price: "价格",
     size: "数量",
     noRecentTrades: "此市场暂未记录到最新外部成交。",
+    tradeViaPolymarket: "通过 Polymarket 交易",
+    polymarketRoutingPending: "用户签名和 API 凭证流程接入前，POLYMARKET_ROUTED_TRADING_ENABLED 保持关闭。",
     statuses: {
       open: "活跃",
       resolved: "已结算",

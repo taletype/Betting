@@ -28,6 +28,11 @@ export const readRequiredString = (
   throw new Error(requiredEnvMessage(name));
 };
 
+export const readOptionalString = (name: string): string | null => {
+  const value = process.env[name]?.trim();
+  return value || null;
+};
+
 export const readRequiredUrl = (
   name: string,
   options?: { defaultInLocal?: string; defaultValue?: string },
@@ -79,6 +84,45 @@ export const readEthereumAddress = (name: string, options?: { defaultInLocal?: s
   }
 
   return value;
+};
+
+export const readOptionalBytes32Hex = (name: string): string | null => {
+  const value = readOptionalString(name);
+
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.toLowerCase();
+
+  if (!/^0x[a-f0-9]{64}$/.test(normalized)) {
+    throw new Error(`${name} must be a 0x-prefixed bytes32 hex string. Received: ${value}`);
+  }
+
+  return normalized;
+};
+
+export const readBooleanFlag = (
+  name: string,
+  options?: { defaultValue?: boolean },
+): boolean => {
+  const raw = readOptionalString(name);
+
+  if (raw === null) {
+    return options?.defaultValue ?? false;
+  }
+
+  const normalized = raw.toLowerCase();
+
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+
+  throw new Error(`${name} must be true or false. Received: ${raw}`);
 };
 
 export const readChainId = (

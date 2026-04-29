@@ -18,6 +18,7 @@
     "@bet/contracts": "workspace:*",
     "@bet/db": "workspace:*",
     "@bet/domain": "workspace:*",
+    "@bet/integrations": "workspace:*",
     "@bet/ledger": "workspace:*",
     "@bet/matching": "workspace:*",
     "@bet/observability": "workspace:*",

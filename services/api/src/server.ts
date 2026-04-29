@@ -14,6 +14,10 @@ import {
   getExternalMarketTradesBySourceAndId,
   listExternalMarkets,
 } from "./modules/external-markets/handlers";
+import {
+  mapExternalPolymarketRoutingError,
+  routeExternalPolymarketOrder,
+} from "./modules/external-polymarket-routing/handlers";
 import { getHealth } from "./modules/health/handlers";
 import {
   getMarketById,
@@ -170,6 +174,26 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
       });
+    }
+
+    if (request.method === "POST" && url.pathname === "/external/polymarket/orders/route") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseBody(request);
+
+      try {
+        const payload = await routeExternalPolymarketOrder(body);
+        return new Response(toJson(payload), {
+          headers: { "content-type": "application/json" },
+          status: 202,
+        });
+      } catch (error) {
+        const mapped = mapExternalPolymarketRoutingError(error);
+        return Response.json(mapped.payload, { status: mapped.status });
+      }
     }
 
     if (

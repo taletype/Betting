@@ -1,10 +1,12 @@
 import {
   environment,
+  readBooleanFlag,
   readBaseChainId,
   readBaseExplorerUrl,
   readBaseRpcUrl,
   readBaseWsUrl,
   readEthereumAddress,
+  readOptionalBytes32Hex,
   readPositiveInteger,
   readRequiredUrl,
   readSecret,
@@ -30,4 +32,7 @@ export const validateApiEnvironment = (): void => {
 
   readPositiveInteger("BASE_MIN_CONFIRMATIONS", { defaultInLocal: 3 });
   readPositiveInteger("BASE_RECON_MIN_CONFIRMATIONS", { defaultInLocal: 12 });
+
+  readOptionalBytes32Hex("POLY_BUILDER_CODE");
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
 };

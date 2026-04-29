@@ -302,6 +302,7 @@ test("openapi source only lists implemented HTTP routes", () => {
     "/external/markets/{source}/{externalId}",
     "/external/markets/{source}/{externalId}/orderbook",
     "/external/markets/{source}/{externalId}/trades",
+    "/external/polymarket/orders/route",
     "/health",
     "/markets",
     "/markets/{marketId}",

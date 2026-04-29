@@ -163,6 +163,16 @@ export const apiOpenApiSource = {
         responses: { "200": { description: "OK" }, "404": { description: "Not found" } },
       },
     },
+    "/external/polymarket/orders/route": {
+      post: {
+        summary: "Scaffold external Polymarket order routing with builder attribution",
+        responses: {
+          "202": { description: "Accepted by external router" },
+          "501": { description: "User signing/API credential flow not wired" },
+          "503": { description: "External Polymarket routed trading disabled" },
+        },
+      },
+    },
   },
 } as const;
 

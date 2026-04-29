@@ -34,6 +34,8 @@ This matrix defines the minimum env contract for local, staging, and production.
 - `BASE_USDC_ADDRESS` (0x-prefixed, 20-byte address)
 - `BASE_MIN_CONFIRMATIONS` (positive integer)
 - `BASE_RECON_MIN_CONFIRMATIONS` (positive integer)
+- `POLY_BUILDER_CODE` (optional 0x-prefixed bytes32; enables Polymarket builder-attributed routing surfaces)
+- `POLYMARKET_ROUTED_TRADING_ENABLED` (optional boolean; defaults false until user signing/API credential flow is wired)
 
 ## Minimum required by environment
 
@@ -65,6 +67,8 @@ Required (no placeholders, rotation-ready):
 - `BASE_CHAIN_ID`, `BASE_RPC_URL`, `BASE_WS_URL`, `BASE_EXPLORER_URL`
 - `BASE_TREASURY_ADDRESS`, `BASE_USDC_ADDRESS`
 - `BASE_MIN_CONFIRMATIONS`, `BASE_RECON_MIN_CONFIRMATIONS`
+- `POLY_BUILDER_CODE` is optional; if missing, external Polymarket markets remain read-only and routed trading is disabled
+- `POLYMARKET_ROUTED_TRADING_ENABLED=false` until production user signing/API credential flow is complete
 
 ### `apps/web` (server runtime)
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`

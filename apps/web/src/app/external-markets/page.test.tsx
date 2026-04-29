@@ -4,6 +4,28 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import ExternalMarketsPage from "./page";
 
+const VALID_BUILDER_CODE = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
+
+const withBuilderCode = async (value: string | null, run: () => Promise<void>): Promise<void> => {
+  const previous = process.env.POLY_BUILDER_CODE;
+
+  if (value === null) {
+    delete process.env.POLY_BUILDER_CODE;
+  } else {
+    process.env.POLY_BUILDER_CODE = value;
+  }
+
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.POLY_BUILDER_CODE;
+    } else {
+      process.env.POLY_BUILDER_CODE = previous;
+    }
+  }
+};
+
 test("Market Research page renders empty-state when no synced rows exist", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -20,6 +42,81 @@ test("Market Research page renders empty-state when no synced rows exist", async
   const markup = renderToStaticMarkup(await ExternalMarketsPage());
   assert.match(markup, /No synced market data yet/);
   assert.match(markup, /pnpm sync:external/);
+});
+
+test("Market Research page shows disabled Polymarket trade CTA only when builder code is configured", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLY-1",
+          slug: "poly-1",
+          title: "Will Polymarket routing be scaffolded?",
+          description: "Builder route test",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.5,
+          bestAsk: 0.52,
+          lastTradePrice: 0.51,
+          volume24h: 10,
+          volumeTotal: 100,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [],
+          recentTrades: [],
+        },
+        {
+          id: "m2",
+          source: "kalshi",
+          externalId: "KX-1",
+          slug: "kx-1",
+          title: "Will Kalshi stay native?",
+          description: "CTA test",
+          status: "open",
+          marketUrl: "https://kalshi.com/markets/kx-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.4,
+          bestAsk: 0.42,
+          lastTradePrice: 0.41,
+          volume24h: 10,
+          volumeTotal: 100,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [],
+          recentTrades: [],
+        },
+      ]),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await withBuilderCode(null, async () => {
+    const markup = renderToStaticMarkup(await ExternalMarketsPage());
+    assert.doesNotMatch(markup, /Trade via Polymarket/);
+  });
+
+  await withBuilderCode(VALID_BUILDER_CODE, async () => {
+    const markup = renderToStaticMarkup(await ExternalMarketsPage());
+    assert.match(markup, /Trade via Polymarket/);
+    assert.match(markup, /disabled=""/);
+  });
 });
 
 test("Market Research page renders load error when external market fetch fails", async (t) => {

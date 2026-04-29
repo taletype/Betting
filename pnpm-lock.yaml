@@ -29,6 +29,9 @@ importers:
       '@bet/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@bet/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@bet/supabase':
         specifier: workspace:*
         version: link:../../packages/supabase
@@ -89,7 +92,11 @@ importers:
 
   packages/domain: {}
 
-  packages/integrations: {}
+  packages/integrations:
+    dependencies:
+      '@bet/config':
+        specifier: workspace:*
+        version: link:../config
 
   packages/ledger:
     dependencies:
@@ -158,6 +165,9 @@ importers:
       '@bet/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bet/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@bet/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
