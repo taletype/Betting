@@ -7,10 +7,42 @@ import { incrementCounter, logger, observeDuration, recordGauge } from "@bet/obs
 const db = createDatabaseClient();
 const EXTERNAL_PRICE_SCALE = 1_000_000;
 const EXTERNAL_SIZE_SCALE = 1_000_000;
+const DEFAULT_MARKET_LIMIT = 100;
+const DEFAULT_HTTP_TIMEOUT_MS = 15_000;
+const DEFAULT_ORDERBOOK_TIMEOUT_MS = 5_000;
+const DEFAULT_ORDERBOOK_LIMIT = 0;
 
 const defaultAdapters: ExternalMarketAdapter[] = [createPolymarketAdapter(), createKalshiAdapter()];
+export const selectExternalSyncAdapters = (
+  source: string | undefined,
+  adapters: ExternalMarketAdapter[] = defaultAdapters,
+): ExternalMarketAdapter[] => (source ? adapters.filter((adapter) => adapter.source === source) : adapters);
+
 const isExternalSyncWritesDisabled = (): boolean =>
   (process.env.OP_DISABLE_EXTERNAL_SYNC_WRITES ?? "").trim().toLowerCase() === "true";
+const isOrderbookSyncSkipped = (): boolean =>
+  (process.env.EXTERNAL_SYNC_SKIP_ORDERBOOKS ?? "").trim().toLowerCase() === "true";
+
+const parseNonNegativeIntegerEnv = (name: string, defaultValue: number): number => {
+  const raw = process.env[name]?.trim();
+  if (!raw) return defaultValue;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : defaultValue;
+};
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+  if (timeoutMs <= 0) return promise;
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
 
 const toScaledIntegerString = (value: number | null, scale: number): string | null => {
   if (value === null || !Number.isFinite(value)) {
@@ -20,8 +52,8 @@ const toScaledIntegerString = (value: number | null, scale: number): string | nu
   return String(Math.round(value * scale));
 };
 
-export const upsertMarket = async (database: DatabaseClient, market: NormalizedExternalMarket): Promise<void> => {
-  await database.transaction(async (tx) => {
+export const upsertMarket = async (database: DatabaseClient, market: NormalizedExternalMarket): Promise<string> => {
+  return database.transaction(async (tx) => {
     const rawJson = (market.rawPayload as { rawJson?: unknown })?.rawJson ?? market.rawPayload ?? {};
     const sourceProvenance = (market.rawPayload as { provenance?: unknown })?.provenance ?? {};
 
@@ -185,47 +217,70 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
         ],
       );
     }
-
-    if (market.source === "polymarket") {
-      for (const outcome of market.outcomes) {
-        if (!outcome.externalOutcomeId) continue;
-        try {
-          const snapshot = await fetchPolymarketOrderBook(outcome.externalOutcomeId);
-          await tx.query(
-            `
-              insert into public.external_orderbook_snapshots (
-                external_market_id, external_outcome_id, source, bids_json, asks_json,
-                captured_at, last_trade_price, best_bid, best_ask, raw_json, source_provenance
-              ) values (
-                $1::uuid, $2, $3, $4::jsonb, $5::jsonb,
-                $6::timestamptz, $7, $8, $9, $10::jsonb, $11::jsonb
-              )
-            `,
-            [
-              marketId,
-              outcome.externalOutcomeId,
-              market.source,
-              JSON.stringify(snapshot.bidsJson),
-              JSON.stringify(snapshot.asksJson),
-              snapshot.capturedAt,
-              snapshot.lastTradePrice,
-              snapshot.bestBid,
-              snapshot.bestAsk,
-              JSON.stringify(snapshot.rawJson),
-              JSON.stringify(snapshot.provenance),
-            ],
-          );
-        } catch (error) {
-          logger.error("external sync clob snapshot failed", {
-            source: market.source,
-            marketExternalId: market.externalId,
-            outcomeExternalId: outcome.externalOutcomeId,
-            error: error instanceof Error ? error.message : "unknown error",
-          });
-        }
-      }
-    }
+    return marketId;
   });
+};
+
+const syncOrderbookSnapshots = async (
+  database: DatabaseClient,
+  market: NormalizedExternalMarket,
+  marketId: string,
+  options: { orderbookLimit: number; orderbookTimeoutMs: number; orderbookFetcher: typeof fetchPolymarketOrderBook },
+): Promise<number> => {
+  if (market.source !== "polymarket") return 0;
+
+  const outcomes = market.outcomes.filter((outcome) => outcome.externalOutcomeId).slice(0, options.orderbookLimit);
+  if (outcomes.length === 0) return 0;
+
+  let fetched = 0;
+  for (const outcome of outcomes) {
+    try {
+      const snapshot = await withTimeout(
+        options.orderbookFetcher(outcome.externalOutcomeId),
+        options.orderbookTimeoutMs,
+        `polymarket orderbook ${outcome.externalOutcomeId}`,
+      );
+      await database.query(
+        `
+          insert into public.external_orderbook_snapshots (
+            external_market_id, external_outcome_id, source, bids_json, asks_json,
+            captured_at, last_trade_price, best_bid, best_ask, raw_json, source_provenance
+          ) values (
+            $1::uuid, $2, $3, $4::jsonb, $5::jsonb,
+            $6::timestamptz, $7, $8, $9, $10::jsonb, $11::jsonb
+          )
+        `,
+        [
+          marketId,
+          outcome.externalOutcomeId,
+          market.source,
+          JSON.stringify(snapshot.bidsJson),
+          JSON.stringify(snapshot.asksJson),
+          snapshot.capturedAt,
+          snapshot.lastTradePrice,
+          snapshot.bestBid,
+          snapshot.bestAsk,
+          JSON.stringify(snapshot.rawJson),
+          JSON.stringify(snapshot.provenance),
+        ],
+      );
+      fetched += 1;
+      logger.info("external_sync.orderbook_fetched", {
+        source: market.source,
+        marketExternalId: market.externalId,
+        outcomeExternalId: outcome.externalOutcomeId,
+      });
+    } catch (error) {
+      logger.error("external_sync.orderbook_failed", {
+        source: market.source,
+        marketExternalId: market.externalId,
+        outcomeExternalId: outcome.externalOutcomeId,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+    }
+  }
+
+  return fetched;
 };
 
 const getPreviousCheckpointLagMs = async (database: DatabaseExecutor, source: string): Promise<number | null> => {
@@ -252,6 +307,7 @@ const recordCheckpoint = async (database: DatabaseExecutor, source: string, sync
 export interface MarketSyncDependencies {
   db: DatabaseClient;
   adapters: ExternalMarketAdapter[];
+  orderbookFetcher?: typeof fetchPolymarketOrderBook;
 }
 export interface ExternalSyncSourceSummary {
   source: string;
@@ -269,21 +325,59 @@ export interface ExternalSyncRunSummary {
   totals: { marketsSynced: number; outcomesSynced: number; tradesSynced: number };
 }
 
-export const runMarketSyncJobWithDependencies = async ({ db: database, adapters }: MarketSyncDependencies): Promise<ExternalSyncRunSummary> => {
+export const runMarketSyncJobWithDependencies = async ({ db: database, adapters, orderbookFetcher = fetchPolymarketOrderBook }: MarketSyncDependencies): Promise<ExternalSyncRunSummary> => {
   const startedAt = new Date().toISOString();
   const sources: ExternalSyncSourceSummary[] = [];
+  const marketLimit = parseNonNegativeIntegerEnv("EXTERNAL_SYNC_MARKET_LIMIT", DEFAULT_MARKET_LIMIT);
+  const httpTimeoutMs = parseNonNegativeIntegerEnv("EXTERNAL_SYNC_HTTP_TIMEOUT_MS", DEFAULT_HTTP_TIMEOUT_MS);
+  const orderbookTimeoutMs = parseNonNegativeIntegerEnv("EXTERNAL_SYNC_ORDERBOOK_TIMEOUT_MS", DEFAULT_ORDERBOOK_TIMEOUT_MS);
+  const orderbookLimit = parseNonNegativeIntegerEnv("EXTERNAL_SYNC_ORDERBOOK_LIMIT", DEFAULT_ORDERBOOK_LIMIT);
+  const skipOrderbooks = isOrderbookSyncSkipped() || orderbookLimit === 0;
+
+  logger.info("external_sync.started", {
+    sources: adapters.map((adapter) => adapter.source),
+    marketLimit,
+    httpTimeoutMs,
+    orderbookTimeoutMs,
+    orderbookLimit,
+    skipOrderbooks,
+  });
 
   for (const adapter of adapters) {
     const syncStartedAt = Date.now();
     try {
+      logger.info("external_sync.source_started", { source: adapter.source });
       const previousLagMs = await getPreviousCheckpointLagMs(database, adapter.source);
-      const markets = await adapter.listMarkets();
+      const fetchedMarkets = await withTimeout(adapter.listMarkets(), httpTimeoutMs, `${adapter.source} market list`);
+      const markets = marketLimit === 0 ? [] : fetchedMarkets.slice(0, marketLimit);
+      logger.info("external_sync.source_market_count_fetched", {
+        source: adapter.source,
+        fetchedCount: fetchedMarkets.length,
+        limitedCount: markets.length,
+      });
       let outcomesSynced = 0;
       let tradesSynced = 0;
+      let upsertedMarkets = 0;
       for (const market of markets) {
         outcomesSynced += market.outcomes.length;
         tradesSynced += market.recentTrades.length;
-        await upsertMarket(database, market);
+        const marketId = await upsertMarket(database, market);
+        upsertedMarkets += 1;
+        if (upsertedMarkets % 25 === 0) {
+          logger.info("external_sync.markets_upserted", { source: adapter.source, upsertedMarkets, totalMarkets: markets.length });
+        }
+
+        if (market.source === "polymarket") {
+          if (skipOrderbooks) {
+            logger.info("external_sync.orderbook_skipped", {
+              source: market.source,
+              marketExternalId: market.externalId,
+              reason: isOrderbookSyncSkipped() ? "EXTERNAL_SYNC_SKIP_ORDERBOOKS" : "EXTERNAL_SYNC_ORDERBOOK_LIMIT",
+            });
+          } else {
+            await syncOrderbookSnapshots(database, market, marketId, { orderbookLimit, orderbookTimeoutMs, orderbookFetcher });
+          }
+        }
       }
       await recordCheckpoint(database, adapter.source, markets.length);
       const durationMs = Date.now() - syncStartedAt;
@@ -294,8 +388,13 @@ export const runMarketSyncJobWithDependencies = async ({ db: database, adapters 
       recordGauge("external_sync_outcomes_synced", outcomesSynced, { source: adapter.source });
       recordGauge("external_sync_trade_ticks_synced", tradesSynced, { source: adapter.source });
       sources.push({ source: adapter.source, marketsSynced: markets.length, outcomesSynced, tradesSynced, checkpointRecordedAt, durationMs, previousLagMs });
+      logger.info("external_sync.source_completed", { source: adapter.source, marketsSynced: markets.length, outcomesSynced, tradesSynced, durationMs });
     } catch (error) {
       incrementCounter("external_sync_runs_total", { source: adapter.source, status: "failed" });
+      logger.error("external_sync.source_failed", {
+        source: adapter.source,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
       throw error;
     }
   }
@@ -317,6 +416,6 @@ export const runMarketSyncJob = async (source?: string): Promise<ExternalSyncRun
     const timestamp = new Date().toISOString();
     return { startedAt: timestamp, completedAt: timestamp, sources: [], totals: { marketsSynced: 0, outcomesSynced: 0, tradesSynced: 0 } };
   }
-  const adapters = source ? defaultAdapters.filter((adapter) => adapter.source === source) : defaultAdapters;
+  const adapters = selectExternalSyncAdapters(source);
   return runMarketSyncJobWithDependencies({ db, adapters });
 };

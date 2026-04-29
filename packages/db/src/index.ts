@@ -113,6 +113,13 @@ export const createDatabaseClient = (): DatabaseClient => {
   };
 };
 
+export const closeDatabasePool = async (): Promise<void> => {
+  if (!pool) return;
+  const activePool = pool;
+  pool = null;
+  await activePool.end();
+};
+
 export const createDatabaseNotificationClient = async (): Promise<Client> => {
   const connectionString = getConnectionString();
   const client = new Client({
