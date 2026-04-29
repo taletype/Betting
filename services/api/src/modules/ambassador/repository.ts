@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import type { DatabaseExecutor, DatabaseTransaction } from "@bet/db";
+import { isAddress } from "ethers";
 
 export type AmbassadorCodeStatus = "active" | "disabled";
 export type ReferralQualificationStatus = "pending" | "qualified" | "rejected";
@@ -83,6 +84,11 @@ export interface AmbassadorRewardPayoutRecord {
   status: AmbassadorPayoutStatus;
   destinationType: AmbassadorPayoutDestinationType;
   destinationValue: string;
+  payoutChain: "polygon";
+  payoutChainId: number;
+  payoutAsset: "pUSD";
+  payoutAssetDecimals: number;
+  assetContractAddress: string;
   reviewedBy: string | null;
   reviewedAt: string | null;
   paidAt: string | null;
@@ -126,7 +132,15 @@ export interface AmbassadorRewardsConfig {
   traderCashbackShareBps: number;
   minPayoutUsdcAtoms: bigint;
   autoCalculationEnabled: boolean;
+  autoPayoutRequestEnabled: boolean;
   autoPayoutEnabled: boolean;
+  payoutChain: "polygon";
+  payoutChainId: number;
+  payoutAsset: "pUSD";
+  payoutAssetDecimals: number;
+  polygonExplorerUrl: string;
+  polygonPayoutTreasuryAddress: string;
+  polygonPusdAddress: string;
 }
 
 export interface RewardLedgerDraft {
@@ -201,6 +215,11 @@ interface PayoutRow {
   status: AmbassadorPayoutStatus;
   destination_type: AmbassadorPayoutDestinationType;
   destination_value: string;
+  payout_chain: "polygon";
+  payout_chain_id: number;
+  payout_asset: "pUSD";
+  payout_asset_decimals: number;
+  asset_contract_address: string;
   reviewed_by: string | null;
   reviewed_at: Date | string | null;
   paid_at: Date | string | null;
@@ -209,7 +228,15 @@ interface PayoutRow {
   created_at: Date | string;
 }
 
+interface PayoutWalletRow {
+  user_id: string;
+  chain: "polygon";
+  wallet_address: string;
+  asset_preference: "pUSD";
+}
+
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
+const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
 const toIso = (value: Date | string | null): string | null =>
   value === null ? null : value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -280,6 +307,11 @@ const mapPayout = (row: PayoutRow): AmbassadorRewardPayoutRecord => ({
   status: row.status,
   destinationType: row.destination_type,
   destinationValue: row.destination_value,
+  payoutChain: row.payout_chain,
+  payoutChainId: row.payout_chain_id,
+  payoutAsset: row.payout_asset,
+  payoutAssetDecimals: row.payout_asset_decimals,
+  assetContractAddress: row.asset_contract_address,
   reviewedBy: row.reviewed_by,
   reviewedAt: toIso(row.reviewed_at),
   paidAt: toIso(row.paid_at),
@@ -310,6 +342,11 @@ const parseBigIntEnv = (name: string, defaultValue: bigint): bigint => {
   return BigInt(value);
 };
 
+const parseStringEnv = (name: string, defaultValue: string): string => {
+  const value = process.env[name]?.trim();
+  return value || defaultValue;
+};
+
 const assertBps = (name: string, value: number): void => {
   if (!Number.isInteger(value) || value < 0 || value > 10000) {
     throw new Error(`${name} must be between 0 and 10000 bps`);
@@ -324,7 +361,15 @@ export const getAmbassadorRewardsConfig = (): AmbassadorRewardsConfig => {
     traderCashbackShareBps: parseIntegerEnv("AMBASSADOR_TRADER_CASHBACK_SHARE_BPS", 1000),
     minPayoutUsdcAtoms: parseBigIntEnv("AMBASSADOR_MIN_PAYOUT_USDC_ATOMS", 0n),
     autoCalculationEnabled: parseBooleanEnv("AMBASSADOR_AUTO_CALCULATION_ENABLED", true),
+    autoPayoutRequestEnabled: parseBooleanEnv("AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED", false),
     autoPayoutEnabled: parseBooleanEnv("AMBASSADOR_AUTO_PAYOUT_ENABLED", false),
+    payoutChain: parseStringEnv("PAYOUT_CHAIN", "polygon") as "polygon",
+    payoutChainId: parseIntegerEnv("PAYOUT_CHAIN_ID", 137),
+    payoutAsset: parseStringEnv("PAYOUT_ASSET", "pUSD") as "pUSD",
+    payoutAssetDecimals: parseIntegerEnv("PAYOUT_ASSET_DECIMALS", 6),
+    polygonExplorerUrl: parseStringEnv("POLYGON_EXPLORER_URL", "https://polygonscan.com"),
+    polygonPayoutTreasuryAddress: parseStringEnv("POLYGON_PAYOUT_TREASURY_ADDRESS", "placeholder"),
+    polygonPusdAddress: parseStringEnv("POLYGON_PUSD_ADDRESS", defaultPolygonPusdAddress),
   };
 
   validateRewardShareConfig(config);
@@ -345,10 +390,60 @@ export const validateRewardShareConfig = (config: AmbassadorRewardsConfig): void
     throw new Error("AMBASSADOR_MIN_PAYOUT_USDC_ATOMS must be non-negative");
   }
 
-  if (config.autoPayoutEnabled && !config.enabled) {
-    throw new Error("AMBASSADOR_AUTO_PAYOUT_ENABLED cannot be true unless AMBASSADOR_REWARDS_ENABLED is true");
+  if (config.autoPayoutEnabled) {
+    throw new Error("AMBASSADOR_AUTO_PAYOUT_ENABLED must remain false; automatic crypto payouts are not supported");
+  }
+
+  if (config.payoutChain !== "polygon") {
+    throw new Error("PAYOUT_CHAIN must be polygon");
+  }
+
+  if (config.payoutChainId !== 137) {
+    throw new Error("PAYOUT_CHAIN_ID must be 137 for Polygon payouts");
+  }
+
+  if (config.payoutAsset !== "pUSD") {
+    throw new Error("PAYOUT_ASSET must be pUSD");
+  }
+
+  if (config.payoutAssetDecimals !== 6) {
+    throw new Error("PAYOUT_ASSET_DECIMALS must be 6 for pUSD");
+  }
+
+  try {
+    // eslint-disable-next-line no-new
+    new URL(config.polygonExplorerUrl);
+  } catch {
+    throw new Error("POLYGON_EXPLORER_URL must be a valid URL");
+  }
+
+  if (config.polygonPayoutTreasuryAddress !== "placeholder" && !isAddress(config.polygonPayoutTreasuryAddress)) {
+    throw new Error("POLYGON_PAYOUT_TREASURY_ADDRESS must be placeholder or a valid EVM address");
+  }
+
+  if (!isAddress(config.polygonPusdAddress)) {
+    throw new Error("POLYGON_PUSD_ADDRESS must be a valid EVM address");
   }
 };
+
+export const normalizePayoutWalletAddress = (address: string): string => {
+  const normalized = address.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(normalized) || !isAddress(normalized)) {
+    throw new Error("Polygon payout wallet must be a valid 0x EVM address");
+  }
+  return normalized;
+};
+
+export const assertValidPayoutTxHash = (txHash: string | null | undefined): string => {
+  const normalized = txHash?.trim().toLowerCase() ?? "";
+  if (!/^0x[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error("wallet payout tx hash must be a 32-byte 0x hash");
+  }
+  return normalized;
+};
+
+export const buildPolygonTxUrl = (txHash: string, explorerUrl = getAmbassadorRewardsConfig().polygonExplorerUrl): string =>
+  `${explorerUrl.replace(/\/+$/, "")}/tx/${assertValidPayoutTxHash(txHash)}`;
 
 export const assertAllowedRewardType = (rewardType: string): asserts rewardType is AmbassadorRewardType => {
   if (!ambassadorRewardTypes.includes(rewardType as AmbassadorRewardType)) {
@@ -721,7 +816,24 @@ export const listPayoutsForUser = async (
 ): Promise<AmbassadorRewardPayoutRecord[]> => {
   const rows = await executor.query<PayoutRow>(
     `
-      select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
+      select
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
       from public.ambassador_reward_payouts
       where recipient_user_id = $1::uuid
       order by created_at desc, id desc
@@ -879,6 +991,7 @@ export const createRewardLedgerEntries = async (
 
   const trade = await getBuilderTradeAttribution(transaction, input.tradeAttributionId);
   if (!trade) throw new Error("builder trade attribution not found");
+  if (trade.status !== "confirmed") return [];
 
   const existing = await transaction.query<RewardLedgerRow>(
     `
@@ -945,6 +1058,9 @@ export const markRewardsPayable = async (
     throw new Error("builder trade attribution must be confirmed before rewards become payable");
   }
 
+  const config = getAmbassadorRewardsConfig();
+  await createRewardLedgerEntries(transaction, { tradeAttributionId, config });
+
   await transaction.query(
     `
       update public.ambassador_reward_ledger
@@ -965,7 +1081,14 @@ export const markRewardsPayable = async (
     `,
     [tradeAttributionId],
   );
-  return rows.map(mapRewardLedger);
+  const ledger = rows.map(mapRewardLedger);
+  const recipientIds = new Set(
+    ledger.map((row) => row.recipientUserId).filter((recipientUserId): recipientUserId is string => recipientUserId !== null),
+  );
+  for (const recipientUserId of recipientIds) {
+    await maybeCreateAutoPayoutRequest(transaction, recipientUserId, config);
+  }
+  return ledger;
 };
 
 export const markTradeRewardsPayable = markRewardsPayable;
@@ -994,12 +1117,216 @@ export const voidRewardsForTradeAttribution = async (
 
 export const voidBuilderTradeAttribution = voidRewardsForTradeAttribution;
 
+export const getPayoutWalletForUser = async (
+  executor: DatabaseExecutor,
+  userId: string,
+): Promise<{ userId: string; chain: "polygon"; walletAddress: string; assetPreference: "pUSD" } | null> => {
+  const [row] = await executor.query<PayoutWalletRow>(
+    `
+      select user_id, chain, wallet_address, asset_preference
+      from public.ambassador_payout_wallets
+      where user_id = $1::uuid
+        and chain = 'polygon'
+      limit 1
+    `,
+    [userId],
+  );
+
+  return row
+    ? {
+        userId: row.user_id,
+        chain: row.chain,
+        walletAddress: row.wallet_address,
+        assetPreference: row.asset_preference,
+      }
+    : null;
+};
+
+export const findOpenRewardPayoutForRecipient = async (
+  executor: DatabaseExecutor,
+  recipientUserId: string,
+): Promise<AmbassadorRewardPayoutRecord | null> => {
+  const [row] = await executor.query<PayoutRow>(
+    `
+      select
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
+      from public.ambassador_reward_payouts
+      where recipient_user_id = $1::uuid
+        and status in ('requested', 'approved')
+      order by created_at asc
+      limit 1
+    `,
+    [recipientUserId],
+  );
+  return row ? mapPayout(row) : null;
+};
+
+export type AutoPayoutRequestDecision =
+  | { action: "disabled" }
+  | { action: "below_threshold" }
+  | { action: "missing_wallet" }
+  | { action: "invalid_wallet" }
+  | { action: "duplicate_open_payout" }
+  | { action: "create"; destinationValue: string; amountUsdcAtoms: bigint };
+
+export const decideAutoPayoutRequest = (input: {
+  config: AmbassadorRewardsConfig;
+  payableBalance: bigint;
+  payoutWallet: { chain: string; walletAddress: string; assetPreference: string } | null;
+  openPayout: AmbassadorRewardPayoutRecord | null;
+}): AutoPayoutRequestDecision => {
+  validateRewardShareConfig(input.config);
+  if (!input.config.enabled || !input.config.autoPayoutRequestEnabled) return { action: "disabled" };
+  if (input.payableBalance < input.config.minPayoutUsdcAtoms || input.payableBalance <= 0n) {
+    return { action: "below_threshold" };
+  }
+  if (input.openPayout) return { action: "duplicate_open_payout" };
+  if (!input.payoutWallet || input.payoutWallet.chain !== "polygon" || input.payoutWallet.assetPreference !== "pUSD") {
+    return { action: "missing_wallet" };
+  }
+
+  try {
+    return {
+      action: "create",
+      destinationValue: normalizePayoutWalletAddress(input.payoutWallet.walletAddress),
+      amountUsdcAtoms: input.payableBalance,
+    };
+  } catch {
+    return { action: "invalid_wallet" };
+  }
+};
+
+const insertRewardPayoutRequest = async (
+  transaction: DatabaseTransaction,
+  input: {
+    recipientUserId: string;
+    amountUsdcAtoms: bigint;
+    destinationType: AmbassadorPayoutDestinationType;
+    destinationValue: string;
+    config: AmbassadorRewardsConfig;
+  },
+): Promise<AmbassadorRewardPayoutRecord> => {
+  const [row] = await transaction.query<PayoutRow>(
+    `
+      insert into public.ambassador_reward_payouts (
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        notes,
+        created_at
+      ) values (
+        $1::uuid,
+        $2,
+        'requested',
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        null,
+        now()
+      )
+      on conflict do nothing
+      returning
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
+    `,
+    [
+      input.recipientUserId,
+      input.amountUsdcAtoms,
+      input.destinationType,
+      input.destinationValue,
+      input.config.payoutChain,
+      input.config.payoutChainId,
+      input.config.payoutAsset,
+      input.config.payoutAssetDecimals,
+      input.config.polygonPusdAddress,
+    ],
+  );
+  if (!row) {
+    const openPayout = await findOpenRewardPayoutForRecipient(transaction, input.recipientUserId);
+    if (openPayout) return openPayout;
+    throw new Error("failed to request reward payout");
+  }
+  return mapPayout(row);
+};
+
+export const maybeCreateAutoPayoutRequest = async (
+  transaction: DatabaseTransaction,
+  recipientUserId: string,
+  config = getAmbassadorRewardsConfig(),
+): Promise<AmbassadorRewardPayoutRecord | null> => {
+  validateRewardShareConfig(config);
+  if (!config.enabled || !config.autoPayoutRequestEnabled) return null;
+
+  const summary = await getRewardSummaryForUser(transaction, recipientUserId);
+  const payoutWallet = await getPayoutWalletForUser(transaction, recipientUserId);
+  const openPayout = await findOpenRewardPayoutForRecipient(transaction, recipientUserId);
+  const decision = decideAutoPayoutRequest({
+    config,
+    payableBalance: summary.payableRewards,
+    payoutWallet,
+    openPayout,
+  });
+
+  if (decision.action !== "create") return null;
+
+  return insertRewardPayoutRequest(transaction, {
+    recipientUserId,
+    amountUsdcAtoms: decision.amountUsdcAtoms,
+    destinationType: "wallet",
+    destinationValue: decision.destinationValue,
+    config,
+  });
+};
+
 export const requestRewardPayout = async (
   transaction: DatabaseTransaction,
   input: {
     recipientUserId: string;
     destinationType: AmbassadorPayoutDestinationType;
     destinationValue: string;
+    allowManualDestination?: boolean;
     config?: AmbassadorRewardsConfig;
   },
 ): Promise<AmbassadorRewardPayoutRecord> => {
@@ -1013,31 +1340,26 @@ export const requestRewardPayout = async (
     throw new Error("no payable rewards available");
   }
 
-  const [row] = await transaction.query<PayoutRow>(
-    `
-      insert into public.ambassador_reward_payouts (
-        recipient_user_id,
-        amount_usdc_atoms,
-        status,
-        destination_type,
-        destination_value,
-        notes,
-        created_at
-      ) values (
-        $1::uuid,
-        $2,
-        'requested',
-        $3,
-        $4,
-        null,
-        now()
-      )
-      returning id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
-    `,
-    [input.recipientUserId, summary.payableRewards, input.destinationType, input.destinationValue],
-  );
-  if (!row) throw new Error("failed to request reward payout");
-  return mapPayout(row);
+  const openPayout = await findOpenRewardPayoutForRecipient(transaction, input.recipientUserId);
+  if (openPayout) {
+    throw new Error("recipient already has an open reward payout request");
+  }
+
+  if (input.destinationType === "manual") {
+    if (!input.allowManualDestination) {
+      throw new Error("manual payout destination is admin-only");
+    }
+  } else {
+    normalizePayoutWalletAddress(input.destinationValue);
+  }
+
+  return insertRewardPayoutRequest(transaction, {
+    recipientUserId: input.recipientUserId,
+    amountUsdcAtoms: summary.payableRewards,
+    destinationType: input.destinationType,
+    destinationValue: input.destinationType === "wallet" ? normalizePayoutWalletAddress(input.destinationValue) : input.destinationValue.trim(),
+    config,
+  });
 };
 
 export const approveRewardPayout = async (
@@ -1053,11 +1375,38 @@ export const approveRewardPayout = async (
           notes = coalesce($3, notes)
       where id = $1::uuid
         and status = 'requested'
-      returning id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
+      returning
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
     `,
     [input.payoutId, input.reviewedBy, input.notes ?? null],
   );
   if (!row) throw new Error("payout must be requested before approval");
+  await transaction.query(
+    `
+      update public.ambassador_reward_ledger
+      set status = 'approved',
+          approved_at = coalesce(approved_at, now())
+      where recipient_user_id = $1::uuid
+        and status = 'payable'
+    `,
+    [row.recipient_user_id],
+  );
   return mapPayout(row);
 };
 
@@ -1066,12 +1415,34 @@ export const markRewardPayoutPaid = async (
   input: { payoutId: string; reviewedBy: string; txHash?: string | null; notes?: string | null },
 ): Promise<AmbassadorRewardPayoutRecord> => {
   const [existing] = await transaction.query<PayoutRow>(
-    `select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at from public.ambassador_reward_payouts where id = $1::uuid`,
+    `
+      select
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
+      from public.ambassador_reward_payouts
+      where id = $1::uuid
+    `,
     [input.payoutId],
   );
   if (!existing || existing.status !== "approved") {
     throw new Error("payout requires admin approval before it can be marked paid");
   }
+  const txHash = existing.destination_type === "wallet" ? assertValidPayoutTxHash(input.txHash) : input.txHash?.trim() || null;
 
   await transaction.query(
     `
@@ -1094,9 +1465,26 @@ export const markRewardPayoutPaid = async (
           tx_hash = $3,
           notes = coalesce($4, notes)
       where id = $1::uuid
-      returning id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
+      returning
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
     `,
-    [input.payoutId, input.reviewedBy, input.txHash ?? null, input.notes ?? null],
+    [input.payoutId, input.reviewedBy, txHash, input.notes ?? null],
   );
   if (!row) throw new Error("failed to mark payout paid");
   return mapPayout(row);
@@ -1115,7 +1503,24 @@ export const updateRewardPayoutFailureState = async (
           notes = $4
       where id = $1::uuid
         and status in ('requested', 'approved')
-      returning id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
+      returning
+        id,
+        recipient_user_id,
+        amount_usdc_atoms,
+        status,
+        destination_type,
+        destination_value,
+        payout_chain,
+        payout_chain_id,
+        payout_asset,
+        payout_asset_decimals,
+        asset_contract_address,
+        reviewed_by,
+        reviewed_at,
+        paid_at,
+        tx_hash,
+        notes,
+        created_at
     `,
     [input.payoutId, input.reviewedBy, input.status, input.notes],
   );
@@ -1140,7 +1545,29 @@ export const listAdminAmbassadorOverview = async (
       `select id, recipient_user_id, source_trade_attribution_id, reward_type, amount_usdc_atoms, status, created_at, payable_at, approved_at, paid_at, voided_at, void_reason from public.ambassador_reward_ledger order by created_at desc, id desc limit 100`,
     ),
     executor.query<PayoutRow>(
-      `select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at from public.ambassador_reward_payouts order by created_at desc limit 100`,
+      `
+        select
+          id,
+          recipient_user_id,
+          amount_usdc_atoms,
+          status,
+          destination_type,
+          destination_value,
+          payout_chain,
+          payout_chain_id,
+          payout_asset,
+          payout_asset_decimals,
+          asset_contract_address,
+          reviewed_by,
+          reviewed_at,
+          paid_at,
+          tx_hash,
+          notes,
+          created_at
+        from public.ambassador_reward_payouts
+        order by created_at desc
+        limit 100
+      `,
     ),
     executor.query<ReferralAttributionRow>(
       `

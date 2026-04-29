@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getAmbassadorDashboard, listExternalMarkets, listMarkets } from "./api";
+import { ExternalMarketsLoadError, getAmbassadorDashboard, listExternalMarkets, listMarkets } from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
 
@@ -222,14 +222,62 @@ test("listExternalMarkets surfaces network error when configured API base is unr
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
 });
 
-test("listExternalMarkets fails fast in production when API_BASE_URL is not configured", async (t) => {
+test("listExternalMarkets uses same-site Next API route in production when API_BASE_URL is not configured", async (t) => {
+  const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
+  const calls: FetchCall[] = [];
 
   delete process.env.API_BASE_URL;
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
+  globalThis.fetch = createFetchMock([], calls);
 
   t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
+  });
+
+  await withNodeEnv("production", async () => {
+    const markets = await listExternalMarkets();
+    assert.deepEqual(markets, []);
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/api/external/markets");
+});
+
+test("listExternalMarkets classifies backend 500 and Supabase env errors", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  process.env.API_BASE_URL = "https://api.example.com";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "Supabase environment variables are missing or invalid", code: "SUPABASE_ENV_MISSING" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
     if (originalApiBaseUrl === undefined) {
       delete process.env.API_BASE_URL;
     } else {
@@ -242,9 +290,49 @@ test("listExternalMarkets fails fast in production when API_BASE_URL is not conf
     }
   });
 
-  await withNodeEnv("production", async () => {
-    await assert.rejects(() => listExternalMarkets(), /Missing API base URL/);
+  await assert.rejects(
+    () => listExternalMarkets(),
+    (error: unknown) =>
+      error instanceof ExternalMarketsLoadError &&
+      error.diagnostics.includes("backend_500") &&
+      error.diagnostics.includes("supabase_env_missing"),
+  );
+});
+
+test("listExternalMarkets classifies missing /external/markets route", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  process.env.API_BASE_URL = "https://api.example.com";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "Endpoint not implemented" }), {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
   });
+
+  await assert.rejects(
+    () => listExternalMarkets(),
+    (error: unknown) =>
+      error instanceof ExternalMarketsLoadError &&
+      error.diagnostics.includes("external_markets_not_implemented"),
+  );
 });
 
 test("getAmbassadorDashboard uses local Next API route when API base is not configured", async (t) => {

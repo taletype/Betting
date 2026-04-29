@@ -6,11 +6,16 @@ import test from "node:test";
 import {
   ambassadorRewardTypes,
   calculateRewardLedgerDrafts,
+  assertValidPayoutTxHash,
+  buildPolygonTxUrl,
+  decideAutoPayoutRequest,
   decideReferralAttribution,
   generateAmbassadorCode,
   getAmbassadorRewardsConfig,
+  normalizePayoutWalletAddress,
   validateRewardShareConfig,
   type AmbassadorCodeRecord,
+  type AmbassadorRewardPayoutRecord,
   type AmbassadorRewardsConfig,
   type ReferralAttributionRecord,
 } from "./repository";
@@ -22,7 +27,15 @@ const enabledConfig: AmbassadorRewardsConfig = {
   traderCashbackShareBps: 1000,
   minPayoutUsdcAtoms: 0n,
   autoCalculationEnabled: true,
+  autoPayoutRequestEnabled: false,
   autoPayoutEnabled: false,
+  payoutChain: "polygon",
+  payoutChainId: 137,
+  payoutAsset: "pUSD",
+  payoutAssetDecimals: 6,
+  polygonExplorerUrl: "https://polygonscan.com",
+  polygonPayoutTreasuryAddress: "placeholder",
+  polygonPusdAddress: "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
 };
 
 const code = (overrides: Partial<AmbassadorCodeRecord> = {}): AmbassadorCodeRecord => ({
@@ -133,10 +146,14 @@ test("no second-tier reward type is created", () => {
 
 test("reward ledger entries are created as pending records", () => {
   const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+  const handlers = readFileSync(resolve(process.cwd(), "src/modules/ambassador/handlers.ts"), "utf8");
 
   assert.match(source, /status,\s*created_at/);
   assert.match(source, /'pending'/);
   assert.match(source, /builder trade attribution must be confirmed before rewards become payable/);
+  assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
+  assert.match(handlers, /accountConfirmedBuilderTradeRewards/);
+  assert.match(handlers, /markRewardsPayable/);
 });
 
 test("payout workflow enforces threshold and admin approval before paid", () => {
@@ -144,8 +161,17 @@ test("payout workflow enforces threshold and admin approval before paid", () => 
 
   assert.match(source, /payable rewards are below the minimum payout threshold/);
   assert.match(source, /status = 'requested'/);
+  assert.match(source, /'requested',\s*\$3,/);
   assert.match(source, /status = 'approved'/);
+  assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
+  assert.match(source, /recipient already has an open reward payout request/);
   assert.match(source, /payout requires admin approval before it can be marked paid/);
+});
+
+test("reward automation has no crypto transfer broadcast path", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+
+  assert.doesNotMatch(source, /privateKey|mnemonic|sendTransaction|broadcast|walletClient|createWalletClient|signer/i);
 });
 
 test("reward shares must sum to 10000 bps", () => {
@@ -155,20 +181,104 @@ test("reward shares must sum to 10000 bps", () => {
     /sum to 10000/,
   );
   assert.throws(
-    () => validateRewardShareConfig({ ...enabledConfig, enabled: false, autoPayoutEnabled: true }),
-    /cannot be true/,
+    () => validateRewardShareConfig({ ...enabledConfig, enabled: true, autoPayoutEnabled: true }),
+    /must remain false/,
   );
 });
 
-test("auto payout defaults false", () => {
+test("auto payout and auto payout request default false", () => {
   const previous = process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+  const previousRequest = process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED;
   delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+  delete process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED;
   try {
     assert.equal(getAmbassadorRewardsConfig().autoPayoutEnabled, false);
+    assert.equal(getAmbassadorRewardsConfig().autoPayoutRequestEnabled, false);
   } finally {
     if (previous === undefined) delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
     else process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED = previous;
+    if (previousRequest === undefined) delete process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED;
+    else process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED = previousRequest;
   }
+});
+
+test("auto payout request is created only when threshold and Polygon wallet checks pass", () => {
+  const config = { ...enabledConfig, minPayoutUsdcAtoms: 500_000n, autoPayoutRequestEnabled: true };
+  const payoutWallet = {
+    chain: "polygon",
+    walletAddress: "0x1111111111111111111111111111111111111111",
+    assetPreference: "pUSD",
+  };
+
+  assert.deepEqual(
+    decideAutoPayoutRequest({ config, payableBalance: 499_999n, payoutWallet, openPayout: null }),
+    { action: "below_threshold" },
+  );
+  assert.deepEqual(
+    decideAutoPayoutRequest({ config, payableBalance: 500_000n, payoutWallet: null, openPayout: null }),
+    { action: "missing_wallet" },
+  );
+  assert.deepEqual(
+    decideAutoPayoutRequest({
+      config,
+      payableBalance: 500_000n,
+      payoutWallet: { ...payoutWallet, walletAddress: "not-an-address" },
+      openPayout: null,
+    }),
+    { action: "invalid_wallet" },
+  );
+  assert.deepEqual(
+    decideAutoPayoutRequest({
+      config,
+      payableBalance: 500_000n,
+      payoutWallet,
+      openPayout: {
+        id: "55555555-5555-4555-8555-555555555555",
+        recipientUserId: "66666666-6666-4666-8666-666666666666",
+        amountUsdcAtoms: 500_000n,
+        status: "requested",
+        destinationType: "wallet",
+        destinationValue: payoutWallet.walletAddress,
+        payoutChain: "polygon",
+        payoutChainId: 137,
+        payoutAsset: "pUSD",
+        payoutAssetDecimals: 6,
+        assetContractAddress: enabledConfig.polygonPusdAddress,
+        reviewedBy: null,
+        reviewedAt: null,
+        paidAt: null,
+        txHash: null,
+        notes: null,
+        createdAt: "2026-04-01T00:00:00.000Z",
+      } satisfies AmbassadorRewardPayoutRecord,
+    }),
+    { action: "duplicate_open_payout" },
+  );
+  assert.deepEqual(
+    decideAutoPayoutRequest({ config, payableBalance: 500_000n, payoutWallet, openPayout: null }),
+    {
+      action: "create",
+      amountUsdcAtoms: 500_000n,
+      destinationValue: "0x1111111111111111111111111111111111111111",
+    },
+  );
+});
+
+test("payout wallet and paid tx hash validation enforce Polygon wallet payouts", () => {
+  assert.equal(
+    normalizePayoutWalletAddress("0x1111111111111111111111111111111111111111"),
+    "0x1111111111111111111111111111111111111111",
+  );
+  assert.throws(() => normalizePayoutWalletAddress("0x1234"), /valid 0x EVM address/);
+  assert.equal(
+    assertValidPayoutTxHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  );
+  assert.throws(() => assertValidPayoutTxHash(null), /32-byte 0x hash/);
+  assert.equal(
+    buildPolygonTxUrl("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    "https://polygonscan.com/tx/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  );
 });
 
 test("ambassador migration contains direct-only reward tables", () => {
@@ -177,6 +287,9 @@ test("ambassador migration contains direct-only reward tables", () => {
   assert.match(migration, /create table if not exists public\.ambassador_codes/i);
   assert.match(migration, /create table if not exists public\.referral_attributions/i);
   assert.match(migration, /create table if not exists public\.ambassador_reward_ledger/i);
+  assert.match(migration, /create table if not exists public\.ambassador_payout_wallets/i);
+  assert.match(migration, /ambassador_reward_payouts_recipient_open_idx/i);
+  assert.match(migration, /tx_hash ~\* '\^0x\[0-9a-f\]\{64\}\$'/i);
   assert.doesNotMatch(migration, /parent_referrer_id|sponsor_tree|ancestor|closure|nested|binary|matrix|spillover|level_[0-9]|team_captain|with recursive|downline|second_level/i);
 });
 

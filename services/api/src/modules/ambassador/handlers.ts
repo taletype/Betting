@@ -187,7 +187,7 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
       },
     });
 
-    const ledger = tradeAttribution.status === "confirmed"
+    let ledger = tradeAttribution.status === "confirmed"
       ? await accountConfirmedBuilderTradeRewards(transaction, {
           tradeAttributionId: tradeAttribution.id,
           config: getAmbassadorRewardsConfig(),
@@ -195,7 +195,7 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
       : [];
 
     if (ledger.length > 0) {
-      await markRewardsPayable(transaction, tradeAttribution.id);
+      ledger = await markRewardsPayable(transaction, tradeAttribution.id);
     }
 
     await insertAuditRecord(transaction, {

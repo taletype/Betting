@@ -34,16 +34,16 @@ Calculation creates accounting entries only. It does not transfer money and does
 
 V1 payout behavior:
 
-1. User requests payout after payable rewards meet the configured threshold.
+1. The system may create a payout request automatically after payable rewards meet the configured threshold and the user has a valid Polygon payout wallet.
 2. Admin reviews the payout request.
 3. Admin approves the payout.
-4. Admin pays manually outside the app or through a future controlled adapter.
-5. Admin marks the payout paid, failed, or cancelled.
+4. Admin pays pUSD manually on Polygon.
+5. Admin records the 32-byte Polygon transaction hash and marks the payout paid, failed, or cancelled.
 
-`AMBASSADOR_AUTO_PAYOUT_ENABLED` defaults to false and cannot be true unless rewards are enabled. No production money transfer adapter was added in this scaffold.
+`AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED` defaults to false. `AMBASSADOR_AUTO_PAYOUT_ENABLED` defaults to false and must remain false. No production money transfer adapter, private-key flow, signer, or broadcast path was added.
 
 ## Operational Notes
 
-CSV export is provided for manual payout review. All paid status changes should include an external reference or transaction hash when available.
+CSV export is provided for manual payout review. Wallet paid status changes require a Polygon transaction hash.
 
 Legal review is required before launch in Hong Kong.

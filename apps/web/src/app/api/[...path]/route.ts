@@ -27,6 +27,14 @@ import {
   getAuthenticatedUser,
 } from "../auth";
 
+let supabaseAdminClientFactory = createSupabaseAdminClient;
+
+export const setSupabaseAdminClientFactoryForTests = (
+  factory: typeof createSupabaseAdminClient | null,
+): void => {
+  supabaseAdminClientFactory = factory ?? createSupabaseAdminClient;
+};
+
 const normalizeAddress = (value: string): string => value.trim().toLowerCase();
 
 const assertWalletLinkMessage = (message: string, userId: string): void => {
@@ -45,12 +53,13 @@ async function handleRequest(
 ): Promise<NextResponse> {
   const { path } = await params;
   const apiPath = path.join("/");
-  const adminSupabase = createSupabaseAdminClient();
 
   try {
     if (apiPath === "health" && request.method === "GET") {
       return NextResponse.json({ ok: true, service: "api", checkedAt: new Date().toISOString() });
     }
+
+    const adminSupabase = supabaseAdminClientFactory();
 
     if (apiPath === "markets" && request.method === "GET") {
       return await getMarketsResponse();
@@ -435,7 +444,15 @@ async function handleRequest(
     return NextResponse.json({ error: "Endpoint not implemented" }, { status: 404 });
   } catch (error) {
     console.error(`Error handling /${apiPath}:`, error);
-    return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to fetch data";
+    if (/SUPABASE_/.test(message)) {
+      return NextResponse.json(
+        { error: "Supabase environment variables are missing or invalid", code: "SUPABASE_ENV_MISSING" },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ error: message, code: "API_REQUEST_FAILED" }, { status: 500 });
   }
 }
 

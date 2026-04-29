@@ -100,7 +100,37 @@ const getApiUrl = (path: string, options?: { requireConfiguredBaseUrl?: boolean 
   return getLocalApiUrl(path);
 };
 
-class ApiResponseError extends Error {}
+class ApiResponseError extends Error {
+  readonly status: number;
+  readonly url: string;
+  readonly code: string | null;
+
+  constructor(input: { message: string; status: number; url: string; code?: string | null }) {
+    super(input.message);
+    this.name = "ApiResponseError";
+    this.status = input.status;
+    this.url = input.url;
+    this.code = input.code ?? null;
+  }
+}
+
+export type ExternalMarketsLoadErrorCode =
+  | "missing_api_base_url"
+  | "api_unreachable"
+  | "backend_500"
+  | "external_markets_not_implemented"
+  | "supabase_env_missing"
+  | "unknown";
+
+export class ExternalMarketsLoadError extends Error {
+  readonly diagnostics: ExternalMarketsLoadErrorCode[];
+
+  constructor(message: string, diagnostics: ExternalMarketsLoadErrorCode[]) {
+    super(message);
+    this.name = "ExternalMarketsLoadError";
+    this.diagnostics = [...new Set(diagnostics)];
+  }
+}
 
 const executeApiRequest = async <T>(
   url: string,
@@ -121,8 +151,13 @@ const executeApiRequest = async <T>(
   }
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new ApiResponseError(payload.error ?? `API request failed for ${url}: ${response.status}`);
+    const payload = (await response.json().catch(() => ({}))) as { code?: string; error?: string };
+    throw new ApiResponseError({
+      message: payload.error ?? `API request failed for ${url}: ${response.status}`,
+      status: response.status,
+      url,
+      code: payload.code ?? null,
+    });
   }
 
   return (await response.json()) as T;
@@ -437,8 +472,36 @@ export interface ExternalMarketApiRecord {
 }
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
-  const payload = await readApiJson("/external/markets", {
-    requireConfiguredBaseUrl: true,
-  });
-  return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
+  const diagnostics: ExternalMarketsLoadErrorCode[] = [];
+  if (!getConfiguredApiBaseUrl()) {
+    diagnostics.push("missing_api_base_url");
+  }
+
+  try {
+    const payload = await readApiJson("/external/markets");
+    return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
+  } catch (error) {
+    if (error instanceof ApiResponseError) {
+      if (error.status === 404) {
+        diagnostics.push("external_markets_not_implemented");
+      } else if (error.status >= 500) {
+        diagnostics.push("backend_500");
+      }
+
+      if (error.code === "SUPABASE_ENV_MISSING" || /SUPABASE_/.test(error.message)) {
+        diagnostics.push("supabase_env_missing");
+      }
+    } else if (error instanceof Error && /ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(error.message)) {
+      diagnostics.push("api_unreachable");
+    }
+
+    if (diagnostics.length === 0) {
+      diagnostics.push("unknown");
+    }
+
+    throw new ExternalMarketsLoadError(
+      error instanceof Error ? error.message : "Unable to load external markets",
+      diagnostics,
+    );
+  }
 };

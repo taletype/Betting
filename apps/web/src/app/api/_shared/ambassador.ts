@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 
 import { createDatabaseClient, type DatabaseExecutor, type DatabaseTransaction } from "@bet/db";
+import { isAddress } from "ethers";
 
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
 const platformRecipientUuid = zeroUuid;
+const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
 type RewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
 type TradeStatus = "pending" | "confirmed" | "void";
@@ -37,6 +39,22 @@ const parseIntegerEnv = (name: string, defaultValue: number): number => {
   return parsed;
 };
 
+const parseStringEnv = (name: string, defaultValue: string): string => process.env[name]?.trim() || defaultValue;
+
+const normalizePayoutWalletAddress = (address: string): string => {
+  const normalized = address.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(normalized) || !isAddress(normalized)) {
+    throw new Error("Polygon payout wallet must be a valid 0x EVM address");
+  }
+  return normalized;
+};
+
+const assertValidPayoutTxHash = (txHash: string | null | undefined): string => {
+  const normalized = txHash?.trim().toLowerCase() ?? "";
+  if (!/^0x[0-9a-f]{64}$/.test(normalized)) throw new Error("wallet payout tx hash must be a 32-byte 0x hash");
+  return normalized;
+};
+
 const getRewardConfig = () => {
   const config = {
     enabled: parseBooleanEnv("AMBASSADOR_REWARDS_ENABLED", false),
@@ -44,13 +62,27 @@ const getRewardConfig = () => {
     directReferrerShareBps: parseIntegerEnv("AMBASSADOR_DIRECT_REFERRER_SHARE_BPS", 3000),
     traderCashbackShareBps: parseIntegerEnv("AMBASSADOR_TRADER_CASHBACK_SHARE_BPS", 1000),
     autoCalculationEnabled: parseBooleanEnv("AMBASSADOR_AUTO_CALCULATION_ENABLED", true),
+    autoPayoutRequestEnabled: parseBooleanEnv("AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED", false),
     autoPayoutEnabled: parseBooleanEnv("AMBASSADOR_AUTO_PAYOUT_ENABLED", false),
+    payoutChain: parseStringEnv("PAYOUT_CHAIN", "polygon"),
+    payoutChainId: parseIntegerEnv("PAYOUT_CHAIN_ID", 137),
+    payoutAsset: parseStringEnv("PAYOUT_ASSET", "pUSD"),
+    payoutAssetDecimals: parseIntegerEnv("PAYOUT_ASSET_DECIMALS", 6),
+    polygonExplorerUrl: parseStringEnv("POLYGON_EXPLORER_URL", "https://polygonscan.com"),
+    polygonPayoutTreasuryAddress: parseStringEnv("POLYGON_PAYOUT_TREASURY_ADDRESS", "placeholder"),
+    polygonPusdAddress: parseStringEnv("POLYGON_PUSD_ADDRESS", defaultPolygonPusdAddress),
   };
   const total = config.platformShareBps + config.directReferrerShareBps + config.traderCashbackShareBps;
   if (total !== 10000) throw new Error("ambassador reward shares must sum to 10000 bps");
-  if (config.autoPayoutEnabled && !config.enabled) {
-    throw new Error("AMBASSADOR_AUTO_PAYOUT_ENABLED cannot be true unless rewards are enabled");
+  if (config.autoPayoutEnabled) throw new Error("AMBASSADOR_AUTO_PAYOUT_ENABLED must remain false; automatic crypto payouts are not supported");
+  if (config.payoutChain !== "polygon") throw new Error("PAYOUT_CHAIN must be polygon");
+  if (config.payoutChainId !== 137) throw new Error("PAYOUT_CHAIN_ID must be 137 for Polygon payouts");
+  if (config.payoutAsset !== "pUSD") throw new Error("PAYOUT_ASSET must be pUSD");
+  if (config.payoutAssetDecimals !== 6) throw new Error("PAYOUT_ASSET_DECIMALS must be 6 for pUSD");
+  if (config.polygonPayoutTreasuryAddress !== "placeholder" && !isAddress(config.polygonPayoutTreasuryAddress)) {
+    throw new Error("POLYGON_PAYOUT_TREASURY_ADDRESS must be placeholder or a valid EVM address");
   }
+  if (!isAddress(config.polygonPusdAddress)) throw new Error("POLYGON_PUSD_ADDRESS must be a valid EVM address");
   return config;
 };
 
@@ -185,6 +217,11 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
       status: "requested" | "approved" | "paid" | "failed" | "cancelled";
       destination_type: "wallet" | "manual";
       destination_value: string;
+      payout_chain: "polygon";
+      payout_chain_id: number;
+      payout_asset: "pUSD";
+      payout_asset_decimals: number;
+      asset_contract_address: string;
       reviewed_by: string | null;
       reviewed_at: Date | string | null;
       paid_at: Date | string | null;
@@ -192,7 +229,15 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
       notes: string | null;
       created_at: Date | string;
     }>(
-      `select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at from public.ambassador_reward_payouts where recipient_user_id = $1::uuid order by created_at desc limit 20`,
+      `
+        select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
+               payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address,
+               reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
+        from public.ambassador_reward_payouts
+        where recipient_user_id = $1::uuid
+        order by created_at desc
+        limit 20
+      `,
       [userId],
     ),
   ]);
@@ -251,6 +296,11 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
       status: row.status,
       destinationType: row.destination_type,
       destinationValue: row.destination_value,
+      payoutChain: row.payout_chain,
+      payoutChainId: row.payout_chain_id,
+      payoutAsset: row.payout_asset,
+      payoutAssetDecimals: row.payout_asset_decimals,
+      assetContractAddress: row.asset_contract_address,
       reviewedBy: row.reviewed_by,
       reviewedAt: toIso(row.reviewed_at),
       paidAt: toIso(row.paid_at),
@@ -290,9 +340,32 @@ export const requestAmbassadorPayoutDb = async (userId: string, input: { destina
   if (dashboard.rewards.payableRewards < parseMinPayout()) {
     throw new Error("payable rewards are below the minimum payout threshold");
   }
+  const [openPayout] = await db.query<{ id: string }>(
+    `select id from public.ambassador_reward_payouts where recipient_user_id = $1::uuid and status in ('requested', 'approved') limit 1`,
+    [userId],
+  );
+  if (openPayout) throw new Error("recipient already has an open reward payout request");
+  if (input.destinationType === "manual") throw new Error("manual payout destination is admin-only");
+  const config = getRewardConfig();
+  const destinationValue = normalizePayoutWalletAddress(input.destinationValue);
   const [row] = await db.query<{ id: string }>(
-    `insert into public.ambassador_reward_payouts (recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, created_at) values ($1::uuid, $2, 'requested', $3, $4, now()) returning id`,
-    [userId, dashboard.rewards.payableRewards, input.destinationType, input.destinationValue],
+    `
+      insert into public.ambassador_reward_payouts (
+        recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
+        payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address, created_at
+      ) values ($1::uuid, $2, 'requested', 'wallet', $3, $4, $5, $6, $7, $8, now())
+      returning id
+    `,
+    [
+      userId,
+      dashboard.rewards.payableRewards,
+      destinationValue,
+      config.payoutChain,
+      config.payoutChainId,
+      config.payoutAsset,
+      config.payoutAssetDecimals,
+      config.polygonPusdAddress,
+    ],
   );
   return { id: row?.id ?? "" };
 };
@@ -304,7 +377,14 @@ export const readAdminAmbassadorOverviewDb = async () => {
     db.query(`select id, referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason from public.referral_attributions order by attributed_at desc limit 100`),
     db.query(`select id, user_id, direct_referrer_user_id, polymarket_order_id, polymarket_trade_id, condition_id, market_slug, notional_usdc_atoms, builder_fee_usdc_atoms, status, raw_json, observed_at, confirmed_at from public.builder_trade_attributions order by observed_at desc limit 100`),
     db.query(`select id, recipient_user_id, source_trade_attribution_id, reward_type, amount_usdc_atoms, status, created_at, payable_at, approved_at, paid_at, voided_at, void_reason from public.ambassador_reward_ledger order by created_at desc limit 100`),
-    db.query(`select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value, reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at from public.ambassador_reward_payouts order by created_at desc limit 100`),
+    db.query(`
+      select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
+             payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address,
+             reviewed_by, reviewed_at, paid_at, tx_hash, notes, created_at
+      from public.ambassador_reward_payouts
+      order by created_at desc
+      limit 100
+    `),
   ]);
 
   return {
@@ -354,6 +434,11 @@ export const readAdminAmbassadorOverviewDb = async () => {
       status: row.status,
       destinationType: row.destination_type,
       destinationValue: row.destination_value,
+      payoutChain: row.payout_chain,
+      payoutChainId: row.payout_chain_id,
+      payoutAsset: row.payout_asset,
+      payoutAssetDecimals: row.payout_asset_decimals,
+      assetContractAddress: row.asset_contract_address,
       reviewedBy: row.reviewed_by,
       reviewedAt: toIso(row.reviewed_at),
       paidAt: toIso(row.paid_at),
@@ -502,6 +587,58 @@ const createRewardLedgerEntriesForTrade = async (transaction: DatabaseTransactio
   );
 };
 
+const maybeCreateAutoPayoutRequest = async (transaction: DatabaseTransaction, recipientUserId: string) => {
+  const config = getRewardConfig();
+  if (!config.enabled || !config.autoPayoutRequestEnabled) return null;
+
+  const [[summary], [wallet], [openPayout]] = await Promise.all([
+    transaction.query<{ amount: bigint }>(
+      `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'payable'`,
+      [recipientUserId],
+    ),
+    transaction.query<{ wallet_address: string; asset_preference: string }>(
+      `select wallet_address, asset_preference from public.ambassador_payout_wallets where user_id = $1::uuid and chain = 'polygon' limit 1`,
+      [recipientUserId],
+    ),
+    transaction.query<{ id: string }>(
+      `select id from public.ambassador_reward_payouts where recipient_user_id = $1::uuid and status in ('requested', 'approved') limit 1`,
+      [recipientUserId],
+    ),
+  ]);
+
+  const payableBalance = summary?.amount ?? 0n;
+  if (payableBalance < parseMinPayout() || payableBalance <= 0n || openPayout) return null;
+  if (!wallet || wallet.asset_preference !== "pUSD") return null;
+  let destinationValue: string;
+  try {
+    destinationValue = normalizePayoutWalletAddress(wallet.wallet_address);
+  } catch {
+    return null;
+  }
+
+  const [row] = await transaction.query<{ id: string }>(
+    `
+      insert into public.ambassador_reward_payouts (
+        recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
+        payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address, created_at
+      ) values ($1::uuid, $2, 'requested', 'wallet', $3, $4, $5, $6, $7, $8, now())
+      on conflict do nothing
+      returning id
+    `,
+    [
+      recipientUserId,
+      payableBalance,
+      destinationValue,
+      config.payoutChain,
+      config.payoutChainId,
+      config.payoutAsset,
+      config.payoutAssetDecimals,
+      config.polygonPusdAddress,
+    ],
+  );
+  return row ?? null;
+};
+
 export const markRewardsPayableDb = async (tradeAttributionId: string) => {
   const db = getDb();
   return db.transaction(async (transaction) => {
@@ -518,6 +655,13 @@ export const markRewardsPayableDb = async (tradeAttributionId: string) => {
           and status = 'pending'`,
       [tradeAttributionId],
     );
+    const recipients = await transaction.query<{ recipient_user_id: string }>(
+      `select distinct recipient_user_id from public.ambassador_reward_ledger where source_trade_attribution_id = $1::uuid and recipient_user_id is not null`,
+      [tradeAttributionId],
+    );
+    for (const recipient of recipients) {
+      await maybeCreateAutoPayoutRequest(transaction, recipient.recipient_user_id);
+    }
     return { ok: true };
   });
 };
@@ -584,6 +728,13 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
             and status = 'pending'`,
         [row.id],
       );
+      const recipients = await transaction.query<{ recipient_user_id: string }>(
+        `select distinct recipient_user_id from public.ambassador_reward_ledger where source_trade_attribution_id = $1::uuid and recipient_user_id is not null`,
+        [row.id],
+      );
+      for (const recipient of recipients) {
+        await maybeCreateAutoPayoutRequest(transaction, recipient.recipient_user_id);
+      }
     }
     return { tradeAttributionId: row.id, idempotent: false };
   });
@@ -643,11 +794,12 @@ const updatePayoutStatusDb = async (input: {
   }
 
   if (input.status === "paid") {
-    const [existing] = await db.query<{ status: string }>(
-      `select status from public.ambassador_reward_payouts where id = $1::uuid limit 1`,
+    const [existing] = await db.query<{ status: string; destination_type: "wallet" | "manual" }>(
+      `select status, destination_type from public.ambassador_reward_payouts where id = $1::uuid limit 1`,
       [input.payoutId],
     );
     if (existing?.status !== "approved") throw new Error("payout requires admin approval before it can be marked paid");
+    const txHash = existing.destination_type === "wallet" ? assertValidPayoutTxHash(input.txHash) : input.txHash?.trim() || null;
     await db.query(
       `update public.ambassador_reward_payouts
           set status = 'paid',
@@ -657,7 +809,7 @@ const updatePayoutStatusDb = async (input: {
               tx_hash = $3,
               notes = coalesce($4, notes)
         where id = $1::uuid`,
-      [input.payoutId, input.reviewedBy, input.txHash ?? null, input.notes ?? null],
+      [input.payoutId, input.reviewedBy, txHash, input.notes ?? null],
     );
     await db.query(
       `update public.ambassador_reward_ledger

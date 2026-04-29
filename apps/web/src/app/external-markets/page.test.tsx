@@ -81,10 +81,12 @@ test("Polymarket page renders empty-state when no synced rows exist", async (t) 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /暫時未有 Polymarket 市場資料。請先執行外部市場同步，或檢查 API_BASE_URL 是否連接到正確後端。/);
+  assert.match(markup, /暫時未有 Polymarket 市場資料/);
+  assert.match(markup, /external_markets table 未返回任何 Polymarket row/);
+  assert.match(markup, /外部同步尚未執行/);
 });
 
-test("Polymarket page shows disabled trade CTA only when builder code is configured", async (t) => {
+test("Polymarket page browsing works without builder code and shows disabled trade CTA only when configured", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () =>
@@ -149,6 +151,7 @@ test("Polymarket page shows disabled trade CTA only when builder code is configu
 
   await withBuilderCode(null, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
+    assert.match(markup, /Will Polymarket routing be scaffolded/);
     assert.doesNotMatch(markup, /透過 Polymarket 交易/);
   });
 
@@ -173,9 +176,7 @@ test("Polymarket page renders load error when market fetch fails", async (t) => 
 
   const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /無法載入 Polymarket 市場資料/);
-  assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL/);
-  assert.match(markup, /\/external\/markets/);
-  assert.match(markup, /external_markets table/);
+  assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.doesNotMatch(markup, /暫時未有 Polymarket 市場資料/);
 });
 
@@ -293,20 +294,35 @@ test("Polymarket page renders load error when configured API base is unavailable
 
   const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /無法載入 Polymarket 市場資料/);
-  assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL/);
-  assert.match(markup, /\/external\/markets/);
+  assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
   assert.equal(calls.length, 1);
 });
 
-test("Polymarket page renders operator-visible error when production API base is missing", async (t) => {
+test("Polymarket page renders operator-visible diagnostics when production API base is missing and fallback fails", async (t) => {
+  const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
+  const calls: string[] = [];
 
   delete process.env.API_BASE_URL;
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
+
+  globalThis.fetch = (async (input) => {
+    calls.push(String(input));
+    return new Response(
+      JSON.stringify({ error: "Supabase environment variables are missing or invalid", code: "SUPABASE_ENV_MISSING" }),
+      {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }) as typeof globalThis.fetch;
 
   t.after(() => {
+    globalThis.fetch = originalFetch;
     if (originalApiBaseUrl === undefined) {
       delete process.env.API_BASE_URL;
     } else {
@@ -317,15 +333,23 @@ test("Polymarket page renders operator-visible error when production API base is
     } else {
       process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
     }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
   });
 
   await withNodeEnv("production", async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /無法載入 Polymarket 市場資料/);
-    assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL/);
-    assert.match(markup, /\/external\/markets/);
-    assert.match(markup, /external_markets table/);
+    assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL 未設定/);
+    assert.match(markup, /\/api\/external\/markets fallback/);
+    assert.match(markup, /後端 \/external\/markets 返回 500/);
+    assert.match(markup, /Supabase 環境變數缺失或無效/);
   });
+
+  assert.equal(calls[0], "https://bet.example.vercel.app/api/external/markets");
 });
 
 test("Polymarket page defaults routed trading disabled", async () => {
@@ -346,4 +370,67 @@ test("Polymarket page defaults routed trading disabled", async () => {
     globalThis.fetch = originalFetch;
     if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
   }
+});
+
+test("Polymarket page keeps routed trade CTA disabled when submitter is unavailable", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalFlag = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  const originalSubmitter = process.env.POLYMARKET_SUBMITTER_AVAILABLE;
+
+  process.env.POLYMARKET_ROUTED_TRADING_ENABLED = "true";
+  delete process.env.POLYMARKET_SUBMITTER_AVAILABLE;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLY-CTA-1",
+          slug: "poly-cta-1",
+          title: "Will routed trading stay disabled without a submitter?",
+          description: "Submitter safety test",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-cta-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.5,
+          bestAsk: 0.52,
+          lastTradePrice: 0.51,
+          volume24h: 10,
+          volumeTotal: 100,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.5, bestAsk: 0.52, lastPrice: 0.51, volume: null }],
+          recentTrades: [],
+        },
+      ]),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalFlag === undefined) {
+      delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+    } else {
+      process.env.POLYMARKET_ROUTED_TRADING_ENABLED = originalFlag;
+    }
+    if (originalSubmitter === undefined) {
+      delete process.env.POLYMARKET_SUBMITTER_AVAILABLE;
+    } else {
+      process.env.POLYMARKET_SUBMITTER_AVAILABLE = originalSubmitter;
+    }
+  });
+
+  await withBuilderCode(VALID_BUILDER_CODE, async () => {
+    const markup = renderToStaticMarkup(await PolymarketPage());
+    assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">是/);
+    assert.match(markup, /訂單提交模式<\/span><span class="kv-value">已停用/);
+    assert.match(markup, /disabled=""/);
+  });
 });

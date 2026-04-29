@@ -245,6 +245,10 @@ export interface LocaleCopy {
     payoutDestination: string;
     destinationPlaceholder: string;
     thresholdNotice: string;
+    autoCalculationNotice: string;
+    adminApprovalNotice: string;
+    polygonPusdNotice: string;
+    payoutRail: string;
     noRewards: string;
     noPayouts: string;
     statuses: Record<string, string>;
@@ -255,7 +259,12 @@ export interface LocaleCopy {
     title: string;
     subtitle: string;
     empty: string;
+    emptyDetails: {
+      externalMarketsEmpty: string;
+      externalSyncNotRun: string;
+    };
     loadError: string;
+    loadErrorDetails: Record<string, string>;
     externalId: string;
     bestBid: string;
     bestAsk: string;
@@ -336,6 +345,9 @@ export interface LocaleCopy {
     builderFee: string;
     recordConfirmedTrade: string;
     txHash: string;
+    payoutRail: string;
+    asset: string;
+    polygonscan: string;
     notes: string;
   };
 }
@@ -576,8 +588,12 @@ const en: LocaleCopy = {
     created: "Created",
     requestPayout: "Request payout review",
     payoutDestination: "Destination",
-    destinationPlaceholder: "Wallet address or manual reference",
+    destinationPlaceholder: "Polygon wallet address",
     thresholdNotice: "Payouts are manually reviewed in v1. No automatic production transfer is enabled.",
+    autoCalculationNotice: "Eligible rewards can be calculated automatically, and a payout request can be created once the minimum amount is reached.",
+    adminApprovalNotice: "Actual payout still requires admin approval. Treasury transfers are never automatic.",
+    polygonPusdNotice: "After approval, the platform can pay rewards as pUSD on Polygon to the selected wallet.",
+    payoutRail: "Polygon pUSD",
     noRewards: "No reward ledger entries yet.",
     noPayouts: "No payout requests yet.",
     statuses: {
@@ -603,8 +619,20 @@ const en: LocaleCopy = {
   research: {
     title: "Polymarket Markets",
     subtitle: "Browse public Polymarket markets. When enabled, routed trading remains non-custodial and user-signed.",
-    empty: "No Polymarket market data is available yet. Run the external market sync, or check that API_BASE_URL is connected to the correct backend.",
-    loadError: "Unable to load Polymarket market data. Operators should check API_BASE_URL / NEXT_PUBLIC_API_BASE_URL, confirm the backend serves /external/markets, and verify the external_markets table is not empty.",
+    empty: "No Polymarket market data is available yet.",
+    emptyDetails: {
+      externalMarketsEmpty: "The external_markets table returned 0 Polymarket rows.",
+      externalSyncNotRun: "The external sync has not run yet, or it has not ingested Polymarket markets.",
+    },
+    loadError: "Unable to load Polymarket market data.",
+    loadErrorDetails: {
+      missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL is not configured; the page tried the same-site /api/external/markets fallback.",
+      api_unreachable: "The configured API or same-site API route was unreachable.",
+      backend_500: "The backend returned 500 for /external/markets.",
+      external_markets_not_implemented: "The backend does not implement /external/markets.",
+      supabase_env_missing: "Supabase environment variables are missing or invalid.",
+      unknown: "The API failed for an unknown reason. Check server logs for /external/markets.",
+    },
     externalId: "External ID",
     bestBid: "Best bid",
     bestAsk: "Best ask",
@@ -703,6 +731,9 @@ const en: LocaleCopy = {
     builderFee: "Builder fee USDC atoms",
     recordConfirmedTrade: "Record confirmed trade",
     txHash: "Tx hash/reference",
+    payoutRail: "Rail",
+    asset: "Asset",
+    polygonscan: "Polygonscan",
     notes: "Notes",
   },
 };
@@ -938,8 +969,12 @@ const zhHK: DeepPartial<LocaleCopy> = {
     created: "建立時間",
     requestPayout: "申請支付審批",
     payoutDestination: "支付目的地",
-    destinationPlaceholder: "錢包地址或人工參考",
+    destinationPlaceholder: "Polygon 錢包地址",
     thresholdNotice: "v1 支付需要人工審批，預設不會自動轉帳。",
+    autoCalculationNotice: "系統可自動計算合資格獎勵，並在達到最低金額後自動建立提款申請。",
+    adminApprovalNotice: "實際支付仍需管理員審批，不會自動從金庫轉帳。",
+    polygonPusdNotice: "審批通過後，平台可透過 Polygon 上的 pUSD 向指定錢包支付獎勵。",
+    payoutRail: "Polygon pUSD",
     noRewards: "暫無獎勵帳本紀錄。",
     noPayouts: "暫無支付申請。",
     statuses: {
@@ -965,8 +1000,20 @@ const zhHK: DeepPartial<LocaleCopy> = {
   research: {
     title: "Polymarket 市場",
     subtitle: "瀏覽公開 Polymarket 市場。路由交易啟用後仍維持非託管，訂單由用戶自行簽署。",
-    empty: "暫時未有 Polymarket 市場資料。請先執行外部市場同步，或檢查 API_BASE_URL 是否連接到正確後端。",
-    loadError: "無法載入 Polymarket 市場資料。請檢查 API_BASE_URL / NEXT_PUBLIC_API_BASE_URL、後端是否提供 /external/markets，以及 external_markets table 是否已有同步資料。",
+    empty: "暫時未有 Polymarket 市場資料。",
+    emptyDetails: {
+      externalMarketsEmpty: "external_markets table 未返回任何 Polymarket row。",
+      externalSyncNotRun: "外部同步尚未執行，或尚未匯入 Polymarket 市場。",
+    },
+    loadError: "無法載入 Polymarket 市場資料。",
+    loadErrorDetails: {
+      missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 未設定；頁面已嘗試同站 /api/external/markets fallback。",
+      api_unreachable: "已設定的 API 或同站 API route 無法連線。",
+      backend_500: "後端 /external/markets 返回 500。",
+      external_markets_not_implemented: "後端尚未提供 /external/markets。",
+      supabase_env_missing: "Supabase 環境變數缺失或無效。",
+      unknown: "API 因未知原因失敗。請查看 /external/markets 的伺服器 log。",
+    },
     externalId: "外部 ID",
     bestBid: "最佳買盤",
     bestAsk: "最佳賣盤",
@@ -1065,6 +1112,9 @@ const zhHK: DeepPartial<LocaleCopy> = {
     builderFee: "Builder 費用 USDC atoms",
     recordConfirmedTrade: "記錄已確認交易",
     txHash: "交易哈希/參考",
+    payoutRail: "支付網絡",
+    asset: "資產",
+    polygonscan: "Polygonscan",
     notes: "備註",
   },
 };

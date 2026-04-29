@@ -34,6 +34,17 @@ test("key zh-HK ambassador copy avoids forbidden terms", () => {
   }
 });
 
+test("zh-HK rewards copy explains auto request and manual Polygon pUSD payout", () => {
+  const rewards = getLocaleCopy("zh-HK").rewards;
+
+  assert.equal(
+    rewards.autoCalculationNotice,
+    "系統可自動計算合資格獎勵，並在達到最低金額後自動建立提款申請。",
+  );
+  assert.equal(rewards.adminApprovalNotice, "實際支付仍需管理員審批，不會自動從金庫轉帳。");
+  assert.equal(rewards.polygonPusdNotice, "審批通過後，平台可透過 Polygon 上的 pUSD 向指定錢包支付獎勵。");
+});
+
 test("key zh-HK product copy does not expose Sepolia or testnet wording", () => {
   const copy = JSON.stringify({
     shell: getLocaleCopy("zh-HK").shell,

@@ -12,15 +12,30 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const explorerBaseUrl = (process.env.POLYGON_EXPLORER_URL ?? "https://polygonscan.com").replace(/\/+$/, "");
+
 const toCsv = (rows: Awaited<ReturnType<typeof getAdminAmbassadorOverview>>["payouts"]) => {
-  const header = ["id", "recipient_user_id", "amount_usdc_atoms", "status", "destination_type", "destination_value"].join(",");
+  const header = [
+    "id",
+    "recipient_user_id",
+    "amount_usdc_atoms",
+    "status",
+    "payout_chain",
+    "payout_asset",
+    "destination_type",
+    "destination_value",
+    "tx_hash",
+  ].join(",");
   const body = rows.map((row) => [
     row.id,
     row.recipientUserId,
     row.amountUsdcAtoms.toString(),
     row.status,
+    row.payoutChain,
+    row.payoutAsset,
     row.destinationType,
     row.destinationValue.replaceAll(",", " "),
+    row.txHash ?? "",
   ].join(","));
   return [header, ...body].join("\n");
 };
@@ -54,8 +69,11 @@ export default async function AdminPayoutsPage() {
                 <th>ID</th>
                 <th>{copy.userId}</th>
                 <th>{rewardCopy.amount}</th>
+                <th>{copy.payoutRail}</th>
+                <th>{copy.asset}</th>
                 <th>{rewardCopy.status}</th>
                 <th>{rewardCopy.payoutDestination}</th>
+                <th>{copy.txHash}</th>
                 <th>{copy.approve}</th>
                 <th>{copy.markPaid}</th>
                 <th>{copy.markFailed}</th>
@@ -67,8 +85,19 @@ export default async function AdminPayoutsPage() {
                   <td className="mono">{payout.id.slice(0, 8)}</td>
                   <td className="mono">{payout.recipientUserId}</td>
                   <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
+                  <td>{payout.payoutChain} #{payout.payoutChainId}</td>
+                  <td>{payout.payoutAsset}</td>
                   <td>{rewardCopy.payoutStatuses[payout.status] ?? payout.status}</td>
                   <td>{payout.destinationValue}</td>
+                  <td>
+                    {payout.txHash ? (
+                      <a href={`${explorerBaseUrl}/tx/${payout.txHash}`} target="_blank" rel="noreferrer">
+                        {copy.polygonscan}
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td>
                     <form action={approveRewardPayoutAction} className="stack">
                       <input type="hidden" name="payoutId" value={payout.id} />
@@ -79,7 +108,7 @@ export default async function AdminPayoutsPage() {
                   <td>
                     <form action={markRewardPayoutPaidAction} className="stack">
                       <input type="hidden" name="payoutId" value={payout.id} />
-                      <input name="txHash" placeholder={copy.txHash} />
+                      <input name="txHash" placeholder={copy.txHash} required />
                       <input name="notes" placeholder={copy.notes} />
                       <button type="submit" disabled={payout.status !== "approved"}>{copy.markPaid}</button>
                     </form>

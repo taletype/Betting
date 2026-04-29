@@ -18,6 +18,9 @@ export default async function RewardsPage() {
         <h1>{copy.title}</h1>
         <p>{copy.subtitle}</p>
         <p>{copy.thresholdNotice}</p>
+        <p>{copy.autoCalculationNotice}</p>
+        <p>{copy.adminApprovalNotice}</p>
+        <p>{copy.polygonPusdNotice}</p>
       </section>
 
       {!dashboard ? (
@@ -92,6 +95,7 @@ export default async function RewardsPage() {
                 <thead>
                   <tr>
                     <th>{copy.amount}</th>
+                    <th>{copy.payoutRail}</th>
                     <th>{copy.status}</th>
                     <th>{copy.payoutDestination}</th>
                     <th>{copy.created}</th>
@@ -101,6 +105,7 @@ export default async function RewardsPage() {
                   {dashboard.payouts.map((payout) => (
                     <tr key={payout.id}>
                       <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
+                      <td>{payout.payoutChain} {payout.payoutAsset}</td>
                       <td>{copy.payoutStatuses[payout.status] ?? payout.status}</td>
                       <td>{payout.destinationValue}</td>
                       <td>{formatDateTime(locale, payout.createdAt)}</td>

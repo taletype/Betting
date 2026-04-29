@@ -5,7 +5,12 @@ import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { PolymarketTradeTicket } from "./polymarket-trade-ticket";
 
-import { listExternalMarkets, type ExternalMarketApiRecord } from "../../lib/api";
+import {
+  ExternalMarketsLoadError,
+  listExternalMarkets,
+  type ExternalMarketApiRecord,
+  type ExternalMarketsLoadErrorCode,
+} from "../../lib/api";
 import { formatDateTime, getLocaleCopy, type AppLocale } from "../../lib/locale";
 
 const toDisplay = (value: number | null, locale: AppLocale): string =>
@@ -36,6 +41,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
   const copy = getLocaleCopy(locale).research;
   let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
+  let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
   const showPolymarketTradeCta = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitterAvailable = process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
@@ -45,6 +51,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
     markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
   } catch (error) {
     loadFailed = true;
+    loadDiagnostics = error instanceof ExternalMarketsLoadError ? error.diagnostics : ["unknown"];
     console.error("failed to load external markets", error);
   }
 
@@ -64,9 +71,24 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
       </section>
       <section className="stack">
         {loadFailed ? (
-          <div className="panel empty-state">{copy.loadError}</div>
+          <div className="panel empty-state">
+            <p>{copy.loadError}</p>
+            {loadDiagnostics.length > 0 ? (
+              <ul>
+                {loadDiagnostics.map((diagnostic) => (
+                  <li key={diagnostic}>{copy.loadErrorDetails[diagnostic] ?? diagnostic}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ) : markets.length === 0 ? (
-          <div className="panel empty-state">{copy.empty}</div>
+          <div className="panel empty-state">
+            <p>{copy.empty}</p>
+            <ul>
+              <li>{copy.emptyDetails.externalMarketsEmpty}</li>
+              <li>{copy.emptyDetails.externalSyncNotRun}</li>
+            </ul>
+          </div>
         ) : (
           markets.map((market) => (
             <div key={`${market.source}:${market.externalId}`} className="panel stack">
