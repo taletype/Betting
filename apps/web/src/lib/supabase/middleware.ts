@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@bet/supabase";
 
-const privatePrefixes = ["/account", "/rewards", "/ambassador"];
+const privatePrefixes = ["/account"];
 const adminPrefix = "/admin";
 
 const isProtectedPath = (pathname: string): boolean =>

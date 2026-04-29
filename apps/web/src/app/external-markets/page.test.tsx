@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import HomePage from "../page";
 import ExternalMarketsPage from "./page";
 import PolymarketPage from "../polymarket/page";
+import AdminPolymarketPage from "../admin/polymarket/page";
 
 const VALID_BUILDER_CODE = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
 
@@ -78,6 +79,53 @@ test("home page renders Chinese-first Polymarket landing page", async (t) => {
   assert.match(markup, /查看熱門市場/);
   assert.match(markup, /複製邀請連結/);
   assert.match(markup, /本平台不會代用戶下注或交易/);
+});
+
+test("home page renders real trade-tick chart preview when synced ticks exist", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLY-HOME-1",
+          slug: "poly-home-1",
+          title: "Will launch QA keep chart data honest?",
+          description: "Home chart smoke",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-home-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.41,
+          bestAsk: 0.44,
+          lastTradePrice: 0.43,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.41, bestAsk: 0.44, lastPrice: 0.43, volume: null }],
+          recentTrades: [
+            { externalTradeId: "t1", externalOutcomeId: "yes", side: "buy", price: 0.41, size: 10, tradedAt: "2026-05-01T01:00:00.000Z" },
+            { externalTradeId: "t2", externalOutcomeId: "yes", side: "buy", price: 0.42, size: 11, tradedAt: "2026-05-01T01:05:00.000Z" },
+            { externalTradeId: "t3", externalOutcomeId: "yes", side: "sell", price: 0.43, size: 12, tradedAt: "2026-05-01T01:10:00.000Z" },
+          ],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await HomePage({ searchParams: Promise.resolve({}) }));
+  assert.match(markup, /Will launch QA keep chart data honest/);
+  assert.match(markup, /<svg class="line-chart"/);
+  assert.doesNotMatch(markup, /市場資料暫時未能更新/);
 });
 
 test("external markets route remains a compatibility alias", async () => {
@@ -236,6 +284,118 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
   assert.match(markup, /複製市場推薦連結/);
+});
+
+test("Polymarket detail page renders chart panels and keeps trade shell disabled", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/history")) {
+      return new Response(
+        JSON.stringify({
+          history: [
+            { timestamp: "2026-05-01T01:00:00.000Z", outcome: "yes", price: 0.4, volume: 10, liquidity: 100, source: "polymarket" },
+            { timestamp: "2026-05-01T01:05:00.000Z", outcome: "yes", price: 0.42, volume: 12, liquidity: 110, source: "polymarket" },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(
+        JSON.stringify({ source: "polymarket", externalId: "POLYCHART-1", volume24h: 500, liquidity: 110, spread: 0.03, closeTime: null, lastUpdatedAt: "2026-05-01T01:05:00.000Z", stale: false }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.endsWith("/orderbook")) {
+      return new Response(
+        JSON.stringify({
+          orderbook: [{ externalOutcomeId: "yes", bids: [], asks: [], capturedAt: "2026-05-01T01:05:00.000Z", lastTradePrice: 0.42, bestBid: 0.4, bestAsk: 0.43 }],
+          depth: [
+            { side: "bid", price: 0.4, size: 10, cumulativeSize: 10 },
+            { side: "ask", price: 0.43, size: 8, cumulativeSize: 8 },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(
+        JSON.stringify({ trades: [{ externalTradeId: "t1", externalOutcomeId: "yes", side: "buy", price: 0.42, size: 12, tradedAt: "2026-05-01T01:05:00.000Z" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        market: {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLYCHART-1",
+          slug: "poly-chart-1",
+          title: "Will detail charts render?",
+          description: "Chart smoke",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-chart-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.4,
+          bestAsk: 0.43,
+          lastTradePrice: 0.42,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.4, bestAsk: 0.43, lastPrice: 0.42, volume: null }],
+          recentTrades: [],
+          latestOrderbook: [],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-chart-1" }),
+    searchParams: Promise.resolve({ ref: "friendcode" }),
+  }));
+  assert.match(markup, /Will detail charts render/);
+  assert.match(markup, /價格走勢/);
+  assert.match(markup, /成交量/);
+  assert.match(markup, /流動性/);
+  assert.match(markup, /訂單簿深度/);
+  assert.match(markup, /近期成交/);
+  assert.match(markup, /<svg class="line-chart"/);
+  assert.match(markup, /disabled=""/);
+  assert.match(markup, /實際訂單提交<\/span><span class="kv-value">已停用/);
+  assert.match(markup, /你正在使用推薦碼：FRIENDCODE/);
+});
+
+test("admin Polymarket chart page renders without crashing on safe empty market data", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await AdminPolymarketPage());
+  assert.match(markup, /Polymarket 管理/);
+  assert.match(markup, /Builder Code \/ routed trading \/ submitter debug/);
+  assert.match(markup, /獎勵狀態/);
+  assert.match(markup, /支付狀態/);
 });
 
 test("Polymarket page renders load error when market fetch fails", async (t) => {

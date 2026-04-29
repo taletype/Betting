@@ -177,6 +177,7 @@ button:disabled:hover {
   padding: 18px;
   border-radius: 8px;
   min-height: 140px;
+  min-width: 0;
 }
 
 .premium-band {
@@ -605,6 +606,8 @@ button:disabled:hover {
   border-radius: 8px;
   padding: 14px;
   min-height: 190px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chart-panel-compact {
@@ -700,6 +703,7 @@ button:disabled:hover {
 .market-card-chart {
   max-width: 240px;
   min-width: 170px;
+  width: 100%;
 }
 
 .close-progress {
@@ -755,7 +759,7 @@ button:disabled:hover {
 
 @media (max-width: 720px) {
   .shell {
-    padding: 20px 14px 118px;
+    padding: 20px 14px 172px;
   }
 
   .topbar {
@@ -804,6 +808,27 @@ button:disabled:hover {
     display: grid;
   }
 
+  .market-card-chart,
+  .mini-metric-trend {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .mini-metric-trend {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-panel {
+    padding: 12px;
+  }
+
+  .table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .market-card-stats {
     min-width: 0;
   }
@@ -817,8 +842,8 @@ button:disabled:hover {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: 12px;
-    z-index: 20;
+    bottom: 72px;
+    z-index: 45;
   }
 
   .mobile-trade-sheet summary {

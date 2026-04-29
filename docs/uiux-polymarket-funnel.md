@@ -34,12 +34,23 @@ Chart rules:
 
 - Market cards use compact sparklines only when recent imported public trade ticks exist.
 - Market detail charts use `history`, `orderbook`, `trades`, and `stats` public read endpoints.
+- Home/feed/detail chart components are `MarketSparkline`, `MiniMetricTrend`, `PriceHistoryChart`, `VolumeHistoryChart`, `LiquidityHistoryChart`, `OrderBookDepthChart`, and `RecentTradesChart`.
+- Ambassador/reward/admin accounting chart components are `ReferralFunnelChart`, `RewardSplitChart`, and `PayoutStatusChart`.
 - Do not synthesize production price history, volume, liquidity, orderbook depth, or trade ticks.
+- Do not use `Math.random()` or hardcoded fake chart arrays in production pages.
 - Safe empty chart states are part of the product, not an error.
+- Stale market stats must be labelled with `資料可能不是最新`.
 - Referral and reward charts are accounting dashboards; they must not look like a spendable trading balance.
 
 Core component names:
 
 - `PolymarketMarketCard` pattern for feed cards.
-- `MarketSparkline`, `PriceHistoryChart`, `VolumeHistoryChart`, `LiquidityHistoryChart`, `OrderBookDepthChart`, `ReferralFunnelChart`, `RewardSplitChart`, `PayoutStatusChart`.
+- `MarketSparkline`, `MiniMetricTrend`, `PriceHistoryChart`, `VolumeHistoryChart`, `LiquidityHistoryChart`, `OrderBookDepthChart`, `RecentTradesChart`, `ReferralFunnelChart`, `RewardSplitChart`, `PayoutStatusChart`.
 - `PolymarketTradeTicket` keeps `實際訂單提交` explicit and disabled by default.
+
+Mobile QA expectations:
+
+- Market-card sparklines must fit inside 390px cards without horizontal page overflow.
+- Detail charts stack into one column on mobile.
+- Tables may scroll inside their own panel; they must not widen the whole viewport.
+- The mobile trade sheet sits above bottom navigation and page padding must leave chart/table content reachable behind it.

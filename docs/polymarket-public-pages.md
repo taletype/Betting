@@ -30,10 +30,11 @@ Market data rules:
 Chart surfaces:
 
 - `/` shows trending market sparklines when recent imported ticks exist.
-- `/polymarket` shows market-card sparklines, volume/liquidity metrics, and close-state progress.
-- `/polymarket/[slug]` shows price history, volume, liquidity, orderbook depth, and recent trade charts.
-- `/ambassador`, `/rewards`, and admin pages show referral/reward/payout accounting charts from internal referral accounting records only.
+- `/polymarket` shows market-card sparklines, `MiniMetricTrend` volume/liquidity metrics, and close-state progress.
+- `/polymarket/[slug]` shows `PriceHistoryChart`, `VolumeHistoryChart`, `LiquidityHistoryChart`, `OrderBookDepthChart`, and `RecentTradesChart`.
+- `/ambassador`, `/rewards`, and admin pages show `ReferralFunnelChart`, `RewardSplitChart`, and `PayoutStatusChart` from internal referral accounting records only.
 - Missing history/orderbook/trades render zh-HK empty states: `暫時未有圖表資料`, `市場走勢資料暫時未能更新`, `訂單簿資料暫時未有`, or `成交資料暫時未有`.
+- Production pages must not use random demo chart data or hardcoded fake price history. Test fixtures may exist only in tests/stories and must stay isolated from runtime pages.
 
 Trading boundary:
 
@@ -42,6 +43,13 @@ Trading boundary:
 - Users sign their own orders. The platform does not custody Polymarket funds and does not place trades for users.
 - External Polymarket activity must not mutate internal trading ledgers or balances.
 - The trade ticket is a readiness shell. Actual order submission remains disabled unless every user-signing, L2 credential, submitter, Builder Code, and operational gate is production-safe.
+
+Reward and payout boundary:
+
+- Rewards are accounting records only and must not be presented as trading balance.
+- Pending/payable/paid states must remain visible in zh-HK copy.
+- Polygon pUSD payout copy must state that payouts are manual and admin-approved.
+- No automatic treasury transfer is enabled by public pages, reward pages, payout pages, or chart endpoints.
 
 Builder disclosure:
 

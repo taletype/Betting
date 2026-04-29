@@ -4,6 +4,7 @@ import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { PayoutStatusChart, RewardSplitChart, VolumeHistoryChart } from "../charts/market-charts";
+import { PendingReferralNotice } from "../pending-referral-notice";
 import { requestRewardPayoutAction } from "./reward-actions";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function RewardsPage() {
         <p>{copy.autoCalculationNotice}</p>
         <p>{copy.adminApprovalNotice}</p>
         <p>{copy.polygonPusdNotice}</p>
+        <PendingReferralNotice />
       </section>
       <BuilderFeeDisclosureCard locale={locale} />
 

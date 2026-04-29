@@ -8,6 +8,14 @@ Public Polymarket browsing and Builder reward accounting can remain live indepen
 
 Read-only public pages use `GET /external/markets` and detail/orderbook/trades companions. These routes may serve existing persisted sync rows or official/public Polymarket Gamma fallback data. They must never scrape Polymarket and must not require login.
 
+Chart data sources are read-only:
+
+- Feed and home sparklines come from imported public trade ticks on external market records.
+- Detail price/volume/liquidity charts come from `/external/markets/:source/:externalId/history`.
+- Detail orderbook and trade panels come from `/external/markets/:source/:externalId/orderbook` and `/external/markets/:source/:externalId/trades`.
+- Freshness labels come from `/external/markets/:source/:externalId/stats`.
+- If any companion endpoint is unavailable, the UI must render zh-HK empty states rather than fake production data.
+
 ## Environment
 
 ```env
@@ -72,6 +80,20 @@ Chart endpoints are read-only and do not participate in Builder attribution:
 - `/external/markets/:source/:externalId/stats`
 
 These endpoints must not require Polymarket trading credentials, must not log secrets, and must not import or mutate internal ledger/balance modules.
+
+No fake production data rule:
+
+- Do not add random demo chart series, hardcoded fake price history, or synthetic production orderbook/trade ticks.
+- Test fixtures are allowed only in tests/stories.
+- Stale data must be labelled; missing real data must stay empty.
+
+Reward and payout safety:
+
+- Rewards remain accounting-only records derived from confirmed Builder-fee revenue.
+- Rewards must not be shown as Polymarket trading balance or platform custody balance.
+- Polygon pUSD payouts remain manual/admin-approved.
+- Admin approval and marking paid are separate steps; paid requires a valid transaction hash after an actual manual transfer.
+- No automatic payout or treasury-transfer path is enabled by this integration.
 
 ## Verification
 
