@@ -8,9 +8,9 @@ This app is a zh-HK first Polymarket market portal with referral/invite acquisit
 2. User lands on the site.
 3. User browses public Polymarket markets.
 4. User signs up or connects a wallet.
-5. When enabled, user trades through a non-custodial Polymarket-routed flow.
+5. When all safety gates are proven, user trades through a non-custodial Polymarket-routed flow.
 6. User signs their own order.
-7. App attaches `POLY_BUILDER_CODE` immediately before routed submission.
+7. App includes `POLY_BUILDER_CODE` before the user signs so the signed V2 order contains Builder attribution.
 8. Confirmed Builder-fee revenue can create direct-referral rewards.
 9. Payout remains manual and admin-approved.
 
@@ -34,6 +34,9 @@ Public market browsing depends on the deployed web app being able to call the ba
 - `DATABASE_URL` / `SUPABASE_DB_URL` where required by API or sync workers.
 - `POLYMARKET_GAMMA_URL`
 - `POLYMARKET_CLOB_URL`
+- `POLY_BUILDER_CODE` - required only for routed trading.
+- `POLYMARKET_ROUTED_TRADING_ENABLED=false`
+- `POLYMARKET_CLOB_SUBMITTER=disabled`
 
 Run the read-only external market sync before expecting visible rows:
 
@@ -51,9 +54,9 @@ An empty `[]` response means the route is reachable but `external_markets` has n
 
 ## Disabled By Default
 
-- Polymarket routed trading is scaffolded only and defaults off with `POLYMARKET_ROUTED_TRADING_ENABLED=false`.
+- Polymarket routed trading defaults off with `POLYMARKET_ROUTED_TRADING_ENABLED=false` and `POLYMARKET_CLOB_SUBMITTER=disabled`.
 - Automatic ambassador payouts are disabled with `AMBASSADOR_AUTO_PAYOUT_ENABLED=false`.
-- No live Polymarket routed trading is enabled by this cleanup pass.
+- A real CLOB V2 adapter exists, but live submission remains blocked until secure user L2 credential storage/derivation and server-side V2 signature verification are proven in staging.
 - No automatic production payout transfer is enabled by this cleanup pass.
 
 ## Production Chain
@@ -68,6 +71,7 @@ An empty `[]` response means the route is reachable but `external_markets` has n
 - The app uses public Polymarket APIs for browsing/sync; scraping is not a product dependency.
 - Polymarket routed trading must remain non-custodial and user-signed.
 - The platform must not custody Polymarket funds or place trades for users.
+- Polymarket routed trading must not mutate internal balances, internal ledger journals, deposits, withdrawals, matching state, claims, or portfolio accounting.
 - Referral rewards are direct-referral only.
 - No MLM, downline, recursive, package-unlock, or guaranteed-return reward model is part of the product.
 - Reward payout review remains manual/admin-approved.

@@ -2,49 +2,82 @@
 
 ## Current Status
 
-Scaffolded only. This path is **not production-live** unless all required configuration and user-owned signing/auth pieces are wired. Routed trading remains disabled by default and returns clear typed errors when dependencies are missing.
+Routed trading is still **not safe to enable for production**. The API now contains a real `@polymarket/clob-client-v2` submitter adapter, but the default path remains disabled because the product has not yet shipped secure user L2 credential storage/derivation or end-to-end browser order signing verification.
 
-The default user-facing language is zh-HK Traditional Chinese with English fallback. External routing copy should describe the flow as non-custodial and user-signed.
+Public Polymarket browsing and Builder reward accounting can remain live independently of order submission.
 
-## Required Environment
+## Environment
 
 ```env
+POLYMARKET_GAMMA_URL=https://gamma-api.polymarket.com
+POLYMARKET_CLOB_URL=https://clob.polymarket.com
 POLY_BUILDER_CODE=
 POLYMARKET_ROUTED_TRADING_ENABLED=false
+POLYMARKET_CLOB_SUBMITTER=disabled
 ```
 
-## User-Owned Boundary (No Custody)
-
-- User owns wallet connection and signs every order.
-- User owns Polymarket L2 API credentials.
-- Server accepts only order-ready payloads, does not persist private keys/secrets, and does not retain signatures beyond submission processing.
-- Platform does **not** custody funds and does **not** bet on behalf of users.
+Do not configure platform-owned Polymarket trading credentials. User trades must use user-owned wallet signing and user-owned L2 credentials only.
 
 ## Builder Attribution
 
-`POLY_BUILDER_CODE` is attached immediately before submission through the external route payload (`orderInput.builderCode`). Monetization attribution is only through that field on user-routed CLOB V2 orders.
+CLOB V2 builder attribution is part of the signed order. `POLY_BUILDER_CODE` must be included in `orderInput.builderCode` before the user signs, and the submitted signed order must contain the same value in the signed V2 `builder` field.
 
-## API Route and Safety
+The route rejects orders when:
 
-`POST /external/polymarket/orders/route`:
-- guarded by `POLYMARKET_ROUTED_TRADING_ENABLED`
-- requires `userWalletAddress`, `signedOrder`, `orderInput`, and `l2CredentialStatus: "present"`
-- returns typed errors for disabled feature, missing builder code, invalid payload, missing user signing, missing credentials, and unavailable submitter adapter
-- never imports/calls internal ledger, balance, deposits, withdrawals, claims, or matching modules
+- `orderInput.builderCode` is missing.
+- `signedOrder.builder` does not equal `POLY_BUILDER_CODE`.
+- The user confirmation does not acknowledge Builder fee attribution.
 
-## CLOB V2 Adapter
+Do not attach `builderCode` after a user signature has already been produced.
 
-A concrete placeholder adapter file exists for future `@polymarket/clob-client-v2` integration, but it is intentionally disabled until exact API wiring is validated.
+## User-Owned Boundary
 
-## QA
+- The authenticated user must have a linked wallet.
+- The request wallet, linked wallet, and signed order `signer` must match.
+- A server-side signature verifier must validate the signed Polymarket V2 order before submission.
+- The user must explicitly confirm side, token ID, outcome, price, size or amount, order type, expiration, and Builder fee attribution.
+- L2 credentials must be user-owned, server-side only, and encrypted at rest if persisted.
+- The default credential lookup returns missing; no insecure credential persistence has been added.
 
-### Feature flag OFF
-1. Unset builder code or set flag false.
-2. Confirm `/polymarket` stays read-only.
-3. Confirm route returns disabled typed error.
+## API Route Safety
 
-### Feature flag ON (controlled environment)
-1. Set valid builder code and `POLYMARKET_ROUTED_TRADING_ENABLED=true`.
-2. Verify missing signing/credentials are rejected.
-3. Verify successful payloads include `builderCode` before submitter invocation.
-4. Verify no internal balance/ledger/deposit/withdrawal mutations occur.
+`POST /external/polymarket/orders/route` is gated by:
+
+- `POLYMARKET_ROUTED_TRADING_ENABLED=true`
+- production or staging runtime
+- `POLY_BUILDER_CODE`
+- `POLYMARKET_CLOB_SUBMITTER=real`
+- submitter health check
+- linked wallet match
+- server-side signature verification
+- user L2 credentials
+- open/tradable Polymarket market
+- token/outcome mapping
+- current CLOB tick size, negative-risk flag, and minimum size constraints
+- market-order worst-price slippage guard
+
+The external route does not import internal ledger, matching, deposit, withdrawal, claim, or portfolio mutation modules.
+
+## Verification
+
+Before any staging activation:
+
+1. Confirm `.env.example` keeps `POLYMARKET_ROUTED_TRADING_ENABLED=false` and `POLYMARKET_CLOB_SUBMITTER=disabled`.
+2. Confirm missing Builder Code returns `POLYMARKET_BUILDER_CODE_MISSING`.
+3. Confirm `POLYMARKET_ROUTED_TRADING_ENABLED=true` without the real submitter returns `POLYMARKET_SUBMITTER_UNAVAILABLE`.
+4. Confirm unsigned, stale, mismatched signer, missing L2 credential, and invalid token/outcome requests are rejected.
+5. Confirm CLOB V2 order JSON contains the Builder code before signing.
+6. Confirm Polymarket `OrderFilled` events show the expected `builder` bytes32 after a controlled staging trade.
+7. Confirm no rows are inserted or updated in internal ledger, balance, deposit, withdrawal, matching, or claim tables.
+8. Confirm reward payouts remain manual/admin-approved.
+
+## Rollback
+
+Set either value and redeploy:
+
+```env
+POLYMARKET_ROUTED_TRADING_ENABLED=false
+POLYMARKET_CLOB_SUBMITTER=disabled
+```
+
+No internal balances need rollback because routed Polymarket activity must not mutate the internal ledger.

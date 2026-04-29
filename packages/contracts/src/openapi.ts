@@ -256,10 +256,11 @@ export const apiOpenApiSource = {
     },
     "/external/polymarket/orders/route": {
       post: {
-        summary: "Scaffold external Polymarket order routing with builder attribution",
+        summary: "User-signed external Polymarket CLOB V2 order routing with Builder attribution",
         responses: {
           "202": { description: "Accepted by external router" },
-          "501": { description: "User signing/API credential flow not wired" },
+          "400": { description: "Invalid signing, credential, market, or order payload" },
+          "401": { description: "Authentication required" },
           "503": { description: "External Polymarket routed trading disabled" },
         },
       },
