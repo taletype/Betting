@@ -114,7 +114,8 @@ test("Market Research page shows disabled Polymarket trade CTA only when builder
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await ExternalMarketsPage());
-    assert.match(markup, /Trade via Polymarket/);
+    assert.match(markup, /Submit user-signed order/);
+    assert.match(markup, /Routed trading feature disabled/);
     assert.match(markup, /disabled=""/);
   });
 });
@@ -227,4 +228,13 @@ test("Market Research page renders load error when configured API base is unavai
   assert.match(markup, /Unable to load synced market data/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
   assert.equal(calls.length, 1);
+});
+
+
+test("Market Research page defaults routed trading disabled", async () => {
+  const original = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  assert.match(markup, /routed trading enabled<\/span><span class="kv-value">no/);
+  if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
 });
