@@ -6,14 +6,31 @@ import {
 } from "@bet/integrations";
 import { incrementCounter, logger } from "@bet/observability";
 
+export type PolymarketL2CredentialStatus = "present" | "missing";
+
+export interface ExternalPolymarketUserAuthBoundary {
+  userWalletAddress: string;
+  l2CredentialStatus: PolymarketL2CredentialStatus;
+}
+
+export interface ExternalPolymarketOrderSubmissionInput {
+  signedOrder: Record<string, unknown>;
+  orderType: string | null;
+}
+
 export interface ExternalPolymarketOrderRouteInput {
+  userWalletAddress?: unknown;
   orderInput?: unknown;
   signedOrder?: unknown;
   orderType?: unknown;
+  l2CredentialStatus?: unknown;
 }
 
 export interface ExternalPolymarketOrderRoutePayload {
+  userWalletAddress: string;
+  l2CredentialStatus: PolymarketL2CredentialStatus;
   orderInput: Record<string, unknown> & { builderCode: string };
+  signedOrder: Record<string, unknown>;
   orderType: string | null;
 }
 
@@ -21,76 +38,77 @@ export interface ExternalPolymarketOrderRouteResult {
   status: "submitted";
   attribution: {
     builderCodeAttached: true;
+    builderCode: string;
   };
   upstream: unknown;
 }
 
-export interface ExternalPolymarketOrderRouteDependencies {
-  submitOrder?: (payload: ExternalPolymarketOrderRoutePayload) => Promise<unknown>;
+export interface PolymarketOrderSubmitter {
+  submitOrder(payload: ExternalPolymarketOrderRoutePayload): Promise<unknown>;
 }
 
-export class ExternalPolymarketRoutingDisabledError extends Error {
-  readonly status = 503;
+export interface ExternalPolymarketOrderRouteDependencies {
+  submitter?: PolymarketOrderSubmitter;
+}
+
+export class ExternalPolymarketRoutingError extends Error {
+  readonly status: number;
   readonly code: string;
 
-  constructor(code: string, message: string) {
+  constructor(status: number, code: string, message: string) {
     super(message);
-    this.name = "ExternalPolymarketRoutingDisabledError";
+    this.name = "ExternalPolymarketRoutingError";
+    this.status = status;
     this.code = code;
   }
 }
 
-export class ExternalPolymarketRoutingNotImplementedError extends Error {
-  readonly status = 501;
-  readonly code = "POLYMARKET_USER_SIGNING_NOT_WIRED";
-
-  constructor() {
-    super("external Polymarket order routing is scaffolded, but user signing/API credential flow is not wired");
-    this.name = "ExternalPolymarketRoutingNotImplementedError";
-  }
-}
-
 const toObject = (value: unknown, label: string): Record<string, unknown> => {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  throw new ExternalPolymarketRoutingError(400, "POLYMARKET_INVALID_PAYLOAD", `${label} must be an object`);
+};
 
-  throw new ExternalPolymarketRoutingDisabledError(
-    "POLYMARKET_ORDER_INPUT_REQUIRED",
-    `${label} must be an object`,
-  );
+const toTrimmedString = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_INVALID_PAYLOAD", `${label} must be a non-empty string`);
+  }
+  return value.trim();
 };
 
 const isExternalPolymarketRoutingEnabled = (): boolean =>
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
 
-export const getExternalPolymarketRoutingReadiness = () => {
-  const builderCode = getPolymarketBuilderCode();
-  const builderCodeConfigured = builderCode !== null;
-  const routedTradingEnabled = isExternalPolymarketRoutingEnabled();
-
-  logger.info("polymarket_builder.configuration_checked", {
-    builderCodeConfigured,
-    routedTradingEnabled,
-  });
-
-  return {
-    builderCodeConfigured,
-    routedTradingEnabled,
-  };
-};
+export const getExternalPolymarketRoutingReadiness = () => ({
+  builderCodeConfigured: getPolymarketBuilderCode() !== null,
+  routedTradingEnabled: isExternalPolymarketRoutingEnabled(),
+});
 
 export const prepareExternalPolymarketOrderRoutePayload = (
   input: ExternalPolymarketOrderRouteInput,
 ): ExternalPolymarketOrderRoutePayload => {
-  if (input.signedOrder !== undefined) {
-    throw new ExternalPolymarketRoutingNotImplementedError();
+  const userWalletAddress = toTrimmedString(input.userWalletAddress, "userWalletAddress");
+
+  if (input.l2CredentialStatus !== "present") {
+    throw new ExternalPolymarketRoutingError(
+      400,
+      "POLYMARKET_CREDENTIALS_MISSING",
+      "Polymarket credentials required",
+    );
   }
 
+  if (input.signedOrder === undefined) {
+    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_USER_SIGNING_MISSING", "user-signed order is required");
+  }
+
+  const signedOrder = toObject(input.signedOrder, "signedOrder");
   const orderInput = toObject(input.orderInput, "orderInput");
+  const attributedOrderInput = attachBuilderCodeToOrder(orderInput);
 
   return {
-    orderInput: attachBuilderCodeToOrder(orderInput),
+    userWalletAddress,
+    l2CredentialStatus: "present",
+    signedOrder,
+    orderInput: attributedOrderInput,
     orderType: typeof input.orderType === "string" && input.orderType.trim() ? input.orderType.trim() : null,
   };
 };
@@ -101,99 +119,38 @@ export const routeExternalPolymarketOrder = async (
 ): Promise<ExternalPolymarketOrderRouteResult> => {
   try {
     const readiness = getExternalPolymarketRoutingReadiness();
-
-    if (!readiness.builderCodeConfigured) {
-      incrementCounter("polymarket_builder_order_attribution_total", {
-        status: "missing_builder_code",
-      });
-      throw new PolymarketBuilderConfigurationError();
-    }
-
+    if (!readiness.builderCodeConfigured) throw new PolymarketBuilderConfigurationError();
     if (!readiness.routedTradingEnabled) {
-      incrementCounter("polymarket_builder_order_attribution_total", {
-        status: "routing_disabled",
-      });
-      throw new ExternalPolymarketRoutingDisabledError(
-        "POLYMARKET_ROUTED_TRADING_DISABLED",
-        "external Polymarket routed trading is disabled",
-      );
+      throw new ExternalPolymarketRoutingError(503, "POLYMARKET_ROUTED_TRADING_DISABLED", "external Polymarket routed trading is disabled");
     }
 
-    logger.info("polymarket_builder.order_attribution_attempted", {
-      orderType: typeof input.orderType === "string" ? input.orderType : "unspecified",
-    });
-    incrementCounter("polymarket_builder_order_attribution_total", { status: "attempted" });
+    if (!dependencies.submitter) {
+      throw new ExternalPolymarketRoutingError(503, "POLYMARKET_SUBMITTER_UNAVAILABLE", "Polymarket submitter unavailable");
+    }
 
     const payload = prepareExternalPolymarketOrderRoutePayload(input);
+    const upstream = await dependencies.submitter.submitOrder(payload);
 
-    if (!dependencies.submitOrder) {
-      // TODO: Wire a user-owned Polymarket signer/API credential handoff before enabling submission.
-      throw new ExternalPolymarketRoutingNotImplementedError();
-    }
-
-    const upstream = await dependencies.submitOrder(payload);
-
-    logger.info("polymarket_builder.order_attribution_submitted", {
-      orderType: payload.orderType ?? "unspecified",
-    });
     incrementCounter("polymarket_builder_order_attribution_total", { status: "submitted" });
-
     return {
       status: "submitted",
-      attribution: {
-        builderCodeAttached: true,
-      },
+      attribution: { builderCodeAttached: true, builderCode: payload.orderInput.builderCode },
       upstream,
     };
   } catch (error) {
-    const code = error instanceof PolymarketBuilderConfigurationError
-      ? error.code
-      : error instanceof ExternalPolymarketRoutingDisabledError
-        ? error.code
-        : error instanceof ExternalPolymarketRoutingNotImplementedError
-          ? error.code
-          : "POLYMARKET_ORDER_ATTRIBUTION_FAILED";
-
     logger.error("polymarket_builder.order_attribution_failed", {
-      code,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+      code: error instanceof Error && "code" in error ? String((error as { code: string }).code) : "POLYMARKET_ORDER_ATTRIBUTION_FAILED",
     });
-    incrementCounter("polymarket_builder_order_attribution_total", { status: "failed" });
     throw error;
   }
 };
 
-export const mapExternalPolymarketRoutingError = (
-  error: unknown,
-): { status: number; payload: { error: string; code: string } } => {
+export const mapExternalPolymarketRoutingError = (error: unknown): { status: number; payload: { error: string; code: string } } => {
   if (error instanceof PolymarketBuilderConfigurationError) {
-    return {
-      status: 503,
-      payload: {
-        error: "external Polymarket routed trading is disabled because POLY_BUILDER_CODE is not configured",
-        code: error.code,
-      },
-    };
+    return { status: 503, payload: { error: "external Polymarket routed trading is disabled because POLY_BUILDER_CODE is not configured", code: error.code } };
   }
-
-  if (
-    error instanceof ExternalPolymarketRoutingDisabledError ||
-    error instanceof ExternalPolymarketRoutingNotImplementedError
-  ) {
-    return {
-      status: error.status,
-      payload: {
-        error: error.message,
-        code: error.code,
-      },
-    };
+  if (error instanceof ExternalPolymarketRoutingError) {
+    return { status: error.status, payload: { error: error.message, code: error.code } };
   }
-
-  return {
-    status: 500,
-    payload: {
-      error: "external Polymarket order routing failed",
-      code: "POLYMARKET_ORDER_ATTRIBUTION_FAILED",
-    },
-  };
+  return { status: 500, payload: { error: "external Polymarket order routing failed", code: "POLYMARKET_ORDER_ATTRIBUTION_FAILED" } };
 };
