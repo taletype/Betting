@@ -49,6 +49,22 @@ button {
   cursor: pointer;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.2);
+  color: #e6f1ff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  min-height: 42px;
+}
+
+.button-link:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
 button:hover {
   background: rgba(59, 130, 246, 0.3);
 }
@@ -88,6 +104,11 @@ button:disabled:hover {
   padding: 24px 0 32px;
 }
 
+.landing-hero {
+  min-height: min(70vh, 640px);
+  align-items: center;
+}
+
 .hero h1,
 .hero h2 {
   margin: 0;
@@ -106,12 +127,33 @@ button:disabled:hover {
   gap: 16px;
 }
 
+.filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(150px, 220px)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.section-heading-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
 .panel {
   border: 1px solid rgba(168, 179, 199, 0.18);
   background: rgba(9, 17, 31, 0.72);
   padding: 16px;
   border-radius: 8px;
   min-height: 140px;
+}
+
+.disclosure-card {
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  background: rgba(245, 158, 11, 0.08);
+  padding: 14px;
+  border-radius: 8px;
 }
 
 .stack {
@@ -124,6 +166,16 @@ button:disabled:hover {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.market-actions.stack {
+  align-items: stretch;
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
 }
 
 .metric {
@@ -256,4 +308,25 @@ button:disabled:hover {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 20px 14px 48px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .kv {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
 }

@@ -5,9 +5,11 @@ import { useEffect } from "react";
 import {
   pendingReferralCookieName,
   pendingReferralStorageKey,
+  normalizeReferralCode,
   readReferralCodeFromSearch,
   selectReferralCodeToPersist,
 } from "../lib/referral-capture";
+import { trackFunnelEvent } from "./funnel-analytics";
 
 const readPendingReferralCookie = (): string | null => {
   const cookie = document.cookie
@@ -30,14 +32,23 @@ export const clearPendingReferralCode = (): void => {
 
 export function ReferralCapture() {
   useEffect(() => {
+    const incoming = readReferralCodeFromSearch(window.location.search);
+    if (incoming) {
+      trackFunnelEvent("referral_code_seen", { code: incoming });
+    }
+
     const code = selectReferralCodeToPersist(
       window.localStorage.getItem(pendingReferralStorageKey) ?? readPendingReferralCookie(),
-      readReferralCodeFromSearch(window.location.search),
+      incoming,
     );
     if (code) {
       persistPendingReferralCode(code);
+      trackFunnelEvent("referral_code_captured", { code });
     }
   }, []);
 
   return null;
 }
+
+export const readPendingReferralCode = (): string | null =>
+  normalizeReferralCode(window.localStorage.getItem(pendingReferralStorageKey) ?? readPendingReferralCookie());

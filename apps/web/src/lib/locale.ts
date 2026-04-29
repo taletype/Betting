@@ -44,12 +44,15 @@ export interface LocaleCopy {
   shell: {
     brand: string;
     nav: {
+      home: string;
       markets: string;
       portfolio: string;
       ambassador: string;
+      invite: string;
       rewards: string;
       claims: string;
       research: string;
+      guides: string;
       account: string;
       admin: string;
     };
@@ -360,12 +363,15 @@ const en: LocaleCopy = {
   shell: {
     brand: "Bet",
     nav: {
+      home: "Home",
       markets: "Markets",
       portfolio: "Portfolio",
       ambassador: "Ambassador",
+      invite: "Invite Friends",
       rewards: "Rewards",
       claims: "Claims",
       research: "Polymarket Markets",
+      guides: "Guides",
       account: "Account",
       admin: "Admin",
     },
@@ -657,7 +663,7 @@ const en: LocaleCopy = {
     submitterAvailable: "submitter available",
     orderSubmitterMode: "order submitter mode",
     intendedFees: "intended fees",
-    feeNotice: "Actual fees are configured in Polymarket Builder settings, not locally.",
+    feeNotice: "Pending Builder maker fee: 0.5%. Pending Builder taker fee: 1%. Builder fees apply only to eligible matched routed orders with Builder Code attribution; browsing markets does not create Builder fees.",
     yes: "yes",
     no: "no",
     disabled: "disabled",
@@ -671,7 +677,7 @@ const en: LocaleCopy = {
     noRecentTrades: "No recent external trades captured for this market yet.",
     tradeViaPolymarket: "Trade via Polymarket",
     nonCustodialNotice: "Users must sign orders themselves. This platform does not place bets or trades for users and does not custody user funds on Polymarket.",
-    builderAttributionNotice: "Builder attribution applies per Polymarket Builder settings.",
+    builderAttributionNotice: "Builder attribution applies per Polymarket Builder settings. Fees are disclosure-only here and additive to Polymarket/platform fees when effective.",
     orderReview: "Order review",
     market: "Market",
     outcome: "Outcome",
@@ -685,8 +691,8 @@ const en: LocaleCopy = {
       credentials_missing: "Polymarket credentials required",
       market_not_tradable: "Market not tradable",
       submitter_unavailable: "Submitter unavailable",
-      signature_required: "User signature required",
-      ready_to_submit: "Ready to submit to Polymarket",
+      signature_required: "Ready for user to sign order",
+      ready_to_submit: "Trade via Polymarket",
       submitted: "Submitted to Polymarket",
     },
     polymarketRoutingPending: "POLYMARKET_ROUTED_TRADING_ENABLED is disabled until user signing/API credential flow is wired.",
@@ -742,12 +748,15 @@ const zhHK: DeepPartial<LocaleCopy> = {
   shell: {
     brand: "Bet",
     nav: {
+      home: "首頁",
       markets: "市場",
       portfolio: "資產",
-      ambassador: "大使推薦",
+      ambassador: "邀請朋友",
+      invite: "邀請朋友",
       rewards: "獎勵",
       claims: "領取",
       research: "Polymarket 市場",
+      guides: "指南",
       account: "帳戶",
       admin: "管理",
     },
@@ -970,10 +979,10 @@ const zhHK: DeepPartial<LocaleCopy> = {
     requestPayout: "申請支付審批",
     payoutDestination: "支付目的地",
     destinationPlaceholder: "Polygon 錢包地址",
-    thresholdNotice: "v1 支付需要人工審批，預設不會自動轉帳。",
-    autoCalculationNotice: "系統可自動計算合資格獎勵，並在達到最低金額後自動建立提款申請。",
-    adminApprovalNotice: "實際支付仍需管理員審批，不會自動從金庫轉帳。",
-    polygonPusdNotice: "審批通過後，平台可透過 Polygon 上的 pUSD 向指定錢包支付獎勵。",
+    thresholdNotice: "v1 支付需要人工審批，不會自動從金庫轉帳。",
+    autoCalculationNotice: "獎勵計算可自動記錄，但實際支付需要管理員審批。",
+    adminApprovalNotice: "實際支付不會自動執行，必須由管理員審批及記錄交易哈希。",
+    polygonPusdNotice: "獎勵以人手審批方式處理。審批通過後，平台可透過 Polygon 上的 pUSD 向指定錢包支付獎勵。請確認你的收款地址支援 Polygon 網絡。",
     payoutRail: "Polygon pUSD",
     noRewards: "暫無獎勵帳本紀錄。",
     noPayouts: "暫無支付申請。",
@@ -1038,7 +1047,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     submitterAvailable: "提交器可用",
     orderSubmitterMode: "訂單提交模式",
     intendedFees: "預期費用",
-    feeNotice: "實際費用由 Polymarket Builder 設定，本地不作配置。",
+    feeNotice: "待生效 Maker 費率：0.5%。待生效 Taker 費率：1%。費率只適用於合資格並成功成交的 Polymarket 路由訂單。單純瀏覽市場不會產生 Builder 費用。",
     yes: "是",
     no: "否",
     disabled: "已停用",
@@ -1052,7 +1061,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     noRecentTrades: "此市場暫無近期外部成交紀錄。",
     tradeViaPolymarket: "透過 Polymarket 交易",
     nonCustodialNotice: "用戶需要自行簽署訂單。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。",
-    builderAttributionNotice: "Builder 歸因依照 Polymarket Builder 設定處理。",
+    builderAttributionNotice: "Builder 歸因依照 Polymarket Builder 設定處理；費用生效後會疊加於 Polymarket 或平台費用。",
     orderReview: "訂單覆核",
     market: "市場",
     outcome: "結果",
@@ -1066,8 +1075,8 @@ const zhHK: DeepPartial<LocaleCopy> = {
       credentials_missing: "需要 Polymarket 憑證",
       market_not_tradable: "市場暫不可交易",
       submitter_unavailable: "提交器暫不可用",
-      signature_required: "需要用戶簽署訂單",
-      ready_to_submit: "準備提交到 Polymarket",
+      signature_required: "準備用戶自行簽署訂單",
+      ready_to_submit: "透過 Polymarket 交易",
       submitted: "已提交到 Polymarket",
     },
     polymarketRoutingPending: "用戶簽署及 API 憑證流程完成前，POLYMARKET_ROUTED_TRADING_ENABLED 會保持關閉。",

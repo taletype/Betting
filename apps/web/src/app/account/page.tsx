@@ -2,6 +2,8 @@ import React from "react";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { applyReferralCodeAction, logoutAction } from "../auth-actions";
 import { getCurrentWebUser } from "../auth-session";
+import { FunnelEventTracker } from "../funnel-analytics";
+import { PendingReferralNotice } from "../pending-referral-notice";
 import { PendingReferralApplier } from "../pending-referral-applier";
 
 export default async function AccountPage() {
@@ -14,6 +16,7 @@ export default async function AccountPage() {
       <section className="hero">
         <h1>{copy.accountTitle}</h1>
         <p>{copy.accountSubtitle}</p>
+        <PendingReferralNotice />
       </section>
 
       {!user ? (
@@ -23,6 +26,7 @@ export default async function AccountPage() {
         </section>
       ) : (
         <>
+          <FunnelEventTracker name="signup_completed" metadata={{ user: "session" }} />
           <PendingReferralApplier />
           <section className="panel stack">
             <div className="kv"><span className="kv-key">User ID</span><span className="kv-value mono">{user.id}</span></div>

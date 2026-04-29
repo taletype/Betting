@@ -23,7 +23,7 @@ import {
 
 const getSiteUrl = (): string => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
-const buildInviteUrl = (code: string): string => `${getSiteUrl()}/ambassador?ref=${encodeURIComponent(code)}`;
+const buildInviteUrl = (code: string): string => `${getSiteUrl()}/?ref=${encodeURIComponent(code)}`;
 
 const requireAdminUser = (adminUserId: string | undefined): string => {
   if (!adminUserId) {

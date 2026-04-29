@@ -2,6 +2,7 @@ import React from "react";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
+import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { requestRewardPayoutAction } from "./reward-actions";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function RewardsPage() {
         <p>{copy.adminApprovalNotice}</p>
         <p>{copy.polygonPusdNotice}</p>
       </section>
+      <BuilderFeeDisclosureCard locale={locale} />
 
       {!dashboard ? (
         <section className="panel stack">

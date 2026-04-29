@@ -127,6 +127,11 @@ test("Trade via Polymarket ticket is disabled by default", () => {
 
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /交易功能尚未啟用/);
+    assert.match(markup, /用戶需要自行簽署訂單/);
+    assert.match(markup, /本平台不會代用戶下注或交易/);
+    assert.match(markup, /不託管用戶在 Polymarket 的資金/);
+    assert.match(markup, /待生效 0.5%/);
+    assert.match(markup, /待生效 1%/);
     assert.match(markup, /disabled=""/);
   } finally {
     if (originalFlag === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
@@ -138,6 +143,28 @@ test("rewards page presents rewards as manual approval accounting", async () => 
   const markup = renderToStaticMarkup(await RewardsPage());
   assert.match(markup, /人手審批|人工審批/);
   assert.match(markup, /待確認獎勵|獎勵/);
+  assert.match(markup, /Polygon 上的 pUSD/);
+  assert.match(markup, /實際支付不會自動執行/);
+  assert.match(markup, /不會自動從金庫轉帳/);
+});
+
+test("Builder fee disclosures show pending 0.5 percent maker and 1 percent taker without browsing fees", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /待生效 Maker 費率：0.5%/);
+  assert.match(markup, /待生效 Taker 費率：1%/);
+  assert.match(markup, /單純瀏覽市場不會產生 Builder 費用/);
 });
 
 test("no recursive referral payout fields are present in reward migrations", () => {
@@ -146,4 +173,31 @@ test("no recursive referral payout fields are present in reward migrations", () 
 
   const migration = readFileSync(migrationPath, "utf8");
   assert.doesNotMatch(migration, /parent_referrer_id|sponsor_tree|ancestor|closure|nested|binary|matrix|spillover|level_[0-9]|with recursive|second_level/i);
+});
+
+test("forbidden reward and trading wording does not appear in non-test product files", () => {
+  const forbiddenTerms = [
+    "傳銷",
+    "下線收益",
+    "上線收益",
+    "發展下線",
+    "被動收入",
+    "躺賺",
+    "包賺",
+    "保證回報",
+    "代客下注",
+    "代客交易",
+    "入會費",
+    "套餐解鎖收益",
+    "MLM",
+    "downline",
+    "passive income",
+    "guaranteed profit",
+  ];
+  const pattern = new RegExp(forbiddenTerms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "i");
+  const offenders = walkTextFiles(repoRoot)
+    .filter((file) => !/(\.test\.|\/node_modules\/|\/\.next\/)/.test(file))
+    .filter((file) => pattern.test(readFileSync(file, "utf8")));
+
+  assert.deepEqual(offenders.map((file) => file.replace(`${repoRoot}/`, "")), []);
 });

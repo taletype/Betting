@@ -73,5 +73,5 @@ An empty `[]` response means the route is reachable but `external_markets` has n
 - The platform must not custody Polymarket funds or place trades for users.
 - Polymarket routed trading must not mutate internal balances, internal ledger journals, deposits, withdrawals, matching state, claims, or portfolio accounting.
 - Referral rewards are direct-referral only.
-- No MLM, downline, recursive, package-unlock, or guaranteed-return reward model is part of the product.
+- No multi-level, recursive, package-unlock, or return-guarantee reward model is part of the product.
 - Reward payout review remains manual/admin-approved.

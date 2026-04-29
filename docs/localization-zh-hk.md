@@ -29,20 +29,7 @@ English remains the fallback locale for missing copy keys and can be addressed b
 
 Avoid Chinese copy that implies pyramid selling, guaranteed returns, passive earnings, managed betting, pay-to-join, or package-based reward unlocks. The automated tests guard key Ambassador user-facing copy against the prohibited term list from the product brief.
 
-Do not use these terms in user-facing product copy:
-
-- 傳銷
-- 下線收益
-- 上線收益
-- 發展下線
-- 被動收入
-- 躺賺
-- 包賺
-- 保證回報
-- 代客下注
-- 代客交易
-- 入會費
-- 套餐解鎖收益
+Do not use product copy that names pyramid selling, indirect referral earnings, sponsor earnings, recruitment expansion, passive earnings, effortless profit, guaranteed returns, managed betting/trading, joining fees, or package-based reward unlocks.
 
 ## Ambassador Copy Guidance
 

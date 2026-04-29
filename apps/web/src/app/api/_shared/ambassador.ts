@@ -18,7 +18,7 @@ const toIso = (value: Date | string | null): string | null =>
 
 const inviteUrlForCode = (code: string): string => {
   const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
-  return `${base}/ambassador?ref=${encodeURIComponent(code)}`;
+  return `${base}/?ref=${encodeURIComponent(code)}`;
 };
 
 const parseMinPayout = (): bigint => BigInt(process.env.AMBASSADOR_MIN_PAYOUT_USDC_ATOMS?.trim() || "0");

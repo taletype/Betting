@@ -39,10 +39,11 @@ test("zh-HK rewards copy explains auto request and manual Polygon pUSD payout", 
 
   assert.equal(
     rewards.autoCalculationNotice,
-    "系統可自動計算合資格獎勵，並在達到最低金額後自動建立提款申請。",
+    "獎勵計算可自動記錄，但實際支付需要管理員審批。",
   );
-  assert.equal(rewards.adminApprovalNotice, "實際支付仍需管理員審批，不會自動從金庫轉帳。");
-  assert.equal(rewards.polygonPusdNotice, "審批通過後，平台可透過 Polygon 上的 pUSD 向指定錢包支付獎勵。");
+  assert.equal(rewards.adminApprovalNotice, "實際支付不會自動執行，必須由管理員審批及記錄交易哈希。");
+  assert.match(rewards.polygonPusdNotice, /Polygon 上的 pUSD/);
+  assert.match(rewards.polygonPusdNotice, /請確認你的收款地址支援 Polygon 網絡/);
 });
 
 test("key zh-HK product copy does not expose Sepolia or testnet wording", () => {
@@ -75,8 +76,8 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "需要 Polymarket 憑證",
     "Builder Code 未設定",
     "市場暫不可交易",
-    "需要用戶簽署訂單",
-    "準備提交到 Polymarket",
+    "準備用戶自行簽署訂單",
+    "透過 Polymarket 交易",
     "已提交到 Polymarket",
   ]) {
     assert.ok(Object.values(readiness).includes(text), text);

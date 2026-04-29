@@ -3,8 +3,9 @@ import { defaultLocale, formatDateTime, getLocaleCopy } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard } from "../../lib/api";
 import { applyReferralCodeAction } from "../auth-actions";
-import { CopyButton } from "../copy-button";
+import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { PendingReferralApplier } from "../pending-referral-applier";
+import { TrackedCopyButton } from "../tracked-copy-button";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export default async function AmbassadorPage() {
   const copy = getLocaleCopy(locale).ambassador;
   const authCopy = getLocaleCopy(locale).auth;
   const dashboard = await getAmbassadorDashboard().catch(() => null);
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
   return (
     <main className="stack">
@@ -22,6 +24,7 @@ export default async function AmbassadorPage() {
         <p>{copy.safeNotice}</p>
         <p>{copy.approvalNotice}</p>
       </section>
+      <BuilderFeeDisclosureCard locale={locale} />
 
       {!dashboard ? (
         <section className="panel stack">
@@ -35,12 +38,23 @@ export default async function AmbassadorPage() {
             <article className="panel stack">
               <strong>{copy.code}</strong>
               <div className="metric-sm mono">{dashboard.ambassadorCode.code}</div>
-              <CopyButton value={dashboard.ambassadorCode.code} label={copy.copy} copiedLabel={copy.copy} />
+              <TrackedCopyButton value={dashboard.ambassadorCode.code} label={copy.copy} copiedLabel="已複製" eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
             </article>
             <article className="panel stack">
               <strong>{copy.link}</strong>
               <div className="mono">{dashboard.ambassadorCode.inviteUrl}</div>
-              <CopyButton value={dashboard.ambassadorCode.inviteUrl} label={copy.copy} copiedLabel={copy.copy} />
+              <TrackedCopyButton value={dashboard.ambassadorCode.inviteUrl} label={copy.copy} copiedLabel="已複製" eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
+            </article>
+            <article className="panel stack">
+              <strong>市場推薦連結</strong>
+              <div className="mono">{`${siteUrl}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}</div>
+              <TrackedCopyButton
+                value={`${siteUrl}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
+                label={copy.copy}
+                copiedLabel="已複製"
+                eventName="market_share_link_copied"
+                metadata={{ code: dashboard.ambassadorCode.code, surface: "polymarket_feed" }}
+              />
             </article>
             <article className="panel stack">
               <strong>{copy.directReferrals}</strong>
@@ -99,11 +113,6 @@ export default async function AmbassadorPage() {
                 </tbody>
               </table>
             )}
-          </section>
-
-          <section className="panel stack">
-            <h2 className="section-title">{copy.teamMembership}</h2>
-            <div className="empty-state">{copy.noTeamMembership}</div>
           </section>
         </>
       )}

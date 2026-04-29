@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 
 import { getPolymarketRoutingReadiness } from "./polymarket-routing-readiness";
+import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { trackFunnelEvent } from "../funnel-analytics";
 import { getLocaleCopy, type AppLocale } from "../../lib/locale";
 
@@ -33,6 +34,13 @@ export function PolymarketTradeTicket(props: Props) {
   const readinessLabel = copy.readinessCopy[readiness] ?? readiness;
 
   useEffect(() => {
+    if (props.hasBuilderCode && props.featureEnabled && props.marketTradable) {
+      trackFunnelEvent("builder_attribution_prepared", {
+        market: props.marketTitle,
+        submitterAvailable: props.submitterAvailable,
+      });
+    }
+
     if (disabled) {
       trackFunnelEvent("routed_trade_disabled_reason", {
         reason: readiness,
@@ -61,6 +69,12 @@ export function PolymarketTradeTicket(props: Props) {
     <div className="market-actions stack">
       <strong>{copy.tradeViaPolymarket}</strong>
       <div className="muted">{copy.nonCustodialNotice}</div>
+      <BuilderFeeDisclosureCard
+        locale={props.locale}
+        hasBuilderCode={props.hasBuilderCode}
+        routedTradingEnabled={props.featureEnabled}
+        compact
+      />
       <div className="readiness-grid">
         <div className="kv"><span className="kv-key">{copy.builderCodeConfigured}</span><span className="kv-value">{props.hasBuilderCode ? copy.yes : copy.no}</span></div>
         <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{props.featureEnabled ? copy.yes : copy.no}</span></div>
@@ -87,7 +101,7 @@ export function PolymarketTradeTicket(props: Props) {
           trackFunnelEvent("routed_trade_signature_requested", { market: props.marketTitle, readiness });
         }}
       >
-        {copy.submitUserSignedOrder}
+        {copy.tradeViaPolymarket}
       </button>
     </div>
   );

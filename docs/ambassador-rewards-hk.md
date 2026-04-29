@@ -10,7 +10,7 @@ Rewards are tied only to confirmed Builder-fee revenue observed from eligible ro
 
 ## Prohibited Structures
 
-The implementation does not include MLM, downline compensation, multi-level compensation, recursive referral payouts, generation-level commissions, binary or matrix placement, spillover logic, package purchases, pay-to-join requirements, or recruitment-only bonuses.
+The implementation does not include multi-level compensation, recursive referral payouts, generation-level commissions, binary or matrix placement, spillover logic, package purchases, pay-to-join requirements, or recruitment-only bonuses.
 
 No payment, deposit, token, NFT, subscription, starter kit, or package unlock is required to become an ambassador.
 

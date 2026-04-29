@@ -59,8 +59,25 @@ const withBuilderCode = async (value: string | null, run: () => Promise<void>): 
   }
 };
 
-test("home page redirects to Polymarket funnel instead of internal markets", async () => {
-  await assertRedirectsTo(() => HomePage(), "/polymarket");
+test("home page renders Chinese-first Polymarket landing page", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await HomePage({ searchParams: Promise.resolve({ ref: "hkref001" }) }));
+  assert.match(markup, /用一個頁面追蹤熱門 Polymarket 市場/);
+  assert.match(markup, /瀏覽市場、比較價格/);
+  assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /查看熱門市場/);
+  assert.match(markup, /複製邀請連結/);
+  assert.match(markup, /本平台不會代用戶下注或交易/);
 });
 
 test("external markets route remains a compatibility alias", async () => {
@@ -152,15 +169,67 @@ test("Polymarket page browsing works without builder code and shows disabled tra
   await withBuilderCode(null, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /Will Polymarket routing be scaffolded/);
-    assert.doesNotMatch(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /Builder Code 未設定/);
+    assert.match(markup, /disabled=""/);
   });
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /提交用戶自行簽署訂單/);
+    assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /交易功能尚未啟用/);
     assert.match(markup, /disabled=""/);
   });
+});
+
+test("Polymarket detail page renders synced market detail", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "m1",
+          source: "polymarket",
+          externalId: "POLYDETAIL-1",
+          slug: "poly-detail-1",
+          title: "Will the detail page show a Polymarket market?",
+          description: "Detail test",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-detail-1",
+          closeTime: "2026-06-01T00:00:00.000Z",
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.5,
+          bestAsk: 0.52,
+          lastTradePrice: 0.51,
+          volume24h: 10,
+          volumeTotal: 100,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.5, bestAsk: 0.52, lastPrice: 0.51, volume: null }],
+          recentTrades: [{ externalTradeId: "t1", externalOutcomeId: "yes", side: "buy", price: 0.51, size: 10, tradedAt: "2026-05-01T01:05:00.000Z" }],
+          latestOrderbook: [{ externalOutcomeId: "yes", bids: [], asks: [], capturedAt: "2026-05-01T01:05:00.000Z", lastTradePrice: 0.51, bestBid: 0.5, bestAsk: 0.52 }],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-detail-1" }),
+    searchParams: Promise.resolve({ ref: "hkref001" }),
+  }));
+  assert.match(markup, /Will the detail page show a Polymarket market/);
+  assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /推薦分成/);
+  assert.match(markup, /Orderbook snapshot/);
+  assert.match(markup, /透過 Polymarket 交易/);
 });
 
 test("Polymarket page renders load error when market fetch fails", async (t) => {

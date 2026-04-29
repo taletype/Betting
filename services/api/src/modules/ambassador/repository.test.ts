@@ -202,6 +202,17 @@ test("auto payout and auto payout request default false", () => {
   }
 });
 
+test("AMBASSADOR_AUTO_PAYOUT_ENABLED=true is rejected by runtime config", () => {
+  const previous = process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+  process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED = "true";
+  try {
+    assert.throws(() => getAmbassadorRewardsConfig(), /AMBASSADOR_AUTO_PAYOUT_ENABLED must remain false/);
+  } finally {
+    if (previous === undefined) delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+    else process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED = previous;
+  }
+});
+
 test("auto payout request is created only when threshold and Polygon wallet checks pass", () => {
   const config = { ...enabledConfig, minPayoutUsdcAtoms: 500_000n, autoPayoutRequestEnabled: true };
   const payoutWallet = {

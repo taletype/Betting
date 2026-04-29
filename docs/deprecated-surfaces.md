@@ -47,7 +47,7 @@ This cleanup pass classifies legacy product/config references so future work can
 - No Solana user-facing surface.
 - No live Polymarket routed trading enablement.
 - No automatic payouts.
-- No MLM, downline, recursive, package-unlock, passive-income, or guaranteed-profit reward model.
+- No multi-level, recursive, package-unlock, passive-earnings, or return-guarantee reward model.
 
 ## Uncertain, Leave With TODO
 

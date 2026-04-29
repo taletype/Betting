@@ -62,6 +62,10 @@ export default async function AdminPage() {
           <strong>{copy.payouts}</strong>
           <div className="metric-sm">{ambassador?.payouts.length.toLocaleString(locale) ?? "-"}</div>
         </Link>
+        <Link className="panel stack" href="/admin/polymarket">
+          <strong>Polymarket 管理</strong>
+          <div className="metric-sm">Builder</div>
+        </Link>
       </section>
 
       <section className="stack">

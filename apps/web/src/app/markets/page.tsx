@@ -1,8 +1,7 @@
-import { renderMarketsPage } from "./markets-page";
-import { defaultLocale } from "../../lib/locale";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function MarketsPage() {
-  return renderMarketsPage(defaultLocale);
+export default function MarketsCompatibilityPage() {
+  redirect("/polymarket");
 }

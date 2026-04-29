@@ -4,6 +4,9 @@ import Link from "next/link";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { PolymarketTradeTicket } from "./polymarket-trade-ticket";
+import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
+import { FunnelEventTracker } from "../funnel-analytics";
+import { PendingReferralNotice } from "../pending-referral-notice";
 
 import {
   ExternalMarketsLoadError,
@@ -12,6 +15,7 @@ import {
   type ExternalMarketsLoadErrorCode,
 } from "../../lib/api";
 import { formatDateTime, getLocaleCopy, type AppLocale } from "../../lib/locale";
+import { normalizeReferralCode } from "../../lib/referral-capture";
 
 const toDisplay = (value: number | null, locale: AppLocale): string =>
   value === null ? "—" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,15 +41,51 @@ const hasPolymarketBuilderCode = (): boolean => {
   }
 };
 
-export async function renderExternalMarketsPage(locale: AppLocale) {
+interface MarketFeedSearchParams {
+  q?: string;
+  status?: string;
+  sort?: string;
+  ref?: string;
+  market?: string;
+}
+
+const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: MarketFeedSearchParams) => {
+  const q = params?.q?.trim().toLowerCase() ?? "";
+  const status = params?.status?.trim();
+  const sort = params?.sort ?? "trending";
+  const market = params?.market?.trim().toLowerCase() ?? "";
+
+  return markets
+    .filter((item) => {
+      if (q && !`${item.title} ${item.description} ${item.externalId} ${item.slug}`.toLowerCase().includes(q)) {
+        return false;
+      }
+      if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
+        return false;
+      }
+      return !status || status === "all" || item.status === status;
+    })
+    .sort((a, b) => {
+      if (sort === "volume") return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
+      if (sort === "close") {
+        const aTime = a.closeTime ? new Date(a.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.closeTime ? new Date(b.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      }
+      return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
+    });
+};
+
+export async function renderExternalMarketsPage(locale: AppLocale, params?: MarketFeedSearchParams) {
   const copy = getLocaleCopy(locale).research;
   let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
   let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
-  const showPolymarketTradeCta = hasPolymarketBuilderCode();
+  const hasBuilderCode = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitterAvailable = process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
   const submitterMode = routedTradingEnabled && submitterAvailable ? "enabled" : "disabled";
+  const refCode = normalizeReferralCode(params?.ref);
 
   try {
     markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
@@ -54,21 +94,56 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
     loadDiagnostics = error instanceof ExternalMarketsLoadError ? error.diagnostics : ["unknown"];
     console.error("failed to load external markets", error);
   }
+  const visibleMarkets = filterAndSortMarkets(markets, params);
 
   return (
     <main className="stack">
+      <FunnelEventTracker name="market_view" metadata={{ surface: "feed" }} />
+      {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
       <section className="hero">
         <h1>{copy.title}</h1>
         <p>{copy.subtitle}</p>
+        {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
       </section>
       <section className="panel stack">
         <strong>{copy.builderDebug}</strong>
-        <div className="kv"><span className="kv-key">{copy.builderCodeConfigured}</span><span className="kv-value">{showPolymarketTradeCta ? copy.yes : copy.no}</span></div>
+        <div className="kv"><span className="kv-key">{copy.builderCodeConfigured}</span><span className="kv-value">{hasBuilderCode ? copy.yes : copy.no}</span></div>
         <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{routedTradingEnabled ? copy.yes : copy.no}</span></div>
         <div className="kv"><span className="kv-key">{copy.orderSubmitterMode}</span><span className="kv-value">{submitterMode === "enabled" ? copy.yes : copy.disabled}</span></div>
-        <div className="kv"><span className="kv-key">{copy.intendedFees}</span><span className="kv-value">taker 0.25%, maker 0%</span></div>
+        <div className="kv"><span className="kv-key">{copy.intendedFees}</span><span className="kv-value">Maker 0.5%, Taker 1%</span></div>
         <div className="muted">{copy.feeNotice}</div>
       </section>
+      <BuilderFeeDisclosureCard
+        locale={locale}
+        hasBuilderCode={hasBuilderCode}
+        routedTradingEnabled={routedTradingEnabled}
+      />
+      <form className="panel filters" action="/polymarket">
+        {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
+        <label className="stack">
+          搜尋
+          <input name="q" defaultValue={params?.q ?? ""} placeholder="搜尋市場、slug 或外部 ID" />
+        </label>
+        <label className="stack">
+          狀態
+          <select name="status" defaultValue={params?.status ?? "all"}>
+            <option value="all">全部</option>
+            <option value="open">開放</option>
+            <option value="closed">已關閉</option>
+            <option value="resolved">已結算</option>
+            <option value="cancelled">已取消</option>
+          </select>
+        </label>
+        <label className="stack">
+          排序
+          <select name="sort" defaultValue={params?.sort ?? "trending"}>
+            <option value="trending">熱門</option>
+            <option value="volume">成交量</option>
+            <option value="close">關閉時間</option>
+          </select>
+        </label>
+        <button type="submit">套用</button>
+      </form>
       <section className="stack">
         {loadFailed ? (
           <div className="panel empty-state">
@@ -81,7 +156,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
               </ul>
             ) : null}
           </div>
-        ) : markets.length === 0 ? (
+        ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
             <p>{copy.empty}</p>
             <ul>
@@ -90,7 +165,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
             </ul>
           </div>
         ) : (
-          markets.map((market) => (
+          visibleMarkets.map((market) => (
             <div key={`${market.source}:${market.externalId}`} className="panel stack">
               <div className="grid">
                 <div className="stack">
@@ -121,12 +196,13 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
               )}
               <div className="muted">{copy.volume24h}: {toDisplay(market.volume24h, locale)} · {copy.liquidity}: {toDisplay(market.volumeTotal, locale)}</div>
               <div className="muted">{copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {market.resolvedAt ? formatDateTime(locale, market.resolvedAt, "UTC") : copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.lastSynced}: {market.lastSyncedAt ? formatDateTime(locale, market.lastSyncedAt, "UTC") : copy.never}</div>
-              {market.source === "polymarket" && showPolymarketTradeCta ? (
-                <div className="stack">
+              {market.source === "polymarket" ? (
+                <div className="market-actions stack">
                 {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                <Link href={`/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>市場詳情</Link>
                 <PolymarketTradeTicket
                   locale={locale}
-                  hasBuilderCode={showPolymarketTradeCta}
+                  hasBuilderCode={hasBuilderCode}
                   featureEnabled={routedTradingEnabled}
                   walletConnected={false}
                   hasCredentials={false}

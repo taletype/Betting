@@ -6,6 +6,7 @@ import { verifyMessage } from "ethers";
 
 import { baseChainId, baseNetworkLabel, baseSettlementAsset } from "../../lib/base-network";
 import { getLocaleCopy, interpolate, type AppLocale } from "../../lib/locale";
+import { trackFunnelEvent } from "../funnel-analytics";
 
 type WalletState = "disconnected" | "wrong-network" | "ready";
 
@@ -110,6 +111,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
   const walletState = toWalletState(Boolean(walletAddress), chainIdHex === expectedChainIdHex);
 
   const connectWallet = useCallback(async () => {
+    trackFunnelEvent("wallet_connect_clicked", { surface: "portfolio" });
     if (!provider) {
       setError(copy.noWalletDetected);
       return;
