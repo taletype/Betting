@@ -9,7 +9,7 @@ The default user-facing language is zh-HK Traditional Chinese with English fallb
 ## Required Environment
 
 ```env
-POLY_BUILDER_CODE=0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca
+POLY_BUILDER_CODE=
 POLYMARKET_ROUTED_TRADING_ENABLED=false
 ```
 
@@ -40,7 +40,7 @@ A concrete placeholder adapter file exists for future `@polymarket/clob-client-v
 
 ### Feature flag OFF
 1. Unset builder code or set flag false.
-2. Confirm `/external-markets` stays read-only.
+2. Confirm `/polymarket` stays read-only.
 3. Confirm route returns disabled typed error.
 
 ### Feature flag ON (controlled environment)

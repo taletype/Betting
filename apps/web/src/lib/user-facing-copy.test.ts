@@ -34,6 +34,17 @@ test("key zh-HK ambassador copy avoids forbidden terms", () => {
   }
 });
 
+test("key zh-HK product copy does not expose Sepolia or testnet wording", () => {
+  const copy = JSON.stringify({
+    shell: getLocaleCopy("zh-HK").shell,
+    wallet: getLocaleCopy("zh-HK").wallet,
+    research: getLocaleCopy("zh-HK").research,
+    portfolio: getLocaleCopy("zh-HK").portfolio,
+  });
+
+  assert.doesNotMatch(copy, /Sepolia|測試網|testnet/i);
+});
+
 test("Polymarket routed trading stays disabled by default", () => {
   const previous = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;

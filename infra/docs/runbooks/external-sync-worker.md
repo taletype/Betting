@@ -31,7 +31,7 @@ curl "http://127.0.0.1:4000/external/markets"
 curl "http://127.0.0.1:4000/external/markets/polymarket/<externalId>"
 ```
 
-Then refresh `/external-markets` in the web app.
+Then refresh `/polymarket` in the web app.
 
 ## Expected transitions
 - `external_markets.last_synced_at` updates every run.

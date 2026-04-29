@@ -6,7 +6,7 @@ export default function PortfolioLoading() {
         <p>Loading balances, positions, and transfer history…</p>
       </section>
       <section className="panel">
-        <div className="empty-state">Fetching Base Sepolia wallet, deposits, withdrawals, and claim states.</div>
+        <div className="empty-state">Fetching Base wallet, deposits, withdrawals, and claim states.</div>
       </section>
     </main>
   );

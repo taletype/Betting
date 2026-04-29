@@ -139,7 +139,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
     }
   }, [copy.failedToConnectWallet, copy.noWalletDetected, copy.walletConnectionCancelled, provider]);
 
-  const switchToBaseSepolia = useCallback(async () => {
+  const switchToBaseNetwork = useCallback(async () => {
     if (!provider) {
       return;
     }
@@ -250,7 +250,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
           {busy ? copy.connecting : walletAddress ? copy.reconnectWallet : copy.connectWallet}
         </button>
         {walletState === "wrong-network" ? (
-          <button type="button" onClick={() => void switchToBaseSepolia()} disabled={busy}>
+          <button type="button" onClick={() => void switchToBaseNetwork()} disabled={busy}>
             {interpolate(copy.switchToNetwork, { network: baseNetworkLabel })}
           </button>
         ) : null}

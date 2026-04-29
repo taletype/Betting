@@ -1,6 +1,6 @@
-# External markets deployment checklist
+# Polymarket portal deployment checklist
 
-Use this checklist when `/external-markets` shows a load error on Vercel.
+Use this checklist when `/polymarket` shows a load error on Vercel. The old `/external-markets` route redirects to `/polymarket`.
 
 ## 1) Required Vercel environment variables
 
@@ -72,7 +72,7 @@ psql "$SUPABASE_DB_URL" -c "select source, checkpoint_key, checkpoint_value, syn
 
 ## 5) Expected page behavior
 
-For `https://<web-domain>/external-markets`:
+For `https://<web-domain>/polymarket`:
 
 - If API returns non-empty array: page renders synced market rows.
 - If API returns `[]`: page renders the empty state message.

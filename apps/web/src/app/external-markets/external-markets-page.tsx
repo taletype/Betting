@@ -42,7 +42,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
   const submitterMode = routedTradingEnabled && submitterAvailable ? "enabled" : "disabled";
 
   try {
-    markets = await listExternalMarkets();
+    markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
   } catch (error) {
     loadFailed = true;
     console.error("failed to load external markets", error);

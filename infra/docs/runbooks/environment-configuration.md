@@ -9,7 +9,7 @@ This matrix defines the minimum env contract for local, staging, and production.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_WS_URL`
 - `NEXT_PUBLIC_API_BASE_URL` (optional; used for explicit external API routing)
-- `NEXT_PUBLIC_BASE_CHAIN_ID` (84532 for non-production smoke)
+- `NEXT_PUBLIC_BASE_CHAIN_ID` (`8453` for production; `84532` only for Base Sepolia staging/smoke)
 - `NEXT_PUBLIC_BASE_EXPLORER_URL`
 - `NEXT_PUBLIC_BASE_TREASURY_ADDRESS`
 - `NEXT_PUBLIC_BASE_USDC_ADDRESS`
@@ -26,7 +26,7 @@ This matrix defines the minimum env contract for local, staging, and production.
 - `SUPABASE_URL`
 - `SUPABASE_DB_URL` (preferred) or `DATABASE_URL`
 - `API_BASE_URL`
-- `BASE_CHAIN_ID` (`84532` Base Sepolia for non-production; `8453` Base mainnet for production)
+- `BASE_CHAIN_ID` (`8453` Base mainnet for production; `84532` only for Base Sepolia staging/smoke)
 - `BASE_RPC_URL` (defaults by chain; use private/provider endpoint in shared environments)
 - `BASE_WS_URL` (defaults by chain; use private/provider endpoint in shared environments)
 - `BASE_EXPLORER_URL` (defaults by chain)
@@ -56,6 +56,7 @@ Required (no placeholders):
 Required (no placeholders, rotation-ready):
 - all Staging requirements
 - ensure `NODE_ENV=production`
+- ensure `BASE_CHAIN_ID=8453`
 - no implicit dev defaults are allowed for admin token, DB URL, WS URL, or Base addresses
 
 ## Service-level minimums
@@ -73,7 +74,7 @@ Required (no placeholders, rotation-ready):
 ### `apps/web` (server runtime)
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_WS_URL`
-- `API_BASE_URL` (required for server-rendered API reads like `/external-markets`)
+- `API_BASE_URL` (required for server-rendered API reads like `/polymarket`)
 - `NEXT_PUBLIC_API_BASE_URL` (optional; required only for browser-side direct API reads)
 - `ADMIN_API_TOKEN` (for admin server actions)
 
@@ -98,6 +99,6 @@ Required (no placeholders, rotation-ready):
 1. Populate envs in Vercel/Railway (staging first, then production).
 2. Confirm no value is `replace-me` / `changeme`.
 3. Confirm Base addresses and chain ID match the target network.
-4. Confirm `BASE_CHAIN_ID` matches target network (`84532` for staging/smoke/prelaunch, `8453` for production).
+4. Confirm `BASE_CHAIN_ID` matches target network (`8453` for production; `84532` only for Base Sepolia staging/smoke).
 5. Confirm `BASE_RPC_URL`/`BASE_WS_URL` point to intended provider endpoints (public endpoints are rate-limited).
 6. Run readiness + smoke checks.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import ExternalMarketsPage from "./page";
+import PolymarketPage from "../polymarket/page";
 
 const VALID_BUILDER_CODE = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
 
@@ -26,7 +26,7 @@ const withBuilderCode = async (value: string | null, run: () => Promise<void>): 
   }
 };
 
-test("Market Research page renders empty-state when no synced rows exist", async (t) => {
+test("Polymarket page renders empty-state when no synced rows exist", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () =>
@@ -39,12 +39,12 @@ test("Market Research page renders empty-state when no synced rows exist", async
     globalThis.fetch = originalFetch;
   });
 
-  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /暫無已同步市場資料/);
   assert.match(markup, /pnpm sync:external/);
 });
 
-test("Market Research page shows disabled Polymarket trade CTA only when builder code is configured", async (t) => {
+test("Polymarket page shows disabled trade CTA only when builder code is configured", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () =>
@@ -108,19 +108,19 @@ test("Market Research page shows disabled Polymarket trade CTA only when builder
   });
 
   await withBuilderCode(null, async () => {
-    const markup = renderToStaticMarkup(await ExternalMarketsPage());
+    const markup = renderToStaticMarkup(await PolymarketPage());
     assert.doesNotMatch(markup, /透過 Polymarket 交易/);
   });
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
-    const markup = renderToStaticMarkup(await ExternalMarketsPage());
+    const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /提交用戶自行簽署訂單/);
     assert.match(markup, /交易功能尚未啟用/);
     assert.match(markup, /disabled=""/);
   });
 });
 
-test("Market Research page renders load error when external market fetch fails", async (t) => {
+test("Polymarket page renders load error when market fetch fails", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () => {
@@ -131,12 +131,12 @@ test("Market Research page renders load error when external market fetch fails",
     globalThis.fetch = originalFetch;
   });
 
-  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /無法載入已同步市場資料/);
   assert.doesNotMatch(markup, /暫無已同步市場資料/);
 });
 
-test("Market Research page renders synced rows when external markets exist", async (t) => {
+test("Polymarket page renders synced rows when markets exist", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () =>
@@ -144,13 +144,13 @@ test("Market Research page renders synced rows when external markets exist", asy
       JSON.stringify([
         {
           id: "m1",
-          source: "kalshi",
-          externalId: "KXTEST-1",
-          slug: "kxtest-1",
+          source: "polymarket",
+          externalId: "POLYTEST-1",
+          slug: "polytest-1",
           title: "Will CPI be above 3%?",
           description: "BLS CPI print",
           status: "open",
-          marketUrl: "https://kalshi.com/markets/kxtest-1",
+          marketUrl: "https://polymarket.com/event/polytest-1",
           closeTime: null,
           endTime: null,
           resolvedAt: null,
@@ -177,6 +177,29 @@ test("Market Research page renders synced rows when external markets exist", asy
           ],
           recentTrades: [],
         },
+        {
+          id: "m2",
+          source: "kalshi",
+          externalId: "KXTEST-1",
+          slug: "kxtest-1",
+          title: "Legacy non-Polymarket row",
+          description: "Should not render in the v1 portal",
+          status: "open",
+          marketUrl: "https://kalshi.com/markets/kxtest-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.41,
+          bestAsk: 0.44,
+          lastTradePrice: 0.43,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [],
+          recentTrades: [],
+        },
       ]),
       {
         status: 200,
@@ -188,13 +211,14 @@ test("Market Research page renders synced rows when external markets exist", asy
     globalThis.fetch = originalFetch;
   });
 
-  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /Will CPI be above 3%/);
-  assert.match(markup, /kalshi/);
+  assert.match(markup, /polymarket/);
+  assert.doesNotMatch(markup, /Legacy non-Polymarket row/);
   assert.doesNotMatch(markup, /暫無已同步市場資料/);
 });
 
-test("Market Research page renders load error when configured API base is unavailable", async (t) => {
+test("Polymarket page renders load error when configured API base is unavailable", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -224,17 +248,17 @@ test("Market Research page renders load error when configured API base is unavai
     }
   });
 
-  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /無法載入已同步市場資料/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
   assert.equal(calls.length, 1);
 });
 
 
-test("Market Research page defaults routed trading disabled", async () => {
+test("Polymarket page defaults routed trading disabled", async () => {
   const original = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
-  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /路由交易已啟用<\/span><span class="kv-value">否/);
   if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
 });

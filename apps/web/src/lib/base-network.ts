@@ -4,11 +4,11 @@ const BASE_SEPOLIA_CHAIN_ID = 84532;
 const readChainId = (): number => {
   const value = process.env.NEXT_PUBLIC_BASE_CHAIN_ID?.trim();
   if (!value) {
-    return BASE_SEPOLIA_CHAIN_ID;
+    return BASE_MAINNET_CHAIN_ID;
   }
 
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : BASE_SEPOLIA_CHAIN_ID;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : BASE_MAINNET_CHAIN_ID;
 };
 
 const resolveExplorer = (chainId: number): string => {

@@ -42,7 +42,7 @@ capture "market-resolved-detail.png" "/markets/${RESOLVED_MARKET_ID}"
 capture "portfolio.png" "/portfolio"
 capture "claims.png" "/claims"
 capture "admin.png" "/admin"
-capture "external-markets.png" "/external-markets"
+capture "polymarket.png" "/polymarket"
 
 cat > "$OUT_DIR/README.md" <<README
 # Screenshot Pack
@@ -58,7 +58,7 @@ Files:
 - portfolio.png
 - claims.png
 - admin.png
-- external-markets.png
+- polymarket.png
 
 Market IDs:
 - active: $ACTIVE_MARKET_ID

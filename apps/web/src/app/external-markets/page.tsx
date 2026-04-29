@@ -1,9 +1,7 @@
-import React from "react";
-import { renderExternalMarketsPage } from "./external-markets-page";
-import { defaultLocale } from "../../lib/locale";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExternalMarketsPage() {
-  return renderExternalMarketsPage(defaultLocale);
+  redirect("/polymarket");
 }

@@ -1,6 +1,6 @@
 # Bet Monorepo
 
-Prediction market monorepo scaffold for Next.js on Vercel, Supabase, deterministic workers, and append-only ledger-based balance accounting.
+Chinese-first Polymarket market portal scaffold for Next.js on Vercel, Supabase, deterministic workers, direct-referral reward accounting, and append-only ledger-based balance accounting.
 
 ## Workspace Layout
 
@@ -144,7 +144,7 @@ If a check fails, the script prints clear next steps and targeted remediation hi
 - `pnpm smoke:local` → local environment smoke checks
 - `pnpm load:launch` → narrow launch-path load harness (reads, order burst, ws fan-in)
 
-## External Market Research Sync
+## Polymarket Market Sync
 
 Run the default one-shot sync:
 
@@ -152,7 +152,7 @@ Run the default one-shot sync:
 pnpm sync:external
 ```
 
-This path is read-only and uses public Polymarket and Kalshi APIs only. It upserts:
+This path is read-only and uses public Polymarket APIs for market browsing. The legacy Kalshi mapper remains internal sync code only and is not part of the v1 user-facing funnel. The sync upserts:
 
 - `public.external_markets`
 - `public.external_outcomes`
@@ -165,14 +165,17 @@ Verify success with:
 curl "http://127.0.0.1:4000/external/markets"
 ```
 
-Then refresh the Market Research page at `/external-markets`.
+Then refresh the Polymarket portal at `/polymarket`.
 
 ## Notes
 
 - Money, quantities, balances, and payouts use integers only.
 - Balance changes must flow through append-only ledger journals and entries.
-- External market sync stays read-only and never mutates balances directly.
-- Chain support is adapter-shaped; Base comes first and Solana remains a stub surface for later work.
+- Polymarket market browsing stays read-only and works without `POLY_BUILDER_CODE`.
+- External sync stays read-only and never mutates balances directly.
+- Production chain support is Base-only for v1.
+- Polymarket routed trading remains disabled by default and must be non-custodial/user-signed when enabled.
+- Referral rewards are direct-referral only; payouts remain manual/admin-approved.
 - Launch incident kill switches are documented in `infra/docs/launch-kill-switches.md`.
 
 ## Load Harness

@@ -5,7 +5,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import ExternalMarketsPage from "../app/external-markets/page";
+import PolymarketPage from "../app/polymarket/page";
 import { PolymarketTradeTicket } from "../app/external-markets/polymarket-trade-ticket";
 import RewardsPage from "../app/rewards/page";
 
@@ -43,6 +43,7 @@ test("no real Polymarket API secrets or private key assignments are committed", 
 test("external Polymarket UI and read API do not import internal ledger or balance mutation modules", () => {
   const files = [
     "apps/web/src/app/external-markets/external-markets-page.tsx",
+    "apps/web/src/app/polymarket/page.tsx",
     "apps/web/src/app/external-markets/polymarket-trade-ticket.tsx",
     "apps/web/src/app/external-markets/polymarket-routing-readiness.ts",
     "apps/web/src/app/api/_shared/external-market-read.ts",
@@ -98,7 +99,7 @@ test("public external market browsing works without POLY_BUILDER_CODE", async (t
     else process.env.POLY_BUILDER_CODE = originalBuilderCode;
   });
 
-  const markup = renderToStaticMarkup(await ExternalMarketsPage());
+  const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /Will public browsing stay available/);
   assert.match(markup, /polymarket/);
 });

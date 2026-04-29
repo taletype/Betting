@@ -15,7 +15,7 @@ Screens captured:
 - portfolio
 - claims
 - admin
-- external-markets
+- polymarket
 
 ## Prerequisites
 1. Start local stack and seed dense data:
@@ -66,7 +66,7 @@ Each run produces:
 - `portfolio.png`
 - `claims.png`
 - `admin.png`
-- `external-markets.png`
+- `polymarket.png`
 - `README.md` (run metadata)
 
 Then copies those files to `infra/artifacts/screenshot-pack/latest/` for quick review links.

@@ -16,4 +16,6 @@ test("app shell localizes nav links and keeps zh-HK on default paths", () => {
   assert.match(markup, /資產/);
   assert.match(markup, /href="\/markets"/);
   assert.match(markup, /href="\/portfolio"/);
+  assert.match(markup, /href="\/polymarket"/);
+  assert.doesNotMatch(markup, /external-markets/);
 });
