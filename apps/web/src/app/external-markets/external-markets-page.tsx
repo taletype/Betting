@@ -2,6 +2,8 @@ import React from "react";
 
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
+import { PolymarketTradeTicket } from "./polymarket-trade-ticket";
+
 import { listExternalMarkets, type ExternalMarketApiRecord } from "../../lib/api";
 import { formatDateTime, getLocaleCopy, type AppLocale } from "../../lib/locale";
 
@@ -34,6 +36,7 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
   let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
   const showPolymarketTradeCta = hasPolymarketBuilderCode();
+  const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
 
   try {
     markets = await listExternalMarkets();
@@ -86,11 +89,13 @@ export async function renderExternalMarketsPage(locale: AppLocale) {
               <div className="muted">{copy.volume24h}: {toDisplay(market.volume24h, locale)} · {copy.totalVolume}: {toDisplay(market.volumeTotal, locale)}</div>
               <div className="muted">{copy.lastSynced}: {market.lastSyncedAt ? formatDateTime(locale, market.lastSyncedAt, "UTC") : copy.never}</div>
               {market.source === "polymarket" && showPolymarketTradeCta ? (
-                <div className="market-actions">
-                  <button type="button" disabled title={copy.polymarketRoutingPending}>
-                    {copy.tradeViaPolymarket}
-                  </button>
-                </div>
+                <PolymarketTradeTicket
+                  hasBuilderCode={showPolymarketTradeCta}
+                  featureEnabled={routedTradingEnabled}
+                  walletConnected={false}
+                  hasCredentials={false}
+                  marketTradable={market.status === "open"}
+                />
               ) : null}
               {market.recentTrades.length > 0 ? (
                 <table className="table compact-table">
