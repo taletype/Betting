@@ -177,3 +177,86 @@ test("GET /external/markets/:source/:id/trades returns imported external trades"
   assert.equal(payload.trades[0]?.externalTradeId, "trade-1");
   assert.equal(payload.trades[0]?.pricePpm, "430000");
 });
+
+test("GET /external/markets/:source/:id/history returns chart-safe trade history", async (t) => {
+  const handleRequest = await getHandleRequest();
+
+  setExternalMarketsRepositoryForTests({
+    listExternalMarketRecords: async () => [],
+    getExternalMarketRecord: async () => null,
+    listExternalMarketTrades: async () => [
+      {
+        externalTradeId: "trade-1",
+        externalOutcomeId: "yes",
+        source: "polymarket",
+        side: "buy",
+        price: 0.43,
+        pricePpm: "430000",
+        size: 10,
+        sizeAtoms: "10000000",
+        executedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  t.after(() => {
+    setExternalMarketsRepositoryForTests(null);
+  });
+
+  const response = await handleRequest(new Request("http://localhost/external/markets/polymarket/123/history"));
+  const payload = (await response.json()) as { history: Array<{ timestamp: string; outcome: string; price: number; volume: number }> };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.history[0]?.timestamp, "2026-01-01T00:00:00.000Z");
+  assert.equal(payload.history[0]?.outcome, "yes");
+  assert.equal(payload.history[0]?.price, 0.43);
+  assert.equal(payload.history[0]?.volume, 10);
+});
+
+test("GET /external/markets/:source/:id/stats returns safe public stats", async (t) => {
+  const handleRequest = await getHandleRequest();
+
+  setExternalMarketsRepositoryForTests({
+    listExternalMarketRecords: async () => [],
+    getExternalMarketRecord: async () => ({
+      id: "m1",
+      source: "polymarket",
+      externalId: "123",
+      slug: "will-it-rain",
+      title: "Will it rain?",
+      description: "desc",
+      status: "open",
+      marketUrl: null,
+      closeTime: "2026-02-01T00:00:00.000Z",
+      endTime: null,
+      resolvedAt: null,
+      bestBid: 0.42,
+      bestAsk: 0.45,
+      lastTradePrice: 0.43,
+      volume24h: 100,
+      volumeTotal: 1000,
+      liquidity: 1000,
+      lastSyncedAt: "2026-01-01T00:00:00.000Z",
+      lastUpdatedAt: new Date().toISOString(),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      outcomes: [],
+      recentTrades: [],
+      latestOrderbook: [],
+    }),
+    listExternalMarketTrades: async () => [],
+  });
+
+  t.after(() => {
+    setExternalMarketsRepositoryForTests(null);
+  });
+
+  const response = await handleRequest(new Request("http://localhost/external/markets/polymarket/123/stats"));
+  const payload = (await response.json()) as { volume24h: number; liquidity: number; spread: number; stale: boolean };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.volume24h, 100);
+  assert.equal(payload.liquidity, 1000);
+  assert.equal(Math.round(payload.spread * 100), 3);
+  assert.equal(payload.stale, false);
+});

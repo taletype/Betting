@@ -3,7 +3,24 @@ import test from "node:test";
 
 process.env.NODE_ENV = "test";
 
-const getHandleRequest = async () => (await import("./server")).handleRequest;
+const TEST_USER_ID = "11111111-1111-4111-8111-111111111111";
+
+const getServer = async () => await import("./server");
+
+const withTestUser = async (run: (handleRequest: (request: Request) => Promise<Response>) => Promise<void>) => {
+  const server = await getServer();
+  server.setApiAuthVerifierForTests(async () => ({
+    id: TEST_USER_ID,
+    email: "user@example.test",
+    role: "user",
+    claims: {},
+  }));
+  try {
+    await run(server.handleRequest);
+  } finally {
+    server.setApiAuthVerifierForTests(null);
+  }
+};
 
 const withEnv = async (vars: Record<string, string | undefined>, run: () => Promise<void>) => {
   const prior = new Map<string, string | undefined>();
@@ -31,37 +48,8 @@ const withEnv = async (vars: Record<string, string | undefined>, run: () => Prom
 };
 
 test("rejects order placement when global kill switch is enabled", async () => {
-  const handleRequest = await getHandleRequest();
-
   await withEnv({ OP_DISABLE_ORDER_PLACEMENT: "true", OP_DISABLED_ORDER_MARKET_IDS: undefined }, async () => {
-    const response = await handleRequest(
-      new Request("http://localhost/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          marketId: "11111111-1111-1111-1111-111111111111",
-          outcomeId: "22222222-2222-2222-2222-222222222222",
-          side: "buy",
-          orderType: "limit",
-          price: "100",
-          quantity: "5",
-        }),
-      }),
-    );
-
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), { error: "order placement is temporarily disabled" });
-  });
-});
-
-test("rejects order placement for a halted market", async () => {
-  const handleRequest = await getHandleRequest();
-
-  await withEnv(
-    {
-      OP_DISABLE_ORDER_PLACEMENT: "false",
-      OP_DISABLED_ORDER_MARKET_IDS: "11111111-1111-1111-1111-111111111111",
-    },
-    async () => {
+    await withTestUser(async (handleRequest) => {
       const response = await handleRequest(
         new Request("http://localhost/orders", {
           method: "POST",
@@ -77,48 +65,77 @@ test("rejects order placement for a halted market", async () => {
       );
 
       assert.equal(response.status, 503);
-      assert.deepEqual(await response.json(), {
-        error: "order placement is temporarily disabled for this market",
+      assert.deepEqual(await response.json(), { error: "order placement is temporarily disabled" });
+    });
+  });
+});
+
+test("rejects order placement for a halted market", async () => {
+  await withEnv(
+    {
+      OP_DISABLE_ORDER_PLACEMENT: "false",
+      OP_DISABLED_ORDER_MARKET_IDS: "11111111-1111-1111-1111-111111111111",
+    },
+    async () => {
+      await withTestUser(async (handleRequest) => {
+        const response = await handleRequest(
+          new Request("http://localhost/orders", {
+            method: "POST",
+            body: JSON.stringify({
+              marketId: "11111111-1111-1111-1111-111111111111",
+              outcomeId: "22222222-2222-2222-2222-222222222222",
+              side: "buy",
+              orderType: "limit",
+              price: "100",
+              quantity: "5",
+            }),
+          }),
+        );
+
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), {
+          error: "order placement is temporarily disabled for this market",
+        });
       });
     },
   );
 });
 
 test("rejects withdrawal requests when kill switch is enabled", async () => {
-  const handleRequest = await getHandleRequest();
-
   await withEnv({ OP_DISABLE_WITHDRAWAL_REQUEST: "true" }, async () => {
-    const response = await handleRequest(
-      new Request("http://localhost/withdrawals", {
-        method: "POST",
-        body: JSON.stringify({
-          amountAtoms: "1000",
-          destinationAddress: "0x0000000000000000000000000000000000000001",
+    await withTestUser(async (handleRequest) => {
+      const response = await handleRequest(
+        new Request("http://localhost/withdrawals", {
+          method: "POST",
+          body: JSON.stringify({
+            amountAtoms: "1000",
+            destinationAddress: "0x0000000000000000000000000000000000000001",
+          }),
         }),
-      }),
-    );
+      );
 
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), {
-      error: "withdrawal requests are temporarily disabled",
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        error: "withdrawal requests are temporarily disabled",
+      });
     });
   });
 });
 
 test("rejects deposit verification when kill switch is enabled", async () => {
-  const handleRequest = await getHandleRequest();
-
   await withEnv({ OP_DISABLE_DEPOSIT_VERIFY: "true" }, async () => {
-    const response = await handleRequest(
-      new Request("http://localhost/deposits/verify", {
-        method: "POST",
-        body: JSON.stringify({ txHash: "0xabc" }),
-      }),
-    );
+    await withTestUser(async (handleRequest) => {
+      const response = await handleRequest(
+        new Request("http://localhost/deposits/verify", {
+          method: "POST",
+          body: JSON.stringify({ txHash: "0xabc" }),
+        }),
+      );
 
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), {
-      error: "deposit verification is temporarily disabled",
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        error: "deposit verification is temporarily disabled",
+      });
     });
   });
 });

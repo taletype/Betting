@@ -43,6 +43,7 @@ All rewards start as `pending`. Confirmed trade attributions can move rewards to
 - Self-referral rejected
 - One attribution per referred user
 - Disabled codes rejected
+- Final attribution requires verified Supabase Auth identity; pending `?ref=` capture before login is local/cookie state only
 - Duplicate Polymarket order/trade IDs treated idempotently
 - Non-positive notional or Builder fee rejected
 - Rewards voided when a trade attribution is voided
@@ -58,3 +59,7 @@ External Polymarket trading remains user-owned and user-signed. The app attaches
 ## Legal Review
 
 Legal review is required before launch in Hong Kong, before enabling live Polymarket routed trading, and before advertising reward claims publicly.
+
+## Auth Boundary
+
+Users can view only their own private reward records after Supabase login. Payout requests require verified user identity and wallet destination validation. Admin approval, paid, failed, cancelled, void, and manual adjustment actions require a verified Supabase admin and remain manual/auditable; no automatic treasury transfer is enabled.

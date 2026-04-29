@@ -111,6 +111,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
   const walletState = toWalletState(Boolean(walletAddress), chainIdHex === expectedChainIdHex);
 
   const connectWallet = useCallback(async () => {
+    trackFunnelEvent("wallet_connect_started", { surface: "portfolio" });
     trackFunnelEvent("wallet_connect_clicked", { surface: "portfolio" });
     if (!provider) {
       setError(copy.noWalletDetected);
@@ -120,6 +121,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
     setBusy(true);
     setError(null);
     setNotice(null);
+    trackFunnelEvent("wallet_link_started", { surface: "portfolio" });
 
     try {
       const accountsRaw = await provider.request({ method: "eth_requestAccounts" });
@@ -134,6 +136,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
       setWalletAddress(accounts[0] ?? null);
       const chainRaw = await provider.request({ method: "eth_chainId" });
       setChainIdHex(typeof chainRaw === "string" ? chainRaw.toLowerCase() : null);
+      trackFunnelEvent("wallet_connected", { surface: "portfolio" });
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : copy.failedToConnectWallet);
     } finally {
@@ -204,6 +207,7 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
       }
 
       setNotice(copy.walletLinkedNotice);
+      trackFunnelEvent("wallet_link_verified", { surface: "portfolio" });
       router.refresh();
     } catch (linkError) {
       setError(linkError instanceof Error ? linkError.message : copy.failedToLinkWallet);

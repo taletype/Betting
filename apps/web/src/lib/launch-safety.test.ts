@@ -7,7 +7,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import PolymarketPage from "../app/polymarket/page";
 import { PolymarketTradeTicket } from "../app/external-markets/polymarket-trade-ticket";
+import { ThirdwebWalletFundingCard, thirdwebDisclosure } from "../app/thirdweb-wallet-funding-card";
 import RewardsPage from "../app/rewards/page";
+import { ambassadorRewardRevenueKinds, revenueSourcePolicies } from "./revenue-model";
 
 const repoRoot = resolve(process.cwd(), "../..");
 
@@ -47,6 +49,7 @@ test("external Polymarket UI and read API do not import internal ledger or balan
     "apps/web/src/app/polymarket/[slug]/page.tsx",
     "apps/web/src/app/external/markets/route.ts",
     "apps/web/src/app/external-markets/polymarket-trade-ticket.tsx",
+    "apps/web/src/app/thirdweb-wallet-funding-card.tsx",
     "apps/web/src/app/external-markets/polymarket-routing-readiness.ts",
     "apps/web/src/app/api/_shared/external-market-read.ts",
     "apps/web/src/app/api/_shared/polymarket-orders.ts",
@@ -60,6 +63,65 @@ test("external Polymarket UI and read API do not import internal ledger or balan
     const source = readFileSync(resolve(repoRoot, file), "utf8");
     assert.doesNotMatch(source, /@bet\/ledger|@bet\/trading|ledger_journals|ledger_entries|balanceDeltas|rpc_place_order/);
   }
+});
+
+test("Thirdweb funding CTA renders as non-custodial wallet utility without login", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(ThirdwebWalletFundingCard, {
+      surface: "polymarket_feed",
+      walletConnected: false,
+    }),
+  );
+
+  assert.match(markup, /連接錢包/);
+  assert.match(markup, /為錢包增值/);
+  assert.match(markup, /使用第三方付款服務/);
+  assert.match(markup, /資金會進入你的錢包/);
+  assert.match(markup, /本平台不託管用戶資金/);
+  assert.match(markup, new RegExp(thirdwebDisclosure));
+  assert.doesNotMatch(markup, /已登入|管理員/);
+});
+
+test("Thirdweb connected wallet state is display-only and does not imply app login", () => {
+  const fundingMarkup = renderToStaticMarkup(
+    React.createElement(ThirdwebWalletFundingCard, {
+      surface: "account",
+      walletConnected: true,
+    }),
+  );
+  assert.match(fundingMarkup, /錢包已連接/);
+
+  const tradeMarkup = renderToStaticMarkup(
+    React.createElement(PolymarketTradeTicket, {
+      locale: "zh-HK",
+      hasBuilderCode: true,
+      featureEnabled: true,
+      submitModeEnabled: true,
+      walletConnected: true,
+      loggedIn: false,
+      hasCredentials: true,
+      userSigningAvailable: true,
+      marketTradable: true,
+      orderValid: true,
+      submitterAvailable: true,
+      marketTitle: "Wallet only market",
+      outcome: "Yes",
+      side: "buy",
+      price: 0.5,
+      size: 10,
+    }),
+  );
+
+  assert.match(tradeMarkup, /data-testid="top-blocking-reason">尚未登入/);
+  assert.match(tradeMarkup, /disabled=""/);
+});
+
+test("Thirdweb revenue is platform-only v1 and excluded from ambassador rewards", () => {
+  assert.deepEqual(ambassadorRewardRevenueKinds, ["polymarket_builder_fee"]);
+  assert.equal(revenueSourcePolicies.polymarket_builder_fee.ambassadorRewardEligible, true);
+  assert.equal(revenueSourcePolicies.thirdweb_developer_fee.ambassadorRewardEligible, false);
+  assert.equal(revenueSourcePolicies.thirdweb_developer_fee.platformRevenueEligible, true);
+  assert.equal(revenueSourcePolicies.thirdweb_fiat_provider_fee.platformRevenueEligible, false);
 });
 
 test("public external market browsing works without POLY_BUILDER_CODE", async (t) => {

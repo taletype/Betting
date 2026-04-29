@@ -7,6 +7,7 @@ import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { PendingReferralApplier } from "../pending-referral-applier";
 import { TrackedCopyButton } from "../tracked-copy-button";
+import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
@@ -42,6 +43,8 @@ export default async function AccountPage() {
               <button type="submit">{copy.logout}</button>
             </form>
           </section>
+
+          <ThirdwebWalletFundingCard surface="account" walletConnected={false} />
 
           <section className="panel stack">
             <strong>推薦碼</strong>

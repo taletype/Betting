@@ -1,5 +1,6 @@
 import React from "react";
 import { getAdminAmbassadorOverview } from "../../../lib/api";
+import { ReferralFunnelChart, RewardSplitChart } from "../../charts/market-charts";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 
 import {
@@ -26,6 +27,16 @@ export default async function AdminAmbassadorsPage() {
         <div className="panel empty-state">{copy.noRows}</div>
       ) : (
         <>
+          <section className="grid">
+            <ReferralFunnelChart points={overview.attributions.map((attribution) => ({ timestamp: attribution.attributedAt, value: 1 }))} />
+            <RewardSplitChart
+              points={[
+                { label: "推薦碼", value: overview.codes.length, tone: "volume" },
+                { label: "直接推薦", value: overview.attributions.length, tone: "bid" },
+                { label: "待覆核", value: overview.suspiciousAttributions.length, tone: "ask" },
+              ]}
+            />
+          </section>
           <section className="grid">
             <article className="panel stack">
               <strong>{copy.createCode}</strong>

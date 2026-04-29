@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getLocaleCopy } from "./locale";
+import { thirdwebDisclosure } from "../app/thirdweb-wallet-funding-card";
 
 const forbiddenChineseTerms = [
   "傳銷",
@@ -96,4 +97,11 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "交易會透過 Polymarket 執行。本平台只提供市場資料、下單介面及路由，不持有你的 Polymarket 資金。",
   );
   assert.match(getLocaleCopy("zh-HK").research.feeNotice, /費率只適用於合資格並成功成交的 Polymarket 路由訂單/);
+});
+
+test("zh-HK Thirdweb wallet funding copy is non-custodial", () => {
+  assert.equal(
+    thirdwebDisclosure,
+    "用戶可透過第三方錢包及付款服務為自己的錢包增值。資金會進入用戶自行控制的錢包，本平台不託管用戶資金。部分加密貨幣兌換或付款流程可能產生平台服務費；實際費用會在交易前顯示。",
+  );
 });

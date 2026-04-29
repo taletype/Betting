@@ -15,6 +15,7 @@ The current implementation is production-safe for browsing and order preview onl
 The `透過 Polymarket 交易` action may submit only when every gate is true:
 
 1. User is logged in.
+1a. Login is verified by Supabase Auth on the server; spoofed identity headers are ignored.
 2. User wallet is connected and linked to the account.
 3. Browser/session geoblock check reports the user is not restricted.
 4. User-owned Polymarket L2 credentials are present.
@@ -33,6 +34,7 @@ The `透過 Polymarket 交易` action may submit only when every gate is true:
 User-facing disabled reasons are Traditional Chinese:
 
 - `尚未登入`
+- `需要登入後才可準備交易。`
 - `尚未連接錢包`
 - `你目前所在地區暫不支援 Polymarket 下單`
 - `需要 Polymarket 憑證`
@@ -46,6 +48,8 @@ User-facing disabled reasons are Traditional Chinese:
 ## Current Blocker
 
 The repository does not currently include a production-safe user-owned Polymarket L2 credential flow. The default backend credential lookup returns `missing`, and the server submitter refuses to sign user orders. This is intentional.
+
+Routed submit also requires verified Supabase Auth identity before any trading-readiness checks continue. Missing auth returns `401` and does not evaluate body-supplied user identifiers.
 
 Missing work before enabling live submit:
 

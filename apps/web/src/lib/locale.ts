@@ -1062,7 +1062,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     openOnPolymarketUnavailable: "Polymarket 連結暫不可用",
     builderDebug: "Builder 歸因狀態",
     builderCodeConfigured: "Builder 代碼已設定",
-    routedTradingEnabled: "路由交易已啟用",
+    routedTradingEnabled: "實際訂單提交",
     walletConnected: "錢包已連接",
     polymarketCredentials: "Polymarket 憑證已準備",
     marketTradable: "市場可交易",
@@ -1101,7 +1101,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     readinessCopy: {
       auth_required: "尚未登入",
       builder_code_missing: "Builder Code 未設定",
-      submit_mode_disabled: "提交器暫時不可用",
+      submit_mode_disabled: "實際訂單提交已停用",
       feature_disabled: "交易功能尚未啟用",
       wallet_not_connected: "尚未連接錢包",
       geoblock_checking: "正在檢查所在地區支援狀態",

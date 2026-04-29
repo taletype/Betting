@@ -3,6 +3,7 @@ import { defaultLocale, formatDateTime, getLocaleCopy } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
+import { PayoutStatusChart, RewardSplitChart, VolumeHistoryChart } from "../charts/market-charts";
 import { requestRewardPayoutAction } from "./reward-actions";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export default async function RewardsPage() {
   const copy = getLocaleCopy(locale).rewards;
   const authCopy = getLocaleCopy(locale).auth;
   const dashboard = await getAmbassadorDashboard().catch(() => null);
+  const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
 
   return (
     <main className="stack">
@@ -45,6 +47,33 @@ export default async function RewardsPage() {
               <strong>{getLocaleCopy(locale).ambassador.paidRewards}</strong>
               <div className="metric-sm">{formatUsdc(dashboard.rewards.paidRewards, locale)}</div>
             </article>
+            <article className="panel stack">
+              <strong>支付方式：Polygon pUSD</strong>
+              <div className="muted">審批方式：人手審批</div>
+            </article>
+          </section>
+
+          <section className="grid">
+            <RewardSplitChart
+              points={[
+                { label: "待確認", value: toUsdcNumber(dashboard.rewards.pendingRewards), tone: "volume" },
+                { label: "可提取", value: toUsdcNumber(dashboard.rewards.payableRewards), tone: "bid" },
+                { label: "已支付", value: toUsdcNumber(dashboard.rewards.paidRewards), tone: "liquidity" },
+              ]}
+            />
+            <PayoutStatusChart
+              points={["requested", "approved", "paid", "failed", "cancelled"].map((status) => ({
+                label: copy.payoutStatuses[status] ?? status,
+                value: dashboard.payouts.filter((payout) => payout.status === status).length,
+                tone: status === "paid" ? "bid" : status === "failed" || status === "cancelled" ? "ask" : "volume",
+              }))}
+            />
+            <VolumeHistoryChart
+              points={dashboard.rewardLedger.map((entry) => ({
+                timestamp: entry.createdAt,
+                value: toUsdcNumber(entry.amountUsdcAtoms),
+              }))}
+            />
           </section>
 
           <section className="panel stack">

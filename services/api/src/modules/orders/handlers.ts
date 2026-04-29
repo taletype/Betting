@@ -34,7 +34,7 @@ import {
   upsertPosition,
   updateCancelledOrder,
 } from "./repository";
-import { DEFAULT_COLLATERAL_CURRENCY, DEMO_USER_ID } from "../shared/constants";
+import { DEFAULT_COLLATERAL_CURRENCY } from "../shared/constants";
 import { toJson } from "../../presenters/json";
 import {
   hashRequestPayload,
@@ -45,6 +45,7 @@ import {
 import { insertAuditRecord } from "../shared/audit";
 
 export interface CreateOrderInput {
+  userId: string;
   marketId: string;
   outcomeId: string;
   side: "buy" | "sell";
@@ -218,7 +219,7 @@ const buildAcceptedOrder = (input: CreateOrderInput, reserveAmount: bigint, crea
   id: crypto.randomUUID(),
   marketId: input.marketId,
   outcomeId: input.outcomeId,
-  userId: DEMO_USER_ID,
+  userId: input.userId,
   side: input.side,
   orderType: input.orderType,
   status: "open",
@@ -265,7 +266,7 @@ const createOrderCore = async (
           key: input.idempotencyKey,
         });
         await insertAuditRecord(transaction, {
-          actorUserId: DEMO_USER_ID,
+          actorUserId: order.userId,
           action: "idempotency.replay",
           entityType: "order",
           entityId: input.marketId,

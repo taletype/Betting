@@ -2,7 +2,6 @@ import { createServer } from "node:http";
 
 import { createDatabaseClient } from "@bet/db";
 import { incrementCounter, logger } from "@bet/observability";
-import { createSupabaseAdminClient } from "@bet/supabase";
 import type {
   ApiErrorResponse,
   ApiHealthResponse,
@@ -11,6 +10,9 @@ import type {
 
 import {
   getExternalMarketBySourceAndId,
+  getExternalMarketHistoryBySourceAndId,
+  getExternalMarketOrderbookDepthBySourceAndId,
+  getExternalMarketStatsBySourceAndId,
   getExternalMarketTradesBySourceAndId,
   listExternalMarkets,
 } from "./modules/external-markets/handlers";
@@ -59,15 +61,20 @@ import {
 } from "./modules/withdrawals/handlers";
 import { getLinkedWallet, linkBaseWallet } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
-import { DEMO_USER_ID } from "./modules/shared/constants";
 import {
   isDepositVerificationDisabled,
   isGlobalOrderPlacementDisabled,
   isOrderPlacementDisabledForMarket,
   isWithdrawalRequestDisabled,
 } from "./modules/shared/kill-switches";
+import {
+  ApiAuthError,
+  getAuthenticatedUser,
+  setApiAuthVerifierForTests,
+  type AuthenticatedApiUser,
+} from "./lib/auth/supabase";
 import { toJson } from "./presenters/json";
-import { getAdminApiToken, validateApiEnvironment } from "./env";
+import { validateApiEnvironment } from "./env";
 
 const port = Number(process.env.PORT ?? 4000);
 
@@ -86,53 +93,6 @@ const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<stri
   return Buffer.concat(chunks).toString("utf8");
 };
 
-const getRequestUserId = (request: Request): string | undefined => {
-  const userId = request.headers.get("x-user-id");
-  return userId ?? undefined;
-};
-
-let supabaseAdminClient: ReturnType<typeof createSupabaseAdminClient> | null = null;
-
-const getBearerToken = (request: Request): string | null => {
-  const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  const token = authorization.slice("Bearer ".length).trim();
-  return token || null;
-};
-
-const resolveRequestUserId = async (request: Request): Promise<string | undefined> => {
-  const bearerToken = getBearerToken(request);
-  if (bearerToken) {
-    try {
-      if (!supabaseAdminClient) {
-        supabaseAdminClient = createSupabaseAdminClient();
-      }
-
-      const { data, error } = await supabaseAdminClient.auth.getUser(bearerToken);
-      if (!error && data.user?.id) {
-        return data.user.id;
-      }
-    } catch {
-      // Fall through to non-production shortcuts.
-    }
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    return undefined;
-  }
-
-  return getRequestUserId(request) ?? DEMO_USER_ID;
-};
-
-const isAdminRequest = (request: Request): boolean => {
-  const incoming = request.headers.get("x-admin-token");
-  const expected = getAdminApiToken();
-  return Boolean(incoming) && incoming === expected;
-};
-
 const requireAuthenticatedUser = (requestUserId: string | undefined): Response | null => {
   if (requestUserId) {
     return null;
@@ -142,10 +102,25 @@ const requireAuthenticatedUser = (requestUserId: string | undefined): Response |
   return Response.json(payload, { status: 401 });
 };
 
+const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | null => {
+  if (!user) {
+    const payload: ApiErrorResponse = { error: "authentication required" };
+    return Response.json(payload, { status: 401 });
+  }
+
+  if (user.role !== "admin") {
+    const payload: ApiErrorResponse = { error: "admin authorization required" };
+    return Response.json(payload, { status: 403 });
+  }
+
+  return null;
+};
+
 const handleRequest = async (request: Request): Promise<Response> => {
   try {
     const url = new URL(request.url);
-    const requestUserId = await resolveRequestUserId(request);
+    const requestUser = await getAuthenticatedUser(request);
+    const requestUserId = requestUser?.id;
     const actorIdentity = requestUserId ?? "anonymous";
     const idempotencyKey = request.headers.get("idempotency-key");
     const segments = url.pathname.split("/").filter(Boolean);
@@ -163,10 +138,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/admin/external-sync/run") {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const source = url.searchParams.get("source") ?? undefined;
       const payload = await runExternalSync(source);
@@ -217,6 +190,34 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments.length >= 5 &&
       segments[0] === "external" &&
       segments[1] === "markets" &&
+      segments[4] === "history"
+    ) {
+      const source = segments[2] ?? "";
+      const externalId = decodeURIComponent(segments[3] ?? "");
+      const history = await getExternalMarketHistoryBySourceAndId(source, externalId);
+      return new Response(toJson({ source, externalId, history }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (
+      request.method === "GET" &&
+      segments.length >= 5 &&
+      segments[0] === "external" &&
+      segments[1] === "markets" &&
+      segments[4] === "stats"
+    ) {
+      const stats = await getExternalMarketStatsBySourceAndId(segments[2] ?? "", decodeURIComponent(segments[3] ?? ""));
+      return new Response(toJson(stats), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (
+      request.method === "GET" &&
+      segments.length >= 5 &&
+      segments[0] === "external" &&
+      segments[1] === "markets" &&
       segments[4] === "trades"
     ) {
       const trades = await getExternalMarketTradesBySourceAndId(segments[2] ?? "", decodeURIComponent(segments[3] ?? ""));
@@ -228,7 +229,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         }),
         {
           headers: { "content-type": "application/json" },
-          status: trades ? 200 : 404,
+          status: 200,
         },
       );
     }
@@ -241,9 +242,10 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[4] === "orderbook"
     ) {
       const payload = await getExternalMarketBySourceAndId(segments[2] ?? "", decodeURIComponent(segments[3] ?? ""));
-      return new Response(toJson({ orderbook: payload?.latestOrderbook ?? [] }), {
+      const depth = await getExternalMarketOrderbookDepthBySourceAndId(segments[2] ?? "", decodeURIComponent(segments[3] ?? ""));
+      return new Response(toJson({ orderbook: payload?.latestOrderbook ?? [], depth }), {
         headers: { "content-type": "application/json" },
-        status: payload ? 200 : 404,
+        status: 200,
       });
     }
 
@@ -332,6 +334,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       }
 
       const result = await createOrder({
+        userId: requestUserId!,
         marketId,
         outcomeId: String(body.outcomeId ?? ""),
         side: body.side === "sell" ? "sell" : "buy",
@@ -584,6 +587,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[1] === "markets" &&
       segments[3] === "resolve"
     ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
       const body = await parseBody(request);
       const result = await resolveMarket({
         marketId: segments[2] ?? "",
@@ -591,7 +597,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         evidenceText: String(body.evidenceText ?? ""),
         evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
         resolverId: String(body.resolverId ?? ""),
-        isAdmin: isAdminRequest(request),
+        isAdmin: true,
       });
       const payload = result;
       return new Response(toJson(payload), {
@@ -600,16 +606,17 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/admin/withdrawals") {
-      return new Response(toJson({ withdrawals: await getRequestedWithdrawals({ isAdmin: isAdminRequest(request) }) }), {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
+      return new Response(toJson({ withdrawals: await getRequestedWithdrawals({ isAdmin: true }) }), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (request.method === "GET" && url.pathname === "/admin/ambassador") {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const payload = await getAdminAmbassadorOverview();
       return new Response(toJson(payload), {
@@ -618,14 +625,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/admin/ambassador/referral-attributions/override") {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       await overrideAdminReferralAttribution({
-        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         referredUserId: String(body.referredUserId ?? ""),
         ambassadorCode: String(body.ambassadorCode ?? body.code ?? ""),
         reason: String(body.reason ?? ""),
@@ -634,14 +639,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/admin/ambassador/codes") {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       const payload = await createAdminAmbassadorCode({
-        adminUserId: requestUserId ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         ownerUserId: String(body.ownerUserId ?? ""),
         code: body.code ? String(body.code) : null,
       });
@@ -659,14 +662,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[2] === "codes" &&
       segments[4] === "disable"
     ) {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       const payload = await disableAdminAmbassadorCode({
-        adminUserId: requestUserId ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         codeId: segments[3] ?? "",
         reason: String(body.reason ?? ""),
       });
@@ -676,14 +677,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/admin/ambassador/trade-attributions/mock") {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       const payload = await recordAdminMockBuilderTradeAttribution({
-        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         userId: String(body.userId ?? ""),
         polymarketOrderId: body.polymarketOrderId ? String(body.polymarketOrderId) : null,
         polymarketTradeId: body.polymarketTradeId ? String(body.polymarketTradeId) : null,
@@ -708,13 +707,11 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[2] === "trade-attributions" &&
       segments[4] === "payable"
     ) {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const payload = await markAdminBuilderTradeRewardsPayable({
-        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         tradeAttributionId: segments[3] ?? "",
       });
       return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
@@ -728,14 +725,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[2] === "trade-attributions" &&
       segments[4] === "void"
     ) {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       await voidAdminBuilderTradeAttribution({
-        adminUserId: getRequestUserId(request) ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         tradeAttributionId: segments[3] ?? "",
         reason: String(body.reason ?? ""),
       });
@@ -750,14 +745,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[2] === "payouts" &&
       segments[4] === "approve"
     ) {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       const payload = await approveAdminRewardPayout({
-        adminUserId: requestUserId ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         payoutId: segments[3] ?? "",
         notes: body.notes ? String(body.notes) : null,
       });
@@ -772,14 +765,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[2] === "payouts" &&
       segments[4] === "paid"
     ) {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       const payload = await markAdminRewardPayoutPaid({
-        adminUserId: requestUserId ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         payoutId: segments[3] ?? "",
         txHash: body.txHash ? String(body.txHash) : null,
         notes: body.notes ? String(body.notes) : null,
@@ -795,14 +786,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[2] === "payouts" &&
       (segments[4] === "failed" || segments[4] === "cancelled")
     ) {
-      if (!isAdminRequest(request)) {
-        const payload: ApiErrorResponse = { error: "admin authorization required" };
-        return Response.json(payload, { status: 401 });
-      }
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
 
       const body = await parseBody(request);
       const payload = await updateAdminRewardPayoutFailureState({
-        adminUserId: requestUserId ?? DEMO_USER_ID,
+        adminUserId: requestUser!.id,
         payoutId: segments[3] ?? "",
         status: segments[4],
         notes: String(body.notes ?? ""),
@@ -817,10 +806,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[1] === "withdrawals" &&
       segments[3] === "execute"
     ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
       const body = await parseBody(request);
       const result = await executeWithdrawal({
-        adminUserId: requestUserId,
-        isAdmin: isAdminRequest(request),
+        adminUserId: requestUser!.id,
+        isAdmin: true,
         withdrawalId: segments[2] ?? "",
         txHash: String(body.txHash ?? ""),
       });
@@ -873,6 +865,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[1] === "markets" &&
       segments[3] === "resolve"
     ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
       const body = await parseBody(request);
       const result = await resolveMarket({
         marketId: segments[2] ?? "",
@@ -880,7 +875,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         evidenceText: String(body.evidenceText ?? ""),
         evidenceUrl: body.evidenceUrl ? String(body.evidenceUrl) : null,
         resolverId: String(body.resolverId ?? ""),
-        isAdmin: isAdminRequest(request),
+        isAdmin: true,
       });
       return new Response(toJson(result), {
         headers: { "content-type": "application/json" },
@@ -888,7 +883,10 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/admin/withdrawals") {
-      return new Response(toJson({ withdrawals: await getRequestedWithdrawals({ isAdmin: isAdminRequest(request) }) }), {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
+      return new Response(toJson({ withdrawals: await getRequestedWithdrawals({ isAdmin: true }) }), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -900,10 +898,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[1] === "withdrawals" &&
       segments[3] === "execute"
     ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
       const body = await parseBody(request);
       const result = await executeWithdrawal({
-        adminUserId: requestUserId,
-        isAdmin: isAdminRequest(request),
+        adminUserId: requestUser!.id,
+        isAdmin: true,
         withdrawalId: segments[2] ?? "",
         txHash: String(body.txHash ?? ""),
       });
@@ -919,10 +920,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
       segments[1] === "withdrawals" &&
       segments[3] === "fail"
     ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+
       const body = await parseBody(request);
       const result = await failWithdrawal({
-        adminUserId: requestUserId,
-        isAdmin: isAdminRequest(request),
+        adminUserId: requestUser!.id,
+        isAdmin: true,
         withdrawalId: segments[2] ?? "",
         reason: String(body.reason ?? ""),
       });
@@ -936,6 +940,10 @@ const handleRequest = async (request: Request): Promise<Response> => {
     const payload: ApiErrorResponse = { error: "Not found" };
     return Response.json(payload, { status: 404 });
   } catch (error) {
+    if (error instanceof ApiAuthError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error";
     logger.error("api request failed", { error: message });
     const payload: ApiErrorResponse = { error: message };
@@ -967,4 +975,4 @@ if (process.env.NODE_ENV !== "test") {
   });
 }
 
-export { handleRequest };
+export { handleRequest, setApiAuthVerifierForTests };

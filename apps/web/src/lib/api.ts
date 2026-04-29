@@ -29,17 +29,35 @@ const getServerCookieHeader = async (): Promise<string | null> => {
   }
 };
 
+const getServerSupabaseAccessToken = async (): Promise<string | null> => {
+  if (typeof window !== "undefined") {
+    return null;
+  }
+
+  try {
+    const [{ cookies }, { createSupabaseServerClient }] = await Promise.all([
+      import("next/headers"),
+      import("@bet/supabase"),
+    ]);
+    const cookieStore = await cookies();
+    const supabase = createSupabaseServerClient({
+      get: (name) => cookieStore.get(name)?.value,
+    });
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return null;
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const getOptionalProxyHeaders = async (): Promise<HeadersInit> => {
-  const forwardedUserId = process.env.API_REQUEST_USER_ID?.trim();
-  const forwardedAdminToken = process.env.API_REQUEST_ADMIN_TOKEN?.trim();
   const cookieHeader = await getServerCookieHeader();
+  const accessToken = await getServerSupabaseAccessToken();
 
   const headers: Record<string, string> = {};
-  if (forwardedUserId) {
-    headers["x-user-id"] = forwardedUserId;
-  }
-  if (forwardedAdminToken) {
-    headers["x-admin-token"] = forwardedAdminToken;
+  if (accessToken) {
+    headers.authorization = `Bearer ${accessToken}`;
   }
   if (cookieHeader) {
     headers.cookie = cookieHeader;
@@ -456,6 +474,34 @@ export interface ExternalMarketApiOrderbookSnapshot {
   bestAsk: number | null;
 }
 
+export interface ExternalMarketApiHistoryPoint {
+  timestamp: string;
+  outcome: string | null;
+  price: number | null;
+  volume: number | null;
+  liquidity: number | null;
+  source: "polymarket" | "kalshi";
+  provenance?: unknown;
+}
+
+export interface ExternalMarketApiDepthPoint {
+  side: "bid" | "ask";
+  price: number | null;
+  size: number | null;
+  cumulativeSize: number | null;
+}
+
+export interface ExternalMarketApiStats {
+  source: string;
+  externalId: string;
+  volume24h: number | null;
+  liquidity: number | null;
+  spread: number | null;
+  closeTime: string | null;
+  lastUpdatedAt: string | null;
+  stale: boolean;
+}
+
 export interface ExternalMarketApiRecord {
   id: string;
   source: "polymarket" | "kalshi";
@@ -519,3 +565,60 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
     );
   }
 };
+
+export const getExternalMarket = async (
+  source: string,
+  externalId: string,
+): Promise<ExternalMarketApiRecord | null> => {
+  const payload = await executeApiRequest<{ market: ExternalMarketApiRecord | null }>(
+    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`),
+    { allowNotFound: true },
+  );
+
+  return payload?.market ?? null;
+};
+
+export const getExternalMarketOrderbook = async (
+  source: string,
+  externalId: string,
+): Promise<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth: ExternalMarketApiDepthPoint[] }> => {
+  const payload = await executeApiRequest<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth?: ExternalMarketApiDepthPoint[] }>(
+    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/orderbook`),
+    { allowNotFound: true },
+  );
+
+  return { orderbook: payload?.orderbook ?? [], depth: payload?.depth ?? [] };
+};
+
+export const getExternalMarketTrades = async (
+  source: string,
+  externalId: string,
+): Promise<ExternalMarketApiTrade[]> => {
+  const payload = await executeApiRequest<{ trades: ExternalMarketApiTrade[] }>(
+    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/trades`),
+    { allowNotFound: true },
+  );
+
+  return payload?.trades ?? [];
+};
+
+export const getExternalMarketHistory = async (
+  source: string,
+  externalId: string,
+): Promise<ExternalMarketApiHistoryPoint[]> => {
+  const payload = await executeApiRequest<{ history: ExternalMarketApiHistoryPoint[] }>(
+    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/history`),
+    { allowNotFound: true },
+  );
+
+  return payload?.history ?? [];
+};
+
+export const getExternalMarketStats = async (
+  source: string,
+  externalId: string,
+): Promise<ExternalMarketApiStats | null> =>
+  executeApiRequest<ExternalMarketApiStats>(
+    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/stats`),
+    { allowNotFound: true },
+  );

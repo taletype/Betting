@@ -12,6 +12,7 @@ import {
 } from "./polymarket-routing-readiness";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { trackFunnelEvent } from "../funnel-analytics";
+import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 import { getLocaleCopy, type AppLocale } from "../../lib/locale";
 
 interface Props {
@@ -185,12 +186,13 @@ export function PolymarketTradeTicket(props: Props) {
       <div className="ticket-header">
         <div>
           <strong>{copy.tradeViaPolymarket}</strong>
-          <div className="muted">非託管下單介面</div>
+          <div className="muted">非託管交易預備介面</div>
         </div>
-        <span className="badge badge-warning">Live submit disabled</span>
+        <span className="badge badge-warning">{props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : "實際訂單提交已停用"}</span>
       </div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
+      <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={props.walletConnected} />
       <BuilderFeeDisclosureCard
         locale={props.locale}
         hasBuilderCode={props.hasBuilderCode}
@@ -223,12 +225,14 @@ export function PolymarketTradeTicket(props: Props) {
       </section>
 
       <div className="readiness-grid compact-status-grid">
+        <div className="kv"><span className="kv-key">路由交易介面</span><span className="kv-value">已顯示</span></div>
+        <div className="kv"><span className="kv-key">實際訂單提交</span><span className="kv-value">{props.featureEnabled && props.submitModeEnabled && props.submitterAvailable ? "已啟用" : "已停用"}</span></div>
         <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{props.hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
-        <div className="kv"><span className="kv-key">{copy.walletConnected}</span><span className="kv-value">{props.walletConnected ? copy.yes : copy.no}</span></div>
-        <div className="kv"><span className="kv-key">{copy.polymarketCredentials}</span><span className="kv-value">{props.hasCredentials ? copy.yes : copy.no}</span></div>
+        <div className="kv"><span className="kv-key">錢包狀態</span><span className="kv-value">{props.walletConnected ? "已連接" : "尚未連接"}</span></div>
+        <div className="kv"><span className="kv-key">Polymarket 憑證</span><span className="kv-value">{props.hasCredentials ? "已就緒" : "需要"}</span></div>
+        <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "暫時不可交易"}</span></div>
+        <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>
         <div className="kv"><span className="kv-key">{copy.geoblockStatus}</span><span className="kv-value">{getPolymarketGeoblockStatusLabel(geoblockStatus)}</span></div>
-        <div className="kv"><span className="kv-key">{copy.routedTradingEnabled}</span><span className="kv-value">{props.featureEnabled ? "交易功能已啟用" : "交易功能尚未啟用"}</span></div>
-        <div className="kv"><span className="kv-key">{copy.submitterAvailable}</span><span className="kv-value">{props.submitterAvailable ? copy.yes : copy.no}</span></div>
       </div>
 
       <label className="stack">

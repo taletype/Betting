@@ -6,6 +6,16 @@ export interface AuthenticatedUser {
   role?: string | null;
 }
 
+export class WebAuthError extends Error {
+  readonly status: 401 | 403;
+
+  constructor(message: string, status: 401 | 403) {
+    super(message);
+    this.name = "WebAuthError";
+    this.status = status;
+  }
+}
+
 export interface AdminAccessDecision {
   ok: boolean;
   status?: 401 | 403;
@@ -56,4 +66,40 @@ export const getAuthenticatedUser = async (request: NextRequest): Promise<Authen
   return resolveAuthenticatedUser({
     sessionUser: mapSupabaseUser(data.user),
   });
+};
+
+export const getOptionalSupabaseUser = getAuthenticatedUser;
+
+export const requireSupabaseUser = async (request: NextRequest): Promise<AuthenticatedUser> => {
+  const user = await getAuthenticatedUser(request);
+  if (!user) {
+    throw new WebAuthError("Authentication required", 401);
+  }
+  return user;
+};
+
+export const requireAdminUser = async (request: NextRequest): Promise<AuthenticatedUser> => {
+  const user = await requireSupabaseUser(request);
+  if (!isAdminRole(getUserRole(user))) {
+    throw new WebAuthError("Admin privileges required", 403);
+  }
+  return user;
+};
+
+export const requireUserOwnsReferralCode = (
+  userId: string,
+  referralCode: { ownerUserId?: string | null },
+): void => {
+  if (!referralCode.ownerUserId || referralCode.ownerUserId !== userId) {
+    throw new WebAuthError("Referral code ownership required", 403);
+  }
+};
+
+export const requireUserOwnsWallet = (
+  userId: string,
+  wallet: { userId?: string | null; walletAddress?: string | null },
+): void => {
+  if (!wallet.userId || wallet.userId !== userId || !wallet.walletAddress) {
+    throw new WebAuthError("Wallet ownership proof required", 403);
+  }
 };

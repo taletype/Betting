@@ -1,5 +1,6 @@
 import React from "react";
-import { getAdminAmbassadorOverview } from "../../../lib/api";
+import { getAdminAmbassadorOverview, toBigInt } from "../../../lib/api";
+import { PayoutStatusChart, VolumeHistoryChart } from "../../charts/market-charts";
 import { formatUsdc } from "../../../lib/format";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 
@@ -45,6 +46,7 @@ export default async function AdminPayoutsPage() {
   const copy = getLocaleCopy(locale).admin;
   const rewardCopy = getLocaleCopy(locale).rewards;
   const overview = await getAdminAmbassadorOverview().catch(() => null);
+  const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
   const csvHref = overview
     ? `data:text/csv;charset=utf-8,${encodeURIComponent(toCsv(overview.payouts))}`
     : "#";
@@ -62,6 +64,22 @@ export default async function AdminPayoutsPage() {
       ) : overview.payouts.length === 0 ? (
         <div className="panel empty-state">{copy.noRows}</div>
       ) : (
+        <>
+        <section className="grid">
+          <PayoutStatusChart
+            points={["requested", "approved", "paid", "failed", "cancelled"].map((status) => ({
+              label: rewardCopy.payoutStatuses[status] ?? status,
+              value: overview.payouts.filter((payout) => payout.status === status).length,
+              tone: status === "paid" ? "bid" : status === "failed" || status === "cancelled" ? "ask" : "volume",
+            }))}
+          />
+          <VolumeHistoryChart
+            points={overview.payouts.map((payout) => ({
+              timestamp: payout.createdAt,
+              value: toUsdcNumber(payout.amountUsdcAtoms),
+            }))}
+          />
+        </section>
         <section className="panel stack">
           <table className="table">
             <thead>
@@ -131,6 +149,7 @@ export default async function AdminPayoutsPage() {
           </table>
           <div className="muted">Updated {formatDateTime(locale, new Date().toISOString())}</div>
         </section>
+        </>
       )}
     </main>
   );

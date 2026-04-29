@@ -1,7 +1,6 @@
 import { createDatabaseClient } from "@bet/db";
 
 import { insertAuditRecord } from "../shared/audit";
-import { DEMO_USER_ID } from "../shared/constants";
 import {
   accountConfirmedBuilderTradeRewards,
   approveRewardPayout,
@@ -34,8 +33,12 @@ const requireAdminUser = (adminUserId: string | undefined): string => {
 };
 
 export const getAmbassadorDashboard = async (userId?: string): Promise<AmbassadorDashboard> => {
+  if (!userId) {
+    throw new Error("authentication required");
+  }
+
   const db = createDatabaseClient();
-  const resolvedUserId = userId ?? DEMO_USER_ID;
+  const resolvedUserId = userId;
 
   return db.transaction((transaction) => readAmbassadorDashboard(transaction, resolvedUserId, buildInviteUrl));
 };
@@ -44,8 +47,12 @@ export const captureAmbassadorReferral = async (input: {
   userId?: string;
   code: string;
 }): Promise<AmbassadorDashboard> => {
+  if (!input.userId) {
+    throw new Error("authentication required");
+  }
+
   const db = createDatabaseClient();
-  const referredUserId = input.userId ?? DEMO_USER_ID;
+  const referredUserId = input.userId;
 
   await db.transaction(async (transaction) => {
     const attribution = await createReferralAttribution(transaction, {
@@ -253,7 +260,11 @@ export const requestAmbassadorRewardPayout = async (input: {
   destinationType: "wallet" | "manual";
   destinationValue: string;
 }) => {
-  const userId = input.userId ?? DEMO_USER_ID;
+  if (!input.userId) {
+    throw new Error("authentication required");
+  }
+
+  const userId = input.userId;
   const db = createDatabaseClient();
   return db.transaction((transaction) =>
     requestRewardPayout(transaction, {

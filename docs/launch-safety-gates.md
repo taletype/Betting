@@ -13,7 +13,8 @@ This checklist is the go/no-go gate for inviting real users into the Polymarket 
 - [ ] Routed trading attaches `POLY_BUILDER_CODE` only immediately before a real user-signed submission.
 - [ ] External Polymarket routes do not import or mutate internal ledger, balance, matching, deposit, withdrawal, or portfolio modules.
 - [ ] Internet-facing command routes reject spoofed `x-user-id` impersonation in production.
-- [ ] Admin routes require verified admin authorization.
+- [ ] Internet-facing command routes use verified Supabase Auth identity and ignore `x-user-id`, `x-admin`, `x-role`, body `userId`, and query `userId`.
+- [ ] Admin routes require verified Supabase admin authorization (`app_metadata.role = "admin"`).
 - [ ] Referral attribution is first-valid-code-wins, rejects self-referral when identity is known, and rejects disabled codes.
 - [ ] Rewards are direct-referral accounting records only.
 - [ ] No recursive, multi-level, second-level, tree, matrix, or ancestry payout logic exists.
@@ -47,3 +48,9 @@ Expected result: no real credential assignments. Placeholders in private deploym
 ## Current Default
 
 Live Polymarket routed trading is disabled by default. Market browsing, referral capture, and reward accounting review can be launched independently of live order submission.
+
+## Auth Gate
+
+Before launch, verify the architecture in `docs/supabase-auth.md` and the RLS posture in `docs/auth-rls-checklist.md`.
+
+Command, write, admin, money, and trading routes must reject unauthenticated requests with `401` and authenticated non-admin admin requests with `403`. Service-role credentials may run server-side jobs and reads but must never become the browser user's identity.

@@ -1,5 +1,6 @@
 import React from "react";
-import { getAdminAmbassadorOverview } from "../../../lib/api";
+import { getAdminAmbassadorOverview, toBigInt } from "../../../lib/api";
+import { RewardSplitChart, VolumeHistoryChart } from "../../charts/market-charts";
 import { formatUsdc } from "../../../lib/format";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 
@@ -16,6 +17,7 @@ export default async function AdminRewardsPage() {
   const copy = getLocaleCopy(locale).admin;
   const rewardCopy = getLocaleCopy(locale).rewards;
   const overview = await getAdminAmbassadorOverview().catch(() => null);
+  const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
 
   return (
     <main className="stack">
@@ -28,6 +30,21 @@ export default async function AdminRewardsPage() {
         <div className="panel empty-state">{copy.noRows}</div>
       ) : (
         <>
+          <section className="grid">
+            <RewardSplitChart
+              points={["pending", "payable", "paid", "void"].map((status) => ({
+                label: rewardCopy.statuses[status] ?? status,
+                value: overview.rewardLedger.filter((entry) => entry.status === status).reduce((sum, entry) => sum + toUsdcNumber(entry.amountUsdcAtoms), 0),
+                tone: status === "paid" ? "bid" : status === "void" ? "ask" : "volume",
+              }))}
+            />
+            <VolumeHistoryChart
+              points={overview.tradeAttributions.map((trade) => ({
+                timestamp: trade.confirmedAt ?? new Date().toISOString(),
+                value: toUsdcNumber(trade.builderFeeUsdcAtoms),
+              }))}
+            />
+          </section>
           <section className="panel stack">
             <h2 className="section-title">{copy.manualTrade}</h2>
             <form action={recordMockBuilderTradeAction} className="stack">

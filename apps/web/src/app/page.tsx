@@ -2,6 +2,7 @@ import Link from "next/link";
 import React from "react";
 
 import { BuilderFeeDisclosureCard } from "./builder-fee-disclosure-card";
+import { MarketSparkline } from "./charts/market-charts";
 import { FunnelEventTracker } from "./funnel-analytics";
 import { PendingReferralNotice } from "./pending-referral-notice";
 import { TrackedCopyButton } from "./tracked-copy-button";
@@ -47,6 +48,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <h1>用一個頁面追蹤熱門 Polymarket 市場</h1>
           <p>瀏覽市場、比較價格，並在交易功能啟用後透過 Polymarket 自行簽署交易。</p>
           {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
+          <div className="trust-badge-row" aria-label="平台安全披露">
+            {["非託管", "用戶自行簽署", "Polymarket 市場資料", "Builder Code 已設定", "支付需人手審批"].map((label) => (
+              <span className="badge badge-neutral" key={label}>{label}</span>
+            ))}
+          </div>
           <div className="market-actions">
             <Link className="button-link" href={marketHref}>查看熱門市場</Link>
             <TrackedCopyButton
@@ -64,7 +70,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               metadata={refCode ? { code: refCode, surface: "home" } : { surface: "home" }}
             />
           </div>
-          <p className="muted">本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</p>
+          <p className="muted">本平台顯示 Polymarket 市場資料。用戶需要自行連接錢包及簽署交易。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</p>
         </div>
       </section>
 
@@ -89,15 +95,31 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                     : "結果資料同步中"}
                 </div>
                 <div className="kv"><span className="kv-key">價格</span><span className="kv-value">{numberOrDash(market.lastTradePrice)}</span></div>
+                <MarketSparkline
+                  points={market.recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }))}
+                  label="價格走勢"
+                />
                 <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{numberOrDash(market.volume24h ?? market.volumeTotal)}</span></div>
                 <div className="muted">更新：{market.lastSyncedAt ? formatDateTime(defaultLocale, market.lastSyncedAt, "UTC") : "—"}</div>
-                <Link href={`/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>
+                <Link className="button-link secondary" href={`/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>
                   市場詳情
                 </Link>
               </article>
             ))}
           </div>
         )}
+      </section>
+
+      <section className="premium-band stack">
+        <h2 className="section-title">如何運作</h2>
+        <div className="grid">
+          {["瀏覽 Polymarket 市場", "連接錢包", "用戶自行簽署訂單", "合資格交易可產生 Builder 費用收入"].map((item, index) => (
+            <article className="panel stack" key={item}>
+              <span className="badge badge-neutral">0{index + 1}</span>
+              <strong>{item}</strong>
+            </article>
+          ))}
+        </div>
       </section>
     </main>
   );

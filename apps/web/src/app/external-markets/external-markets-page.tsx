@@ -5,9 +5,11 @@ import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { getCurrentWebUser } from "../auth-session";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
+import { MarketSparkline, MiniMetricTrend, type TimeSeriesPoint } from "../charts/market-charts";
 import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { TrackedCopyButton } from "../tracked-copy-button";
+import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 
 import {
   getPolymarketTopBlockingReason,
@@ -51,6 +53,26 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
 
   return "neutral";
 };
+
+const getCloseState = (market: ExternalMarketApiRecord): { label: string; progress: number } => {
+  if (market.status === "closed" || market.status === "resolved" || market.status === "cancelled") {
+    return { label: "已結束", progress: 100 };
+  }
+
+  if (!market.closeTime) return { label: "進行中", progress: 42 };
+
+  const remaining = new Date(market.closeTime).getTime() - Date.now();
+  if (remaining <= 0) return { label: "已結束", progress: 100 };
+  if (remaining <= 24 * 60 * 60 * 1000) return { label: "即將結束", progress: 86 };
+  return { label: "進行中", progress: 48 };
+};
+
+const toSparklinePoints = (market: ExternalMarketApiRecord): TimeSeriesPoint[] =>
+  market.recentTrades
+    .filter((trade) => trade.price !== null)
+    .slice(0, 12)
+    .reverse()
+    .map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
 
 const hasPolymarketBuilderCode = (): boolean => {
   try {
@@ -154,7 +176,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       <section className="hero">
         <h1>{copy.title}</h1>
         <p>{copy.subtitle}</p>
-        {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
+        {refCode ? <div className="banner banner-success referral-banner">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice prefix="你正在使用推薦碼：" />}
         <div className="market-actions">
           <TrackedCopyButton
             value={shareUrl}
@@ -170,6 +192,11 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         hasBuilderCode={hasBuilderCode}
         routedTradingEnabled={routedTradingEnabled}
       />
+      <section className="panel disclosure-card stack">
+        <strong>Builder / 交易安全狀態</strong>
+        <p className="muted">單純瀏覽市場不會產生 Builder 費用。只適用於合資格並成功成交的 Polymarket 路由訂單；實際訂單提交預設停用。</p>
+      </section>
+      <ThirdwebWalletFundingCard surface="polymarket_feed" walletConnected={false} />
       <form className="panel filters market-feed-controls" action="/polymarket">
         {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
         <label className="stack">
@@ -196,6 +223,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </select>
         </label>
         <button type="submit">套用</button>
+        <Link className="button-link secondary" href={buildFeedHref(normalizedParams, {})}>刷新</Link>
       </form>
       <nav className="chip-row" aria-label="Polymarket 類別">
         {[
@@ -260,6 +288,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             });
             const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
             const marketShareUrl = `${siteUrl()}${detailPath}`;
+            const sparklinePoints = toSparklinePoints(market);
+            const closeState = getCloseState(market);
 
             return (
             <div key={`${market.source}:${market.externalId}`} className="panel stack market-card">
@@ -285,12 +315,19 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 </div>
                 <div className="market-card-stats">
                   <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toDisplay(market.lastTradePrice, locale)}</span></div>
-                  <div className="kv"><span className="kv-key">{copy.volume24h}</span><span className="kv-value">{toDisplay(market.volume24h, locale)}</span></div>
+                  <MiniMetricTrend label={copy.volume24h} value={toDisplay(market.volume24h, locale)} points={sparklinePoints} />
                   <div className="kv"><span className="kv-key">{copy.liquidity}</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</span></div>
                 </div>
+                <div className="market-card-chart">
+                  <MarketSparkline points={sparklinePoints} label="價格走勢" />
+                </div>
+              </div>
+              <div className="stack">
+                <div className="kv"><span className="kv-key">{closeState.label}</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>
+                <div className="close-progress" aria-label={closeState.label}><span style={{ width: `${closeState.progress}%` }} /></div>
               </div>
               <div className="muted compact-meta">
-                {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
+                {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
                 {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}

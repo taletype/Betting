@@ -4,6 +4,13 @@ import React from "react";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
+import {
+  LiquidityHistoryChart,
+  OrderBookDepthChart,
+  PriceHistoryChart,
+  RecentTradesChart,
+  VolumeHistoryChart,
+} from "../../charts/market-charts";
 import { getCurrentWebUser } from "../../auth-session";
 import {
   getPolymarketTopBlockingReason,
@@ -12,8 +19,9 @@ import {
 import { PolymarketTradeTicket } from "../../external-markets/polymarket-trade-ticket";
 import { FunnelEventTracker } from "../../funnel-analytics";
 import { PendingReferralNotice } from "../../pending-referral-notice";
+import { ThirdwebWalletFundingCard } from "../../thirdweb-wallet-funding-card";
 import { TrackedCopyButton } from "../../tracked-copy-button";
-import { listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
+import { getExternalMarket, getExternalMarketHistory, getExternalMarketOrderbook, getExternalMarketStats, getExternalMarketTrades, listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
 
@@ -72,12 +80,14 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   let failed = false;
 
   try {
-    market = findMarket((await listExternalMarkets()).filter((item) => item.source === "polymarket"), slug);
+    market = await getExternalMarket("polymarket", slug);
+    if (!market) {
+      market = findMarket((await listExternalMarkets()).filter((item) => item.source === "polymarket"), slug);
+    }
   } catch (error) {
     failed = true;
     console.error("failed to load Polymarket market detail", error);
   }
-
   if (failed) {
     return (
       <main className="stack">
@@ -102,6 +112,20 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       </main>
     );
   }
+  const loadedMarket = market;
+  const [orderbookPayload, trades, history, stats] = await Promise.all([
+    getExternalMarketOrderbook("polymarket", loadedMarket.externalId).catch(() => ({ orderbook: loadedMarket.latestOrderbook ?? [], depth: [] })),
+    getExternalMarketTrades("polymarket", loadedMarket.externalId).catch(() => loadedMarket.recentTrades),
+    getExternalMarketHistory("polymarket", loadedMarket.externalId).catch(() => []),
+    getExternalMarketStats("polymarket", loadedMarket.externalId).catch(() => null),
+  ]);
+  const visibleOrderbook = orderbookPayload.orderbook.length ? orderbookPayload.orderbook : loadedMarket.latestOrderbook ?? [];
+  const visibleTrades = trades.length ? trades : loadedMarket.recentTrades;
+  const historyPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.price }));
+  const volumePoints = history.map((point) => ({ timestamp: point.timestamp, value: point.volume }));
+  const liquidityPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.liquidity }));
+  const tradePoints = visibleTrades.map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
+  const stale = stats?.stale;
 
   const routingInput: PolymarketRoutingReadinessInput = {
     hasBuilderCode,
@@ -152,7 +176,10 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       <FunnelEventTracker name="market_view" metadata={{ market: market.slug || market.externalId }} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
       <section className="hero">
-        <div className="badge badge-neutral">polymarket</div>
+        <div className="market-card-meta">
+          <div className="badge badge-neutral">polymarket</div>
+          <div className="badge badge-neutral">{copy.statuses[market.status] ?? market.status}</div>
+        </div>
         <h1>{market.title}</h1>
         <p>{market.description || copy.subtitle}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
@@ -168,6 +195,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       </section>
 
       <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
+      <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
 
       <section className="market-detail-layout">
         <div className="market-detail-primary stack">
@@ -209,6 +237,12 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         )}
       </section>
 
+      <section className="grid">
+        <PriceHistoryChart points={historyPoints} stale={stale} />
+        <VolumeHistoryChart points={volumePoints} stale={stale} />
+        <LiquidityHistoryChart points={liquidityPoints} stale={stale} />
+      </section>
+
       <section className="panel stack">
         <h2 className="section-title">{copy.provenance}</h2>
         <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">{market.source}</span></div>
@@ -219,18 +253,26 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">推薦分成</h2>
-        <p className="muted">已確認 Builder 費用收入分配：平台 60%、直接推薦人 30%、交易者回贈 10%。沒有直接推薦人時，推薦人份額撥入平台份額。</p>
+        <h2 className="section-title">推薦分成 / 推薦分享</h2>
+        <p className="muted">分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
+        <TrackedCopyButton
+          value={marketShareUrl}
+          label="複製市場推薦連結"
+          copiedLabel="已複製"
+          eventName="market_share_link_copied"
+          metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
+        />
       </section>
 
       <section className="grid">
         <article className="panel stack">
-          <h2 className="section-title">Orderbook snapshot</h2>
-          {market.latestOrderbook && market.latestOrderbook.length > 0 ? (
+          <h2 className="section-title">訂單簿 Orderbook snapshot</h2>
+          <OrderBookDepthChart points={orderbookPayload.depth} stale={stale} />
+          {visibleOrderbook.length > 0 ? (
             <table className="table compact-table">
               <thead><tr><th>{copy.outcome}</th><th>{copy.bestBid}</th><th>{copy.bestAsk}</th><th>{copy.lastSynced}</th></tr></thead>
               <tbody>
-                {market.latestOrderbook.map((book) => (
+                {visibleOrderbook.map((book) => (
                   <tr key={`${book.externalOutcomeId}:${book.capturedAt}`}>
                     <td>{book.externalOutcomeId}</td>
                     <td>{toDisplay(book.bestBid)}</td>
@@ -241,16 +283,17 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
               </tbody>
             </table>
           ) : (
-            <div className="empty-state">暫無 orderbook snapshot。</div>
+            <div className="empty-state">暫時未有訂單簿資料</div>
           )}
         </article>
         <article className="panel stack">
           <h2 className="section-title">近期成交</h2>
-          {market.recentTrades.length > 0 ? (
+          <RecentTradesChart points={tradePoints} stale={stale} />
+          {visibleTrades.length > 0 ? (
             <table className="table compact-table">
               <thead><tr><th>{copy.tradeTime}</th><th>{copy.side}</th><th>{copy.price}</th><th>{copy.size}</th></tr></thead>
               <tbody>
-                {market.recentTrades.map((trade) => (
+                {visibleTrades.map((trade) => (
                   <tr key={trade.externalTradeId}>
                     <td>{formatDateTime(defaultLocale, trade.tradedAt, "UTC")}</td>
                     <td>{trade.side ? copy.sides[trade.side] ?? trade.side : "—"}</td>
@@ -261,7 +304,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
               </tbody>
             </table>
           ) : (
-            <div className="empty-state">{copy.noRecentTrades}</div>
+            <div className="empty-state">暫時未有近期成交資料</div>
           )}
         </article>
       </section>

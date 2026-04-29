@@ -4,7 +4,7 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supa
 import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
-import { readExternalMarkets } from "../_shared/external-market-read";
+import { readExternalMarketBySourceAndId, readExternalMarkets } from "../_shared/external-market-read";
 import { previewPolymarketOrder } from "../_shared/polymarket-orders";
 import type { ExternalMarketApiRecord } from "../../../lib/api";
 import {
@@ -100,6 +100,57 @@ async function handleRequest(
 
     if (apiPath === "external/markets" && request.method === "GET") {
       return NextResponse.json(await readExternalMarkets(adminSupabase));
+    }
+
+    if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/orderbook$/) && request.method === "GET") {
+      const [, , source, externalId] = apiPath.split("/");
+      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      return NextResponse.json({ orderbook: market?.latestOrderbook ?? [], depth: [] });
+    }
+
+    if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/trades$/) && request.method === "GET") {
+      const [, , source, externalId] = apiPath.split("/");
+      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      return NextResponse.json({ source, externalId, trades: market?.recentTrades ?? [] });
+    }
+
+    if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/history$/) && request.method === "GET") {
+      const [, , source, externalId] = apiPath.split("/");
+      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const history = (market?.recentTrades ?? []).map((trade) => ({
+        timestamp: trade.tradedAt,
+        outcome: trade.externalOutcomeId,
+        price: trade.price,
+        volume: trade.size,
+        liquidity: null,
+        source: market?.source ?? source,
+        provenance: { source: market?.source ?? source, upstream: "external_trade_ticks" },
+      })).reverse();
+      return NextResponse.json({ source, externalId, history });
+    }
+
+    if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/stats$/) && request.method === "GET") {
+      const [, , source, externalId] = apiPath.split("/");
+      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const lastUpdatedAt = market?.lastUpdatedAt ?? market?.lastSyncedAt ?? null;
+      return NextResponse.json({
+        source,
+        externalId,
+        volume24h: market?.volume24h ?? null,
+        liquidity: market?.liquidity ?? market?.volumeTotal ?? null,
+        spread: market?.bestBid !== null && market?.bestAsk !== null && market?.bestBid !== undefined && market?.bestAsk !== undefined
+          ? Math.max(0, market.bestAsk - market.bestBid)
+          : null,
+        closeTime: market?.closeTime ?? null,
+        lastUpdatedAt,
+        stale: lastUpdatedAt ? Date.now() - new Date(lastUpdatedAt).getTime() > 15 * 60 * 1000 : true,
+      });
+    }
+
+    if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+$/) && request.method === "GET") {
+      const [, , source, externalId] = apiPath.split("/");
+      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      return NextResponse.json({ market }, { status: market ? 200 : 404 });
     }
 
     const user = await getAuthenticatedUser(request);

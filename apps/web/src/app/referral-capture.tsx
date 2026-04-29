@@ -47,6 +47,22 @@ export function ReferralCapture() {
     }
   }, []);
 
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      const code = readPendingReferralCode();
+      if (!anchor || !code) return;
+
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin || url.searchParams.has("ref")) return;
+      url.searchParams.set("ref", code);
+      anchor.href = `${url.pathname}${url.search}${url.hash}`;
+    };
+
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
+
   return null;
 }
 

@@ -257,3 +257,21 @@ export async function readExternalMarkets(supabase: {
 
   return normalizeApiPayload(markets);
 }
+
+export async function readExternalMarketBySourceAndId(
+  supabase: { from: (table: string) => unknown },
+  source: string,
+  externalId: string,
+) {
+  const normalizedId = decodeURIComponent(externalId).toLowerCase();
+  const markets = (await readExternalMarkets(supabase)) as PublicExternalMarketRecord[];
+
+  return markets.find((market) =>
+    market.source === source &&
+    (
+      market.externalId.toLowerCase() === normalizedId ||
+      market.slug.toLowerCase() === normalizedId ||
+      market.id.toLowerCase() === normalizedId
+    )
+  ) ?? null;
+}

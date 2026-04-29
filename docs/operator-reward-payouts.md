@@ -22,6 +22,7 @@ Rewards are calculated only from confirmed Builder-fee revenue.
 - If no direct referrer exists, the referrer share goes to platform.
 - Rewards are direct-referral only. There is no recursive reward tree.
 - There is no profit guarantee.
+- No automatic payout request or treasury transfer should be enabled for production without a separate operator-approved launch gate.
 
 ## Payout Rail
 

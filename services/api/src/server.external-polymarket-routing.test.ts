@@ -20,6 +20,22 @@ const TOKEN_ID = "123";
 const NOW = new Date("2026-05-01T00:00:00.000Z");
 
 const getHandleRequest = async () => (await import("./server")).handleRequest;
+const getServer = async () => await import("./server");
+
+const withRouteAuth = async (run: (handleRequest: (request: Request) => Promise<Response>) => Promise<void>) => {
+  const server = await getServer();
+  server.setApiAuthVerifierForTests(async () => ({
+    id: USER_ID,
+    email: "user@example.test",
+    role: "user",
+    claims: {},
+  }));
+  try {
+    await run(server.handleRequest);
+  } finally {
+    server.setApiAuthVerifierForTests(null);
+  }
+};
 
 const withEnv = async (values: Record<string, string | undefined>, run: () => Promise<void>) => {
   const prev = new Map<string, string | undefined>();
@@ -160,30 +176,36 @@ test("missing builder code disables routed trading but read-only external market
   await withEnv({ POLY_BUILDER_CODE: undefined, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
     const readOnlyResponse = await handleRequest(new Request("http://localhost/external/markets"));
     assert.equal(readOnlyResponse.status, 200);
-    const routingResponse = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
-    const payload = await routingResponse.json() as { code: string };
-    assert.equal(routingResponse.status, 503);
-    assert.equal(payload.code, "POLYMARKET_BUILDER_CODE_MISSING");
+    const unauthenticatedResponse = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
+    assert.equal(unauthenticatedResponse.status, 401);
+    await withRouteAuth(async (authenticatedHandleRequest) => {
+      const routingResponse = await authenticatedHandleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
+      const payload = await routingResponse.json() as { code: string };
+      assert.equal(routingResponse.status, 503);
+      assert.equal(payload.code, "POLYMARKET_BUILDER_CODE_MISSING");
+    });
   });
 });
 
 test("external Polymarket routing stays disabled behind the named feature flag", async () => {
-  const handleRequest = await getHandleRequest();
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: undefined }, async () => {
-    const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify(baseInput()) }));
-    const payload = await response.json() as { code: string };
-    assert.equal(response.status, 503);
-    assert.equal(payload.code, "POLYMARKET_ROUTED_TRADING_DISABLED");
+    await withRouteAuth(async (handleRequest) => {
+      const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify(baseInput()) }));
+      const payload = await response.json() as { code: string };
+      assert.equal(response.status, 503);
+      assert.equal(payload.code, "POLYMARKET_ROUTED_TRADING_DISABLED");
+    });
   });
 });
 
 test("setting routed trading true without real submitter still fails", async () => {
-  const handleRequest = await getHandleRequest();
   await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true", APP_ENV: "staging", POLYMARKET_CLOB_SUBMITTER: "disabled" }, async () => {
-    const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify(baseInput()) }));
-    const payload = await response.json() as { code: string };
-    assert.equal(response.status, 503);
-    assert.equal(payload.code, "POLYMARKET_SUBMITTER_UNAVAILABLE");
+    await withRouteAuth(async (handleRequest) => {
+      const response = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify(baseInput()) }));
+      const payload = await response.json() as { code: string };
+      assert.equal(response.status, 503);
+      assert.equal(payload.code, "POLYMARKET_SUBMITTER_UNAVAILABLE");
+    });
   });
 });
 

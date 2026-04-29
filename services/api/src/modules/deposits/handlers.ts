@@ -7,7 +7,6 @@ import { incrementCounter, logger } from "@bet/observability";
 
 import { getLinkedWalletForUser } from "../wallets/repository";
 import { insertAuditRecord } from "../shared/audit";
-import { DEMO_USER_ID } from "../shared/constants";
 import {
   getDepositByTxHash,
   insertDepositJournal,
@@ -39,15 +38,23 @@ const minConfirmations = (): number =>
   });
 
 export const getDepositHistory = async (userId?: string) => {
+  if (!userId) {
+    throw new Error("authentication required");
+  }
+
   const db = createDatabaseClient();
-  return listDepositsForUser(db, userId ?? DEMO_USER_ID);
+  return listDepositsForUser(db, userId);
 };
 
 export const verifyDepositWithDependencies = async (
   input: VerifyDepositInput,
   dependencies?: { adapter?: DepositVerificationAdapter },
 ): Promise<VerifyDepositResult> => {
-  const userId = input.userId ?? DEMO_USER_ID;
+  if (!input.userId) {
+    throw new Error("authentication required");
+  }
+
+  const userId = input.userId;
   const db = createDatabaseClient();
   const adapter = dependencies?.adapter ?? createBaseChainAdapter();
   const txHash = normalizeTxHash(input.txHash);

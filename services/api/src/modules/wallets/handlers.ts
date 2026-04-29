@@ -2,7 +2,6 @@ import { createDatabaseClient } from "@bet/db";
 import { verifyMessage } from "ethers";
 
 import { insertAuditRecord } from "../shared/audit";
-import { DEMO_USER_ID } from "../shared/constants";
 import { getLinkedWalletForUser, upsertLinkedWallet } from "./repository";
 
 export interface LinkWalletInput {
@@ -25,23 +24,30 @@ export const assertWalletLinkMessage = (message: string, userId: string): void =
 };
 
 export const getLinkedWallet = async (userId?: string) => {
+  if (!userId) {
+    throw new Error("authentication required");
+  }
+
   const db = createDatabaseClient();
-  return getLinkedWalletForUser(db, userId ?? DEMO_USER_ID);
+  return getLinkedWalletForUser(db, userId);
 };
 
 export const linkBaseWallet = async (input: LinkWalletInput) => {
-  const userId = input.userId ?? DEMO_USER_ID;
+  if (!input.userId) {
+    throw new Error("authentication required");
+  }
+
+  const userId = input.userId;
+  assertWalletLinkMessage(input.signedMessage, userId);
+
+  const recoveredAddress = verifyMessage(input.signedMessage, input.signature);
+
+  if (normalizeAddress(recoveredAddress) !== normalizeAddress(input.walletAddress)) {
+    throw new Error("signature does not match wallet address");
+  }
+
   const db = createDatabaseClient();
-
   return db.transaction(async (transaction) => {
-    assertWalletLinkMessage(input.signedMessage, userId);
-
-    const recoveredAddress = verifyMessage(input.signedMessage, input.signature);
-
-    if (normalizeAddress(recoveredAddress) !== normalizeAddress(input.walletAddress)) {
-      throw new Error("signature does not match wallet address");
-    }
-
     const linkedWallet = await upsertLinkedWallet(transaction, {
       userId,
       walletAddress: normalizeAddress(input.walletAddress),
