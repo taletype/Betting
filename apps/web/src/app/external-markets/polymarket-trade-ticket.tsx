@@ -1,8 +1,13 @@
 import React from "react";
 
-import { getPolymarketRoutingReadiness } from "./polymarket-routing-readiness";
+import { getPolymarketRoutingReadiness, type PolymarketRoutingReadiness } from "./polymarket-routing-readiness";
 
 interface Props {
+  marketTitle: string;
+  outcome: string;
+  side: "buy" | "sell";
+  price: number | null;
+  size: number | null;
   hasBuilderCode: boolean;
   featureEnabled: boolean;
   walletConnected: boolean;
@@ -10,22 +15,35 @@ interface Props {
   marketTradable: boolean;
 }
 
+const readinessCopy: Record<PolymarketRoutingReadiness, string> = {
+  builder_code_missing: "Builder code missing",
+  feature_disabled: "Routed trading feature disabled",
+  wallet_not_connected: "Wallet not connected",
+  credentials_missing: "Polymarket credentials missing",
+  market_not_tradable: "Market not tradable",
+  ready_to_route: "Ready (submission scaffold only)",
+};
+
+const formatNum = (value: number | null): string => (value === null ? "—" : value.toFixed(3));
+
 export function PolymarketTradeTicket(props: Props) {
   const readiness = getPolymarketRoutingReadiness(props);
   const disabled = readiness !== "ready_to_route";
-  const label = readiness === "wallet_not_connected"
-    ? "Connect wallet"
-    : readiness === "credentials_missing"
-      ? "Polymarket credentials required"
-      : readiness === "ready_to_route"
-        ? "Submit user-signed order"
-        : "Trading not enabled";
+  const estimated = props.price === null || props.size === null ? null : props.price * props.size;
 
   return (
-    <div className="market-actions stack">
-      <div className="muted">{disabled ? label : "Review order"}</div>
-      <button type="button" disabled={disabled} title={label}>Trade via Polymarket</button>
-      {!disabled ? <div className="muted">Submit user-signed order</div> : null}
+    <div className="market-actions stack panel">
+      <strong>Trade via Polymarket (non-custodial scaffold)</strong>
+      <div className="muted">Review-only shell. Orders remain user-signed and routed externally.</div>
+      <div className="kv"><span className="kv-key">Market</span><span className="kv-value">{props.marketTitle}</span></div>
+      <div className="kv"><span className="kv-key">Outcome</span><span className="kv-value">{props.outcome}</span></div>
+      <div className="kv"><span className="kv-key">Side</span><span className="kv-value">{props.side}</span></div>
+      <div className="kv"><span className="kv-key">Price</span><span className="kv-value">{formatNum(props.price)}</span></div>
+      <div className="kv"><span className="kv-key">Size</span><span className="kv-value">{formatNum(props.size)}</span></div>
+      <div className="kv"><span className="kv-key">Estimated cost/proceeds</span><span className="kv-value">{formatNum(estimated)}</span></div>
+      <div className="muted">Builder attribution applies per Polymarket Builder settings.</div>
+      <div className="muted">Readiness: {readinessCopy[readiness]}</div>
+      <button type="button" disabled={disabled} title={readinessCopy[readiness]}>Submit user-signed order</button>
     </div>
   );
 }
