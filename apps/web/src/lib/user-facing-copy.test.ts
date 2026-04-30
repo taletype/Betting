@@ -110,7 +110,8 @@ test("Polymarket routed trading stays disabled by default", () => {
 test("zh-HK Polymarket live trading readiness copy exposes every explicit state", () => {
   const readiness = getLocaleCopy("zh-HK").research.readinessCopy;
   for (const text of [
-    "交易功能尚未啟用",
+    "交易介面預覽",
+    "實盤提交已停用",
     "尚未連接錢包",
     "需要 Polymarket 憑證",
     "Builder Code 未設定",

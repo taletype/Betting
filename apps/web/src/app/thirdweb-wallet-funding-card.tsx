@@ -24,8 +24,10 @@ export function ThirdwebWalletFundingCard({
   const [fundingState, setFundingState] = useState<"idle" | "opened" | "completed" | "failed">("idle");
   const thirdweb = useThirdwebWalletStatus();
   const effectiveWalletConnected = thirdweb.configured ? thirdweb.connected : walletConnected;
+  const providerAvailable = Boolean(thirdweb.client);
 
   const openFunding = () => {
+    if (!providerAvailable) return;
     trackFunnelEvent("wallet_funding_opened", { surface, provider: "thirdweb" });
     trackFunnelEvent("wallet_funding_quoted", { surface, provider: "thirdweb" });
     trackFunnelEvent("thirdweb_route_quoted", { surface, provider: "thirdweb" });
@@ -37,12 +39,12 @@ export function ThirdwebWalletFundingCard({
     <section className={compact ? "disclosure-card stack" : "panel disclosure-card stack"} data-testid="thirdweb-wallet-funding">
       <div className="section-heading-row">
         <strong>增值錢包 / Add funds</strong>
-        <span className={`badge badge-${effectiveWalletConnected ? "success" : "neutral"}`}>
-          {effectiveWalletConnected ? "錢包已連接" : "尚未連接錢包"}
+        <span className={`badge badge-${!providerAvailable ? "warning" : effectiveWalletConnected ? "success" : "neutral"}`}>
+          {!providerAvailable ? "錢包功能暫未啟用" : effectiveWalletConnected ? "錢包已連接" : "尚未連接錢包"}
         </span>
       </div>
       <div className="cluster">
-        {thirdweb.client ? (
+        {providerAvailable && thirdweb.client ? (
           <ConnectButton
             client={thirdweb.client}
             chain={polygon}
@@ -58,17 +60,19 @@ export function ThirdwebWalletFundingCard({
         ) : (
           <button
             type="button"
+            disabled
             onClick={() => {
               trackFunnelEvent("wallet_connect_started", { surface, provider: "thirdweb", configured: false });
             }}
           >
-            連接錢包
+            錢包功能暫未啟用
           </button>
         )}
-        <button type="button" onClick={openFunding}>
+        <button type="button" onClick={openFunding} disabled={!providerAvailable}>
           增值錢包
         </button>
       </div>
+      {providerAvailable && !effectiveWalletConnected ? <p className="muted">連接錢包後，可透過第三方服務為你自己的錢包增值。</p> : null}
       <div className="sr-only">連接錢包 錢包已連接 更換錢包 斷開連接</div>
       <div className="kv">
         <span className="kv-key">目標網絡 / 資產</span>
@@ -88,7 +92,7 @@ export function ThirdwebWalletFundingCard({
       {fundingState === "opened" ? (
         <div className="stack">
           <div className="badge badge-warning">Thirdweb 增值流程會在第三方付款服務中完成；完成狀態只可由供應商確認。</div>
-          {thirdweb.client ? (
+          {providerAvailable && thirdweb.client ? (
             <PayEmbed
               client={thirdweb.client}
               theme="dark"

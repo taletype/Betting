@@ -131,9 +131,11 @@ export function PolymarketTradeTicket(props: Props) {
   );
   const tradingStatusLabel = publicTradingReady
     ? "實盤提交已啟用"
-    : props.featureEnabled
-      ? "交易介面預覽已啟用；實盤提交仍然停用"
-      : "交易介面預覽；實盤提交停用";
+    : props.submitModeEnabled === false
+      ? "交易介面預覽 / 實盤提交已停用"
+      : props.marketTradable
+        ? "交易介面預覽"
+        : "市場只供瀏覽";
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
@@ -194,13 +196,14 @@ export function PolymarketTradeTicket(props: Props) {
       <div className="ticket-header">
         <div>
           <strong>{copy.tradeViaPolymarket}</strong>
-          <div className="muted">非託管交易預備介面</div>
+          <div className="muted">{props.submitModeEnabled ? "交易介面預覽" : "交易介面預覽 / 實盤提交已停用"}</div>
         </div>
-        <span className="badge badge-warning">{props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : "實際訂單提交已停用"}</span>
+        <span className="badge badge-warning">
+          {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : props.submitModeEnabled ? "交易提交器未準備好" : "實盤提交已停用"}
+        </span>
       </div>
       <div className="badge badge-warning">Canary-only · 非公開實盤交易</div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
-      <div className="warning-card">用戶自行簽署訂單。本平台不會代用戶下注或交易。本平台不託管用戶在 Polymarket 的資金。</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
       <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={walletConnected} />
       <BuilderFeeDisclosureCard

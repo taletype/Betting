@@ -176,6 +176,8 @@ test("Thirdweb funding CTA renders as non-custodial wallet utility without login
   assert.match(markup, /本平台不會託管你的資金/);
   assert.match(markup, /單純增值錢包不代表已完成 Polymarket 交易/);
   assert.match(markup, new RegExp(thirdwebDisclosure));
+  assert.match(markup, /錢包功能暫未啟用/);
+  assert.doesNotMatch(markup, /spinner|載入中|loading/i);
   assert.doesNotMatch(markup, /已登入|管理員/);
 });
 
@@ -296,7 +298,7 @@ test("Trade via Polymarket ticket is disabled by default", () => {
     );
 
     assert.match(markup, /透過 Polymarket 交易/);
-    assert.match(markup, /交易功能尚未啟用/);
+    assert.match(markup, /交易介面預覽/);
     assert.match(markup, /用戶需要自行簽署訂單/);
     assert.match(markup, /本平台不會代用戶下注或交易/);
     assert.match(markup, /不託管用戶在 Polymarket 的資金/);
@@ -343,7 +345,7 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
   assert.match(credentialMarkup, /data-testid="top-blocking-reason">需要 Polymarket 憑證/);
 
   const featureMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, featureEnabled: false }));
-  assert.match(featureMarkup, /data-testid="top-blocking-reason">交易功能尚未啟用/);
+  assert.match(featureMarkup, /data-testid="top-blocking-reason">交易介面預覽/);
 
   const builderMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasBuilderCode: false }));
   assert.match(builderMarkup, /data-testid="top-blocking-reason">Builder Code 未設定/);
@@ -354,6 +356,10 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
 
   const submitterMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitterAvailable: false }));
   assert.match(submitterMarkup, /data-testid="top-blocking-reason">交易提交器未準備好/);
+
+  const submitDisabledMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitModeEnabled: false }));
+  assert.match(submitDisabledMarkup, /data-testid="top-blocking-reason">實盤提交已停用/);
+  assert.doesNotMatch(submitDisabledMarkup, /交易功能完成/);
 });
 
 test("rewards page presents rewards as manual approval accounting", async () => {

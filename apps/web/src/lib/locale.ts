@@ -1148,8 +1148,8 @@ const zhHK: DeepPartial<LocaleCopy> = {
     readinessCopy: {
       auth_required: "尚未登入",
       builder_code_missing: "Builder Code 未設定",
-      submit_mode_disabled: "交易功能尚未啟用",
-      feature_disabled: "交易功能尚未啟用",
+      submit_mode_disabled: "實盤提交已停用",
+      feature_disabled: "交易介面預覽",
       beta_user_not_allowlisted: "測試交易功能只限指定用戶",
       wallet_not_connected: "尚未連接錢包",
       wallet_funds_insufficient: "錢包資金不足",

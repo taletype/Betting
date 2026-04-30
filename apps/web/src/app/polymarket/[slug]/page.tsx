@@ -49,6 +49,14 @@ const toDisplay = (value: number | null): string =>
 const toPriceDisplay = (value: number | null): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const getOutcomePrice = (market: ExternalMarketApiRecord, yesNo: "yes" | "no"): number | null => {
+  const outcome = market.outcomes.find((item) => item.yesNo === yesNo || item.title.toLowerCase() === yesNo);
+  return outcome?.lastPrice ?? outcome?.bestAsk ?? outcome?.bestBid ?? null;
+};
+
+const getShareLabel = (refCode: string | null): string =>
+  refCode ? "複製市場推薦連結" : "複製市場連結";
+
 const hasPolymarketBuilderCode = (): boolean => {
   try {
     return getPolymarketBuilderCode() !== null;
@@ -175,6 +183,8 @@ const getStatusFlags = (market: ExternalMarketApiRecord): {
 };
 
 const yesNo = (value: boolean | null): string => value === null ? "未知" : value ? "是" : "否";
+
+const isMarketDebugVisible = (): boolean => process.env.NEXT_PUBLIC_SHOW_MARKET_DEBUG === "true";
 
 const isAllowlistedPolymarketBetaUser = (user: { id: string; email: string | null } | null): boolean => {
   if (!user) return false;
@@ -308,6 +318,11 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const upstreamTradable = statusFlags.active !== false && statusFlags.archived !== true && statusFlags.restricted !== true;
   const marketTradable = upstreamTradable && isMarketTradable(market, Boolean(stale));
   const orderValid = hasValidTradeData(market);
+  const restricted = statusFlags.restricted === true;
+  const browseOnly = restricted || stale || !marketTradable;
+  const yesPrice = getOutcomePrice(market, "yes");
+  const noPrice = getOutcomePrice(market, "no");
+  const debugVisible = isMarketDebugVisible();
 
   const routingInput: PolymarketRoutingReadinessInput = {
     hasBuilderCode,
@@ -329,13 +344,10 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const publicSubmitEnabled = globallyRoutedTradingEnabled &&
     hasBuilderCode &&
     submitterAvailable;
-  const publicTradingStatusLabel = publicSubmitEnabled
-    ? "實盤提交已啟用"
-    : routedTradingEnabled
-      ? "交易介面預覽已啟用；實盤提交仍然停用"
-      : "交易介面預覽；實盤提交停用";
+  const publicTradingStatusLabel = publicSubmitEnabled ? "實盤提交已啟用" : "交易介面預覽 / 實盤提交已停用";
   const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(slug)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const marketShareUrl = `${getSiteUrl()}${detailPath}`;
+  const shareLabel = getShareLabel(refCode);
   const tradeTicketProps = {
     locale,
     hasBuilderCode,
@@ -371,35 +383,35 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <section className="hero">
         <div className="market-card-meta">
           <div className="badge badge-info">Polymarket</div>
-          <div className="badge badge-info">Beta</div>
           <div className="badge badge-success">非託管</div>
-          <div className="badge badge-warning">交易尚未啟用</div>
-          <div className={`badge badge-${market.status === "open" ? "success" : "warning"}`}>{copy.statuses[market.status] ?? market.status}</div>
-          {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
-          {!orderValid ? <div className="badge badge-warning">暫無成交資料</div> : null}
-          {market.translationStatus === "stale" ? <div className="badge badge-warning">{shortCopy.translationStale}</div> : null}
-          {market.locale === "en" && locale !== "en" ? <div className="badge badge-warning">{shortCopy.showingOriginal}</div> : null}
+          {browseOnly ? <div className="badge badge-warning">只供瀏覽</div> : null}
+          {!submitModeEnabled ? <div className="badge badge-warning">實盤提交已停用</div> : null}
+          {restricted ? <div className="badge badge-warning">市場受限制</div> : null}
         </div>
         <h1>{localizedTitle}</h1>
-        <p>{market.description || copy.subtitle}</p>
+        <div className="grid">
+          <article className="metric-card">
+            <span className="metric-label">Yes</span>
+            <strong>{toPriceDisplay(yesPrice)}</strong>
+          </article>
+          <article className="metric-card">
+            <span className="metric-label">No</span>
+            <strong>{toPriceDisplay(noPrice)}</strong>
+          </article>
+        </div>
         <div className="trust-badge-row" aria-label="市場重點">
-          <span className="badge badge-neutral">類別：{formatProvenance(market)}</span>
           <span className="badge badge-neutral">成交量：{toDisplay(market.volume24h ?? market.volumeTotal)}</span>
           <span className="badge badge-neutral">流動性：{toDisplay(market.liquidity ?? market.volumeTotal)}</span>
           <span className="badge badge-neutral">結束：{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span>
         </div>
-        <section className="original-copy" aria-label="原始市場問題">
-          <strong>原始市場問題：</strong>
-          <p className="muted">{originalQuestion || market.title}</p>
-          {market.descriptionOriginal ? <p className="muted">{market.descriptionOriginal}</p> : null}
-        </section>
+        {market.description ? <p>{market.description}</p> : null}
         <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
           {market.marketUrl ? <Link className="button-link primary-cta" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : null}
           <TrackedCopyButton
             value={marketShareUrl}
-            label="複製市場推薦連結"
+            label={shareLabel}
             copiedLabel="已複製"
             eventName="market_share_link_copied"
             metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
@@ -417,7 +429,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
       {!marketTradable ? (
         <section className="panel disclosure-card stack">
-          <strong>市場暫時不可交易</strong>
+          <strong>{restricted ? "只供瀏覽 / 市場受限制" : "市場暫時不可交易"}</strong>
           <p className="muted">已結束、已結算、已取消、受限制、資料過期或缺少有效價格資料的市場只供瀏覽，不會開放 Polymarket 路由交易。</p>
         </section>
       ) : null}
@@ -476,35 +488,49 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       </section>
 
       <section className="panel stack">
+        <h2 className="section-title">市場規則 / Resolution rules</h2>
+        <details className="advanced-ticket-settings">
+          <summary>查看原始英文規則</summary>
+          <section className="original-copy" aria-label="原始市場問題">
+            <strong>原始市場問題：</strong>
+            <p className="muted">{originalQuestion || market.title}</p>
+            {market.descriptionOriginal || market.description ? <p className="muted">{market.descriptionOriginal ?? market.description}</p> : null}
+          </section>
+        </details>
+      </section>
+
+      <section className="panel stack">
         <h2 className="section-title">{copy.provenance}</h2>
         <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">{market.source}</span></div>
-        <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
-        <div className="kv"><span className="kv-key">原始 route slug</span><span className="kv-value mono">{slugResolution.decodedSlug}</span></div>
-        <div className="kv"><span className="kv-key">Gamma canonical slug</span><span className="kv-value mono">{market.slug}</span></div>
-        <div className="kv"><span className="kv-key">active / closed / archived / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.restricted)}</span></div>
         <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
         {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
       </section>
 
-      <section className="panel stack">
-        <h2 className="section-title">市場資料健康狀態</h2>
-        <div className="grid">
-          <div className="kv"><span className="kv-key">feed cache available</span><span className="kv-value">{market.sourceProvenance || market.provenance ? "yes" : "unknown"}</span></div>
-          <div className="kv"><span className="kv-key">detail fallback available</span><span className="kv-value">yes</span></div>
-          <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{failed ? "no" : "yes"}</span></div>
-          <div className="kv"><span className="kv-key">Gamma fallback enabled/used</span><span className="kv-value">{formatProvenance(market).includes("gamma-api.polymarket.com") ? "yes" : "enabled"}</span></div>
-          <div className="kv"><span className="kv-key">stale cache</span><span className="kv-value">{stale ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">detail not found</span><span className="kv-value">no</span></div>
-        </div>
-      </section>
+      {debugVisible ? (
+        <section className="panel stack">
+          <h2 className="section-title">市場資料健康狀態</h2>
+          <div className="grid">
+            <div className="kv"><span className="kv-key">feed cache available</span><span className="kv-value">{market.sourceProvenance || market.provenance ? "yes" : "unknown"}</span></div>
+            <div className="kv"><span className="kv-key">detail fallback available</span><span className="kv-value">yes</span></div>
+            <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{failed ? "no" : "yes"}</span></div>
+            <div className="kv"><span className="kv-key">Gamma fallback enabled/used</span><span className="kv-value">{formatProvenance(market).includes("gamma-api.polymarket.com") ? "yes" : "enabled"}</span></div>
+            <div className="kv"><span className="kv-key">stale cache</span><span className="kv-value">{stale ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">detail not found</span><span className="kv-value">no</span></div>
+            <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
+            <div className="kv"><span className="kv-key">原始 route slug</span><span className="kv-value mono">{slugResolution.decodedSlug}</span></div>
+            <div className="kv"><span className="kv-key">Gamma canonical slug</span><span className="kv-value mono">{market.slug}</span></div>
+            <div className="kv"><span className="kv-key">active / closed / archived / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.restricted)}</span></div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel stack">
         <h2 className="section-title">推薦分成 / 推薦分享</h2>
         <p className="muted">分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
         <TrackedCopyButton
           value={marketShareUrl}
-          label="複製市場推薦連結"
+          label={shareLabel}
           copiedLabel="已複製"
           eventName="market_share_link_copied"
           metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
@@ -564,7 +590,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               <p className="muted">複製市場邀請連結，讓朋友直接查看同一個 Polymarket 市場。</p>
               <TrackedCopyButton
                 value={marketShareUrl}
-                label="複製市場邀請連結"
+                label={shareLabel}
                 copiedLabel="已複製"
                 eventName="market_share_link_copied"
                 metadata={refCode ? { code: refCode, market: market.slug || market.externalId, surface: "detail_panel" } : { market: market.slug || market.externalId, surface: "detail_panel" }}
@@ -581,9 +607,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                   <li key={reason}>{copy.readinessCopy[reason] ?? reason}</li>
                 ))}
               </ul>
-              <p className="muted">交易功能尚未啟用；只有所有生產準備檢查通過後，才會允許提交用戶自行簽署的訂單。</p>
+              <p className="muted">交易介面預覽；只有所有生產準備檢查通過且實盤提交啟用後，才會允許提交用戶自行簽署的訂單。</p>
             </div>
-            <div className="warning-card">非託管：本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</div>
             <PolymarketTradeTicket {...tradeTicketProps} />
           </section>
         </aside>

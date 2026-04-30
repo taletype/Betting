@@ -13,7 +13,8 @@
     "db:reset": "./infra/scripts/reset-local-db.sh",
     "smoke:local": "./infra/scripts/smoke-local.sh",
     "sync:external": "pnpm --filter @bet/external-sync-worker run run",
-    "smoke:polymarket-public": "./infra/scripts/smoke-polymarket-public.sh"
+    "smoke:polymarket-public": "./infra/scripts/smoke-polymarket-public.sh",
+    "preflight:polymarket-public": "pnpm --filter @bet/service-api run preflight:polymarket-public"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

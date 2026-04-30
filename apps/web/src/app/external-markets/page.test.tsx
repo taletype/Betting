@@ -415,8 +415,8 @@ test("Polymarket page browsing works without builder code and shows disabled tra
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /透過 Polymarket 交易/);
-    assert.match(markup, /交易功能尚未啟用/);
-    assert.match(markup, /title="交易功能尚未啟用"/);
+    assert.match(markup, /交易介面預覽/);
+    assert.match(markup, /title="尚未登入"/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
@@ -472,10 +472,11 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /Orderbook snapshot/);
   assert.match(markup, /透過 Polymarket 交易/);
   assert.match(markup, /mobile-trade-sheet/);
-  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>交易功能尚未啟用<\/small><\/summary>/);
+  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
-  assert.match(markup, /<button[^>]*>交易功能尚未啟用<\/button>/);
+  assert.match(markup, /<button[^>]*>交易介面預覽<\/button>/);
   assert.match(markup, /複製市場推薦連結/);
+  assert.equal(markup.match(/class="warning-card"/g)?.length ?? 0, 2);
 });
 
 test("Polymarket detail page renders safe not-found state", async (t) => {
@@ -568,6 +569,8 @@ test("Polymarket detail page resolves feed fallback links from market list", asy
 
   assert.match(markup, /挪威會否贏得 2026 FIFA 世界盃？/);
   assert.match(markup, /POLY-NORWAY/);
+  assert.match(markup, /複製市場連結/);
+  assert.doesNotMatch(markup, /複製市場推薦連結/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
   assert.match(markup, /disabled=""/);
 });
@@ -631,12 +634,12 @@ test("Polymarket detail page renders Norway Gamma fallback and preserves suffixe
 
   assert.match(markup, /挪威會否贏得 2026 FIFA 世界盃？/);
   assert.match(markup, /558403/);
-  assert.match(markup, /gamma-api\.polymarket\.com \/markets\/slug\/will-norway-win-the-2026-fifa-world-cup/);
-  assert.match(markup, /原始 route slug<\/span><span class="kv-value mono">will-norway-win-the-2026-fifa-world-cup-893/);
-  assert.match(markup, /Gamma canonical slug<\/span><span class="kv-value mono">will-norway-win-the-2026-fifa-world-cup/);
+  assert.doesNotMatch(markup, /gamma-api\.polymarket\.com \/markets\/slug\/will-norway-win-the-2026-fifa-world-cup/);
+  assert.doesNotMatch(markup, /原始 route slug<\/span><span class="kv-value mono">will-norway-win-the-2026-fifa-world-cup-893/);
+  assert.doesNotMatch(markup, /Gamma canonical slug<\/span><span class="kv-value mono">will-norway-win-the-2026-fifa-world-cup/);
   assert.match(markup, /data-copy-value="http:\/\/127\.0\.0\.1:3000\/polymarket\/will-norway-win-the-2026-fifa-world-cup-893\?ref=HKREF001"/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
-  assert.match(markup, /市場資料健康狀態/);
+  assert.doesNotMatch(markup, /市場資料健康狀態/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
   assert.match(markup, /disabled=""/);
 });
@@ -676,8 +679,9 @@ test("restricted Polymarket detail renders data but disables trading", async (t)
   }));
 
   assert.match(markup, /Restricted market still renders/);
-  assert.match(markup, /市場暫時不可交易/);
-  assert.match(markup, /active \/ closed \/ archived \/ restricted<\/span><span class="kv-value">是 \/ 否 \/ 否 \/ 是/);
+  assert.match(markup, /只供瀏覽/);
+  assert.match(markup, /市場受限制/);
+  assert.doesNotMatch(markup, /active \/ closed \/ archived \/ restricted<\/span><span class="kv-value">是 \/ 否 \/ 否 \/ 是/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
   assert.match(markup, /disabled=""/);
 });
@@ -1586,7 +1590,7 @@ test("Polymarket page defaults routed trading disabled", async () => {
   }
 });
 
-test("Polymarket readiness keeps feature disabled as top launch reason while checklist stays complete", () => {
+test("Polymarket readiness prioritizes user blockers while preserving launch checklist details", () => {
   const input: PolymarketRoutingReadinessInput = {
     loggedIn: true,
     hasBuilderCode: true,
@@ -1602,7 +1606,7 @@ test("Polymarket readiness keeps feature disabled as top launch reason while che
   };
 
   assert.equal(getPolymarketRoutingReadiness(input), "feature_disabled");
-  assert.equal(getPolymarketTopBlockingReason(input), "feature_disabled");
+  assert.equal(getPolymarketTopBlockingReason(input), "wallet_not_connected");
   assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
     "feature_disabled",
     "wallet_not_connected",

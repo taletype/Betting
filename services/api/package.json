@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
     "test": "pnpm exec node --test --import tsx $(find src -name '*.test.ts' -print)",
-    "test:db-happy-path": "node --import tsx src/scripts/db-happy-path.ts"
+    "test:db-happy-path": "node --import tsx src/scripts/db-happy-path.ts",
+    "preflight:polymarket-public": "node --import tsx src/scripts/polymarket-public-live-preflight.ts"
   },
   "dependencies": {
     "@bet/chain": "workspace:*",

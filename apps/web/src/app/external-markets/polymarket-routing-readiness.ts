@@ -84,7 +84,7 @@ export interface PolymarketRoutingReadinessInput {
 }
 
 const tradingDisabledReasonZh: Record<PolymarketTradingReadinessCheck, string> = {
-  routedTradingEnabled: "交易功能尚未啟用",
+  routedTradingEnabled: "交易介面預覽",
   betaUserAllowlisted: "測試交易功能只限指定用戶",
   builderCodeConfigured: "Builder Code 未設定",
   walletConnected: "尚未連接錢包",
@@ -92,7 +92,7 @@ const tradingDisabledReasonZh: Record<PolymarketTradingReadinessCheck, string> =
   userCanSignOrder: "需要用戶自行簽署訂單",
   marketTradable: "市場暫時不可交易",
   balanceAllowanceReady: "餘額或授權不足",
-  submitterReady: "交易提交器未準備好",
+  submitterReady: "實盤提交已停用",
   attributionRecordingReady: "交易提交器未準備好",
 };
 
@@ -193,12 +193,22 @@ export const isPolymarketRoutingFullyEnabled = (input: PolymarketRoutingReadines
 export const getPolymarketTopBlockingReason = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness | null => {
-  if (!input.featureEnabled) {
-    return "feature_disabled";
-  }
+  if (input.loggedIn === false) return "auth_required";
+  if (!input.walletConnected || input.walletAddressKnown === false) return "wallet_not_connected";
+  if (!input.hasCredentials) return "credentials_missing";
+  if (!input.marketTradable || input.orderValid === false) return "market_not_tradable";
+  if (input.submitModeEnabled === false) return "submit_mode_disabled";
+  if (!input.submitterAvailable) return "submitter_unavailable";
+  if (!input.featureEnabled) return "feature_disabled";
+  if (input.betaUserAllowlisted === false) return "beta_user_not_allowlisted";
+  if (!input.hasBuilderCode) return "builder_code_missing";
 
-  const readiness = getPolymarketRoutingReadiness(input);
-  return readiness === "ready_to_submit" || readiness === "submitted" ? null : readiness;
+  const geoblockReadiness = getGeoblockReadiness(input);
+  if (geoblockReadiness) return geoblockReadiness;
+  if (input.walletFundsSufficient === false) return "wallet_funds_insufficient";
+  if (input.userSigningAvailable === false || !input.userSigned) return "signature_required";
+  if (input.submitted) return null;
+  return null;
 };
 
 export const getPolymarketGeoblockStatusLabel = (status: PolymarketGeoblockStatus): string => {
@@ -279,8 +289,8 @@ export const getPolymarketReadinessChecklist = (
     {
       id: "trading_feature",
       label: "交易功能",
-      explanation: input.featureEnabled ? "路由交易功能已啟用。" : "交易功能尚未啟用，市場仍可瀏覽。",
-      status: input.featureEnabled ? "complete" : "blocked",
+      explanation: input.featureEnabled ? "交易介面預覽可用；實盤提交需另行啟用。" : "交易介面預覽；市場仍可瀏覽。",
+      status: input.featureEnabled ? "checking" : "missing",
     },
     {
       id: "market_status",
@@ -297,7 +307,7 @@ export const getPolymarketReadinessChecklist = (
     {
       id: "submitter",
       label: "提交器",
-      explanation: input.submitModeEnabled === false || !input.submitterAvailable ? "交易提交器未準備好。" : "交易提交器已準備接收用戶簽署訂單。",
+      explanation: input.submitModeEnabled === false ? "實盤提交已停用。" : !input.submitterAvailable ? "交易提交器未準備好。" : "交易提交器已準備接收用戶簽署訂單。",
       status: input.submitModeEnabled === false || !input.submitterAvailable ? "blocked" : "complete",
     },
   ];
