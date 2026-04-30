@@ -63,6 +63,7 @@ export function PolymarketTradeTicket(props: Props) {
   const copy = getLocaleCopy(props.locale).research;
   const thirdweb = useThirdwebWalletStatus();
   const walletConnected = thirdweb.configured ? thirdweb.connected : props.walletConnected;
+  const walletAddressKnown = thirdweb.configured ? Boolean(thirdweb.address) : props.walletConnected;
   const [selectedTokenId, setSelectedTokenId] = useState(props.tokenId ?? props.outcomes?.[0]?.tokenId ?? "");
   const [side, setSide] = useState<"buy" | "sell">(props.side);
   const [orderStyle, setOrderStyle] = useState<"limit" | "marketable_limit">("limit");
@@ -100,6 +101,8 @@ export function PolymarketTradeTicket(props: Props) {
     ...props,
     loggedIn: props.loggedIn,
     walletConnected,
+    walletAddressKnown,
+    fundingAvailable: thirdweb.configured,
     geoblockStatus,
     geoblockAllowed: geoblockStatus === "allowed" ? true : geoblockStatus === "blocked" ? false : undefined,
     userSigningAvailable: props.userSigningAvailable,
@@ -233,6 +236,8 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">實際訂單提交</span><span className="kv-value">{props.featureEnabled && props.submitModeEnabled && props.submitterAvailable ? "已啟用" : "已停用"}</span></div>
         <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{props.hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
         <div className="kv"><span className="kv-key">錢包狀態</span><span className="kv-value">{walletConnected ? "已連接" : "尚未連接"}</span></div>
+        <div className="kv"><span className="kv-key">錢包地址</span><span className="kv-value">{walletAddressKnown ? "已確認" : "未知"}</span></div>
+        <div className="kv"><span className="kv-key">增值功能</span><span className="kv-value">{thirdweb.configured ? "可用" : "未設定"}</span></div>
         <div className="kv"><span className="kv-key">Polymarket 憑證</span><span className="kv-value">{props.hasCredentials ? "已就緒" : "需要"}</span></div>
         <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "暫時不可交易"}</span></div>
         <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>

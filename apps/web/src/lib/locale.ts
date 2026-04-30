@@ -52,7 +52,6 @@ export interface LocaleCopy {
       rewards: string;
       claims: string;
       research: string;
-      guides: string;
       account: string;
       admin: string;
     };
@@ -382,7 +381,6 @@ const en: LocaleCopy = {
       rewards: "Rewards",
       claims: "Claims",
       research: "Polymarket Markets",
-      guides: "Guides",
       account: "Account",
       admin: "Admin",
     },
@@ -714,6 +712,7 @@ const en: LocaleCopy = {
       submit_mode_disabled: "Order submission mode is disabled",
       feature_disabled: "Trading not enabled",
       wallet_not_connected: "Wallet not connected",
+      wallet_funds_insufficient: "Wallet funds insufficient",
       geoblock_checking: "Checking regional support",
       geoblock_unconfirmed: "Unable to confirm regional support",
       geoblocked: "Polymarket trading is not available in your current region",
@@ -786,7 +785,6 @@ const zhHK: DeepPartial<LocaleCopy> = {
       rewards: "獎勵",
       claims: "領取",
       research: "Polymarket 市場",
-      guides: "指南",
       account: "帳戶",
       admin: "管理",
     },
@@ -1117,6 +1115,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
       submit_mode_disabled: "實際訂單提交已停用",
       feature_disabled: "交易功能尚未啟用",
       wallet_not_connected: "尚未連接錢包",
+      wallet_funds_insufficient: "錢包資金不足",
       geoblock_checking: "正在檢查所在地區支援狀態",
       geoblock_unconfirmed: "暫時未能確認所在地區支援狀態",
       geoblocked: "你目前所在地區暫不支援 Polymarket 下單",

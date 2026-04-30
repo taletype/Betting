@@ -63,6 +63,11 @@ const mapGammaMarket = (
   provenance: GammaProvenance,
 ): PublicExternalMarketRecord => {
   const updatedAt = provenance.fetchedAt;
+  const fallbackProvenance = {
+    ...provenance,
+    dataPath: "fallback",
+    stale: false,
+  };
 
   return {
     id: `polymarket:${market.externalId}`,
@@ -83,8 +88,8 @@ const mapGammaMarket = (
     volume24h: market.volume24h,
     volumeTotal: market.volumeTotal,
     liquidity: market.volumeTotal,
-    provenance,
-    sourceProvenance: provenance,
+    provenance: fallbackProvenance,
+    sourceProvenance: fallbackProvenance,
     lastSyncedAt: updatedAt,
     lastUpdatedAt: updatedAt,
     createdAt: updatedAt,

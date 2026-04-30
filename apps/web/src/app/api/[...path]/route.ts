@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseClient } from "@bet/db";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
-import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
 import { normalizeApiPayload } from "../_shared/api-serialization";
-import { getMarketsResponse } from "../_shared/market-route-response";
 import { readExternalMarkets } from "../_shared/external-market-read";
 import {
   externalMarketDetailResponse,
@@ -81,36 +79,7 @@ async function handleRequest(
       return NextResponse.json(getVersionPayload());
     }
 
-    if (apiPath === "markets" && request.method === "GET") {
-      try {
-        return await getMarketsResponse(supabaseAdminClientFactory());
-      } catch (error) {
-        console.warn("catch-all public market list unavailable; serving safe empty state", error);
-        return NextResponse.json([]);
-      }
-    }
-
     const adminSupabase = () => supabaseAdminClientFactory();
-
-    if (apiPath.match(/^markets\/[^/]+$/) && request.method === "GET") {
-      const marketId = apiPath.split("/")[1] ?? "";
-
-      const market = await readMarketById(adminSupabase(), marketId);
-      if (!market) {
-        return NextResponse.json({ market: null }, { status: 404 });
-      }
-      return NextResponse.json({ market });
-    }
-
-    if (apiPath.match(/^markets\/[^/]+\/orderbook$/) && request.method === "GET") {
-      const marketId = apiPath.split("/")[1] ?? "";
-      return NextResponse.json(await readMarketOrderBook(adminSupabase(), marketId));
-    }
-
-    if (apiPath.match(/^markets\/[^/]+\/trades$/) && request.method === "GET") {
-      const marketId = apiPath.split("/")[1] ?? "";
-      return NextResponse.json(await readMarketTrades(adminSupabase(), marketId));
-    }
 
     if (apiPath === "external/markets" && request.method === "GET") {
       return externalMarketsResponse(adminSupabase);
@@ -523,47 +492,6 @@ async function handleRequest(
         return NextResponse.json(await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") }));
       }
 
-      if (apiPath.match(/^admin\/withdrawals\/[^/]+\/execute$/) && request.method === "POST") {
-        const withdrawalId = apiPath.split("/")[2] ?? "";
-        const body = (await request.json().catch(() => ({}))) as { txHash?: string };
-        const { data, error } = await adminSupabase().rpc("rpc_admin_execute_withdrawal", {
-          p_admin_user_id: adminActorId,
-          p_withdrawal_id: withdrawalId,
-          p_tx_hash: body.txHash ?? "",
-        });
-        if (error) {
-          throw error;
-        }
-        return NextResponse.json(data);
-      }
-
-      if (apiPath.match(/^admin\/withdrawals\/[^/]+\/fail$/) && request.method === "POST") {
-        const withdrawalId = apiPath.split("/")[2] ?? "";
-        const body = (await request.json().catch(() => ({}))) as { reason?: string };
-        const { data, error } = await adminSupabase().rpc("rpc_admin_fail_withdrawal", {
-          p_admin_user_id: adminActorId,
-          p_withdrawal_id: withdrawalId,
-          p_reason: body.reason ?? "",
-        });
-        if (error) {
-          throw error;
-        }
-        return NextResponse.json(data);
-      }
-
-      if (apiPath.match(/^admin\/markets\/[^/]+\/resolve$/) && request.method === "POST") {
-        const marketId = apiPath.split("/")[2] ?? "";
-        const body = await request.json().catch(() => ({}));
-        const { data, error } = await adminSupabase().rpc("rpc_admin_resolve_market", {
-          p_admin_user_id: adminActorId,
-          p_market_id: marketId,
-          p_payload: body,
-        });
-        if (error) {
-          throw error;
-        }
-        return NextResponse.json(data);
-      }
     }
 
     return NextResponse.json({ error: "Endpoint not implemented" }, { status: 404 });

@@ -118,6 +118,6 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
 test("zh-HK Thirdweb wallet funding copy is non-custodial", () => {
   assert.equal(
     thirdwebDisclosure,
-    "用戶可透過第三方錢包及付款服務為自己的錢包增值。資金會進入用戶自行控制的錢包，本平台不託管用戶資金。部分加密貨幣兌換或付款流程可能產生平台服務費；實際費用會在交易前顯示。",
+    "資金會進入你的錢包。本平台不會託管你的資金。第三方增值服務可能收取費用，實際費用會在交易前顯示。單純增值錢包不代表已完成 Polymarket 交易。",
   );
 });

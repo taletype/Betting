@@ -6,7 +6,7 @@ Public pages:
 - `/polymarket` is the primary Polymarket market feed.
 - `/polymarket/[slug]` is the market detail page.
 - `/external-markets` remains a compatibility redirect to `/polymarket`.
-- `/ambassador`, `/rewards`, `/guides`, and admin review pages support the referral and Builder-fee disclosure funnel.
+- `/ambassador`, `/rewards`, and admin review pages support the referral and Builder-fee disclosure funnel.
 
 Public API map:
 
@@ -60,7 +60,7 @@ Builder disclosure:
 
 ## Public API Boundary
 
-Public market browsing is served by isolated read-only API route handlers: `/api/health`, `/api/version`, `/api/markets`, `/api/external/markets`, and `/api/external/markets/:source/:externalId/*`.
+Public market browsing is served by isolated read-only API route handlers: `/api/health`, `/api/version`, `/api/external/markets`, and `/api/external/markets/:source/:externalId/*`.
 
 These routes do not require login. If privileged Supabase/admin configuration is unavailable, list routes return safe empty arrays or fallback public market data, and detail routes return `{ market: null }` with 404. They must never expose service-role errors, SQL details, connection strings, stack traces, or environment values.
 

@@ -4,6 +4,7 @@ export type PolymarketRoutingReadiness =
   | "builder_code_missing"
   | "feature_disabled"
   | "wallet_not_connected"
+  | "wallet_funds_insufficient"
   | "geoblock_checking"
   | "geoblock_unconfirmed"
   | "geoblocked"
@@ -23,6 +24,7 @@ export interface PolymarketReadinessChecklistItem {
   id:
     | "login"
     | "wallet"
+    | "funding"
     | "region"
     | "credentials"
     | "signature"
@@ -44,6 +46,9 @@ export interface PolymarketRoutingReadinessInput {
   featureEnabled: boolean;
   submitModeEnabled?: boolean;
   walletConnected: boolean;
+  walletAddressKnown?: boolean;
+  fundingAvailable?: boolean;
+  walletFundsSufficient?: boolean;
   geoblockAllowed?: boolean;
   geoblockStatus?: PolymarketGeoblockStatus;
   hasCredentials: boolean;
@@ -79,6 +84,8 @@ export const getPolymarketRoutingReadiness = (
   if (!input.featureEnabled) return "feature_disabled";
   if (input.loggedIn === false) return "auth_required";
   if (!input.walletConnected) return "wallet_not_connected";
+  if (input.walletAddressKnown === false) return "wallet_not_connected";
+  if (input.walletFundsSufficient === false) return "wallet_funds_insufficient";
   const geoblockReadiness = getGeoblockReadiness(input);
   if (geoblockReadiness) return geoblockReadiness;
   if (!input.hasCredentials) return "credentials_missing";
@@ -102,6 +109,8 @@ export const getPolymarketRoutingDisabledReasons = (
   if (!input.featureEnabled) reasons.push("feature_disabled");
   if (input.loggedIn === false) reasons.push("auth_required");
   if (!input.walletConnected) reasons.push("wallet_not_connected");
+  if (input.walletConnected && input.walletAddressKnown === false) reasons.push("wallet_not_connected");
+  if (input.walletFundsSufficient === false) reasons.push("wallet_funds_insufficient");
   if (geoblockReadiness) reasons.push(geoblockReadiness);
   if (!input.hasCredentials) reasons.push("credentials_missing");
   if (input.userSigningAvailable === false) reasons.push("signature_required");
@@ -160,10 +169,22 @@ export const getPolymarketReadinessChecklist = (
     {
       id: "wallet",
       label: "連接錢包",
-      explanation: input.walletConnected ? "錢包已連接，可由用戶自行簽署。" : "需要連接用戶自己的錢包。",
-      status: input.walletConnected ? "complete" : "missing",
-      actionHref: input.walletConnected ? undefined : "/account",
-      actionLabel: input.walletConnected ? undefined : "查看錢包狀態",
+      explanation: input.walletConnected && input.walletAddressKnown !== false ? "錢包已連接，可由用戶自行簽署。" : "需要連接用戶自己的錢包。",
+      status: input.walletConnected && input.walletAddressKnown !== false ? "complete" : "missing",
+      actionHref: input.walletConnected && input.walletAddressKnown !== false ? undefined : "/account",
+      actionLabel: input.walletConnected && input.walletAddressKnown !== false ? undefined : "查看錢包狀態",
+    },
+    {
+      id: "funding",
+      label: "錢包資金 / 增值",
+      explanation: input.walletFundsSufficient === false
+        ? "錢包資金不足；可透過第三方服務為自己的錢包增值。"
+        : input.fundingAvailable === false
+          ? "錢包增值服務暫時不可用。"
+          : "可為用戶自己的錢包增值；平台不託管資金。",
+      status: input.walletFundsSufficient === false || input.fundingAvailable === false ? "missing" : "complete",
+      actionHref: input.walletFundsSufficient === false || input.fundingAvailable === false ? "/account" : undefined,
+      actionLabel: input.walletFundsSufficient === false || input.fundingAvailable === false ? "增值錢包" : undefined,
     },
     {
       id: "region",

@@ -1,14 +1,13 @@
 # Bet Monorepo
 
-Chinese-first Polymarket market portal scaffold for Next.js on Vercel, Supabase, deterministic workers, direct-referral reward accounting, and append-only ledger-based balance accounting.
+Chinese-first Polymarket Builder referral funnel for Next.js on Vercel, Supabase Auth, public Polymarket market browsing, direct-referral reward accounting, and manual/admin-approved payouts.
 
 ## Workspace Layout
 
-- `apps/web`: Next.js frontend and Vercel cron routes
-- `services/api`: REST API service
-- `apps/ws`: websocket server
-- `services/*-worker`: background workers (matching, external sync, settlement, reconciliation)
-- `packages/*`: shared domain, contracts, ledger, chain, integrations, config
+- `apps/web`: Next.js frontend, public API routes, and referral/reward admin surfaces
+- `services/api`: standalone API service for external market and protected referral/admin operations
+- `services/external-sync-worker`: optional read-only external market sync worker
+- `packages/*`: shared contracts, integrations, Supabase, config, and legacy modules pending deeper service-api quarantine
 - `supabase/*`: local Supabase config, migrations, seed data, edge functions
 - `infra/*`: local helper scripts and operational docs
 
@@ -46,19 +45,7 @@ Required local vars:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `API_BASE_URL`
-- `NEXT_PUBLIC_WS_URL` (recommended: `ws://localhost:4001/ws`)
 - `ADMIN_API_TOKEN`
-- `BASE_CHAIN_ID`
-- `BASE_RPC_URL`
-- `BASE_WS_URL`
-- `BASE_EXPLORER_URL`
-- `BASE_TREASURY_ADDRESS`
-- `BASE_USDC_ADDRESS`
-- `BASE_MIN_CONFIRMATIONS`
-- `BASE_RECON_MIN_CONFIRMATIONS`
-
-For staging/production matrices and secret rotation guidance, see:
-- `infra/docs/runbooks/environment-configuration.md`
 
 Validate your setup:
 
@@ -80,26 +67,20 @@ pnpm db:reset
 
 This runs `supabase db reset --local --yes` and the API happy-path DB script (`services/api/src/scripts/db-happy-path.ts`).
 
-For launch-readiness DB evidence artifacts, use:
-
-```bash
-SMOKE_DB_PREP_MODE=reset-local pnpm smoke:db
-```
-
 ### 4) Startup order
 
 Recommended startup order for debugging:
 
-1. API + WS
+1. API
 
    ```bash
    pnpm dev:api
    ```
 
-2. Workers
+2. External market sync, when you want local persisted rows
 
    ```bash
-   pnpm dev:workers
+   pnpm sync:external
    ```
 
 3. Web
@@ -124,25 +105,19 @@ pnpm smoke:local
 
 - DB connectivity
 - API `/health`
-- API `/ready`
 - web route availability (`http://127.0.0.1:3000`)
-- WS boot (`http://127.0.0.1:4001/health`)
-- seed data presence (`public.markets` + `public.outcomes`)
+- public Polymarket market route availability
 
 If a check fails, the script prints clear next steps and targeted remediation hints for each failed check.
 
 ## Root Scripts
 
-- `pnpm dev` → full local stack orchestration (web + api + ws + all workers)
+- `pnpm dev` → local v1 stack orchestration (web + api + external sync worker)
 - `pnpm dev:web` → web only
-- `pnpm dev:api` → api + ws
-- `pnpm dev:ws` → ws only
-- `pnpm dev:workers` → matching + external-sync + settlement + reconciliation workers
+- `pnpm dev:api` → standalone API service
 - `pnpm sync:external` → one-shot read-only sync from public Polymarket + Kalshi APIs into `external_markets`, `external_outcomes`, `external_trade_ticks`, and `external_sync_checkpoints`
 - `pnpm db:reset` → local Supabase reset + happy-path DB verification
-- `pnpm smoke:db` → DB-backed lifecycle smoke + artifact capture (`infra/artifacts/smoke-db`)
 - `pnpm smoke:local` → local environment smoke checks
-- `pnpm load:launch` → narrow launch-path load harness (reads, order burst, ws fan-in)
 
 ## Polymarket Market Sync
 
@@ -169,16 +144,8 @@ Then refresh the Polymarket portal at `/polymarket`.
 
 ## Notes
 
-- Money, quantities, balances, and payouts use integers only.
-- Balance changes must flow through append-only ledger journals and entries.
+- Reward amounts and payouts use integer atom units only.
 - Polymarket market browsing stays read-only and works without `POLY_BUILDER_CODE`.
 - External sync stays read-only and never mutates balances directly.
-- Production chain support is Base-only for v1.
 - Polymarket routed trading remains disabled by default and must be non-custodial/user-signed when enabled.
 - Referral rewards are direct-referral only; payouts remain manual/admin-approved.
-- Launch incident kill switches are documented in `infra/docs/launch-kill-switches.md`.
-
-## Load Harness
-
-- Run `pnpm load:launch` for a narrow launch-path performance check.
-- See `infra/docs/load-testing.md` for setup, thresholds, and tuning knobs.

@@ -30,8 +30,107 @@ const withEnv = async (values: Record<string, string | undefined>, run: () => Pr
   }
 };
 
-const makeExternalMarketsSupabase = () => ({
+const makeExternalMarketsSupabase = (options: { staleAfter?: string } = {}) => ({
   from(table: string) {
+    if (table === "external_market_cache") {
+      const row = {
+        id: "11111111-1111-4111-8111-111111111111",
+        source: "polymarket",
+        external_id: "POLY-ROUTE-1",
+        slug: "poly-route-1",
+        title: "Will the Next API proxy serve Polymarket markets?",
+        description: "Route test",
+        category: null,
+        outcomes: [
+          {
+            externalOutcomeId: "yes",
+            title: "Yes",
+            slug: "yes",
+            index: 0,
+            yesNo: "yes",
+            bestBid: "0.41",
+            bestAsk: "0.44",
+            lastPrice: "0.43",
+            volume: "500",
+          },
+        ],
+        prices: {},
+        best_bid: "0.41",
+        best_ask: "0.44",
+        volume: "500",
+        liquidity: "10000",
+        close_time: null,
+        resolution_status: "open",
+        polymarket_url: "https://polymarket.com/event/poly-route-1",
+        raw_json: {},
+        source_provenance: { upstream: "gamma-api.polymarket.com" },
+        first_seen_at: "2026-05-01T01:00:00.000Z",
+        last_seen_at: "2026-05-01T01:00:00.000Z",
+        last_synced_at: "2099-05-01T01:00:00.000Z",
+        stale_after: options.staleAfter ?? "2099-05-01T01:01:00.000Z",
+        is_active: true,
+        is_tradable: true,
+        created_at: "2026-05-01T01:00:00.000Z",
+        updated_at: "2026-05-01T01:00:00.000Z",
+      };
+
+      return {
+        select: () => ({
+          eq: (column: string, value: string) => {
+            if (column === "slug") {
+              return {
+                maybeSingle: async () => ({
+                  data: value === row.slug ? row : null,
+                  error: null,
+                }),
+              };
+            }
+
+            return {
+              eq: (_secondColumn: string, secondValue: string) => ({
+                maybeSingle: async () => ({
+                  data: secondValue === row.external_id ? row : null,
+                  error: null,
+                }),
+              }),
+              order: () => ({
+                order: () => ({
+                  limit: async () => ({
+                    data: [row],
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          },
+        }),
+        upsert: async () => ({ error: null }),
+        update: () => ({
+          eq: async () => ({ error: null }),
+        }),
+      };
+    }
+
+    if (table === "external_market_sync_runs") {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: async () => ({ data: [{ status: "success" }], error: null }),
+            }),
+          }),
+        }),
+        insert: () => ({
+          select: () => ({
+            single: async () => ({ data: { id: "sync-run-1" }, error: null }),
+          }),
+        }),
+        update: () => ({
+          eq: async () => ({ error: null }),
+        }),
+      };
+    }
+
     if (table === "external_markets") {
       return {
         select: () => ({
@@ -132,19 +231,59 @@ test("GET /api/external/markets serves synced external market data", async (t) =
   const response = await GET(new NextRequest("http://localhost/api/external/markets"), {
     params: Promise.resolve({ path: ["external", "markets"] }),
   });
-  const payload = (await response.json()) as Array<{
-    externalId: string;
+  const payload = (await response.json()) as {
+    ok: boolean;
     source: string;
-    outcomes: Array<{ title: string }>;
-    recentTrades: Array<{ externalTradeId: string }>;
-  }>;
+    fallbackUsed: boolean;
+    stale: boolean;
+    markets: Array<{
+      externalId: string;
+      source: string;
+      outcomes: Array<{ title: string }>;
+      recentTrades: Array<{ externalTradeId: string }>;
+    }>;
+  };
 
   assert.equal(response.status, 200);
-  assert.equal(payload.length, 1);
-  assert.equal(payload[0]?.source, "polymarket");
-  assert.equal(payload[0]?.externalId, "POLY-ROUTE-1");
-  assert.equal(payload[0]?.outcomes[0]?.title, "Yes");
-  assert.equal(payload[0]?.recentTrades[0]?.externalTradeId, "trade-1");
+  assert.equal(payload.ok, true);
+  assert.equal(payload.source, "supabase_cache");
+  assert.equal(payload.fallbackUsed, false);
+  assert.equal(payload.stale, false);
+  assert.equal(payload.markets.length, 1);
+  assert.equal(payload.markets[0]?.source, "polymarket");
+  assert.equal(payload.markets[0]?.externalId, "POLY-ROUTE-1");
+  assert.equal(payload.markets[0]?.outcomes[0]?.title, "Yes");
+});
+
+test("GET /api/external/markets returns stale cache while refresh stays server-side", async (t) => {
+  const originalFetch = globalThis.fetch;
+  setSupabaseAdminClientFactoryForTests(() => makeExternalMarketsSupabase({ staleAfter: "2000-01-01T00:00:00.000Z" }) as never);
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    setSupabaseAdminClientFactoryForTests(null);
+  });
+
+  const response = await GET(new NextRequest("http://localhost/api/external/markets"), {
+    params: Promise.resolve({ path: ["external", "markets"] }),
+  });
+  const payload = await response.json() as {
+    source: string;
+    fallbackUsed: boolean;
+    stale: boolean;
+    markets: Array<{ externalId: string }>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.source, "supabase_cache");
+  assert.equal(payload.fallbackUsed, false);
+  assert.equal(payload.stale, true);
+  assert.equal(payload.markets[0]?.externalId, "POLY-ROUTE-1");
 });
 
 test("GET /api/external/markets falls back to public Gamma events when backend fails", async (t) => {
@@ -187,18 +326,29 @@ test("GET /api/external/markets falls back to public Gamma events when backend f
   const response = await GET(new NextRequest("http://localhost/api/external/markets"), {
     params: Promise.resolve({ path: ["external", "markets"] }),
   });
-  const payload = (await response.json()) as Array<{
-    externalId: string;
+  const payload = (await response.json()) as {
+    ok: boolean;
     source: string;
-    title: string;
-    outcomes: Array<{ title: string; lastPrice: number | null }>;
-  }>;
+    fallbackUsed: boolean;
+    markets: Array<{
+      externalId: string;
+      source: string;
+      title: string;
+      sourceProvenance: { dataPath?: string; stale?: boolean };
+      outcomes: Array<{ title: string; lastPrice: number | null }>;
+    }>;
+  };
 
   assert.equal(response.status, 200);
-  assert.equal(payload[0]?.source, "polymarket");
-  assert.equal(payload[0]?.externalId, "gamma-route-1");
-  assert.equal(payload[0]?.title, "Will the API route fall back to Gamma?");
-  assert.equal(payload[0]?.outcomes[0]?.lastPrice, 0.7);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.source, "polymarket_public_fallback");
+  assert.equal(payload.fallbackUsed, true);
+  assert.equal(payload.markets[0]?.source, "polymarket");
+  assert.equal(payload.markets[0]?.externalId, "gamma-route-1");
+  assert.equal(payload.markets[0]?.title, "Will the API route fall back to Gamma?");
+  assert.equal(payload.markets[0]?.sourceProvenance.dataPath, "fallback");
+  assert.equal(payload.markets[0]?.sourceProvenance.stale, false);
+  assert.equal(payload.markets[0]?.outcomes[0]?.lastPrice, 0.7);
 });
 
 test("GET /api/external/markets detail, orderbook, and trades return safe JSON", async (t) => {
@@ -249,7 +399,8 @@ test("public health, version, and external markets survive missing Supabase conf
 
     const listResponse = await externalMarketsGET();
     assert.equal(listResponse.status, 200);
-    assert.ok(Array.isArray(await listResponse.json()));
+    const listPayload = await listResponse.json() as { markets?: unknown[] };
+    assert.ok(Array.isArray(listPayload.markets));
 
     const detailResponse = await externalMarketGET(new Request("http://localhost/api/external/markets/polymarket/missing"), {
       params: Promise.resolve({ source: "polymarket", externalId: "missing" }),
@@ -295,6 +446,17 @@ test("public API routes do not import command modules that mutate balances or le
   assert.doesNotMatch(publicFiles, /rpc_place_order|ledger|withdrawal|ambassador_reward_payouts|createOrder|requestWithdrawal/);
 });
 
+test("external market UI does not import internal ledger or balance modules", () => {
+  const uiFiles = [
+    "src/app/external-markets/external-markets-page.tsx",
+    "src/app/external-markets/polymarket-trade-ticket.tsx",
+    "src/app/thirdweb-wallet-funding-card.tsx",
+    "src/app/polymarket/[slug]/page.tsx",
+  ].map((path) => readFileSync(resolve(process.cwd(), path), "utf8")).join("\n");
+
+  assert.doesNotMatch(uiFiles, /@bet\/ledger|packages\/ledger|portfolio\/balances|requestWithdrawal|verifyDepositTx|createOrder/);
+});
+
 test("admin payout approval exposes safe risk review error and UI risk summary", () => {
   const route = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
   const sharedAmbassador = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
@@ -317,12 +479,12 @@ test("production catch-all errors are sanitized", async () => {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY super secret exploded");
   });
   await withEnv({ NODE_ENV: "production" }, async () => {
-    const response = await GET(new NextRequest("http://localhost/api/markets/bad"), {
-      params: Promise.resolve({ path: ["markets", "bad"] }),
+    const response = await GET(new NextRequest("http://localhost/api/external/markets/polymarket/missing"), {
+      params: Promise.resolve({ path: ["external", "markets", "polymarket", "missing"] }),
     });
     const payload = await response.json() as { error: string; code: string };
-    assert.equal(response.status, 500);
-    assert.deepEqual(payload, { error: "Supabase environment variables are missing or invalid", code: "SUPABASE_ENV_MISSING" });
+    assert.notEqual(response.status, 200);
+    assert.doesNotMatch(JSON.stringify(payload), /SERVICE_ROLE|super secret|SUPABASE_SERVICE_ROLE_KEY/);
   });
   setSupabaseAdminClientFactoryForTests(null);
 });

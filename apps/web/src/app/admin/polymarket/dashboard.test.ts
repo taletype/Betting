@@ -39,7 +39,7 @@ test("Polymarket operations dashboard redacts backend failures and never exposes
   const serialized = JSON.stringify(dashboard);
 
   assert.equal(dashboard.marketDataHealth.backendReachable, false);
-  assert.deepEqual(dashboard.marketDataHealth.lastError, { code: "PGRST401", source: "external_markets" });
+  assert.deepEqual(dashboard.marketDataHealth.lastError, { code: "PGRST401", source: "external_market_cache" });
   assert.doesNotMatch(serialized, /secret|Bearer|PRIVATE_KEY|SERVICE_ROLE|API_SECRET|Authorization/i);
 });
 
@@ -76,7 +76,7 @@ test("Polymarket operations dashboard handles backend failure with Gamma fallbac
   assert.equal(dashboard.marketDataHealth.backendMarketCount, null);
   assert.equal(dashboard.marketDataHealth.gammaFallbackReachable, true);
   assert.equal(dashboard.marketDataHealth.gammaFallbackMarketCount, 2);
-  assert.equal(dashboard.marketDataHealth.lastError?.source, "external_markets");
+  assert.equal(dashboard.marketDataHealth.lastError?.source, "external_market_cache");
   assert.equal(dashboard.publicPages.latestMarketCount, 1);
   assert.equal(dashboard.publicPages.diagnosis, "ok");
 });

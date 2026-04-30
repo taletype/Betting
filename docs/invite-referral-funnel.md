@@ -6,7 +6,6 @@ Supported capture URLs:
 - `/polymarket?ref=CODE`
 - `/polymarket/[slug]?ref=CODE`
 - `/ambassador?ref=CODE`
-- `/guides/... ?ref=CODE`
 
 Behavior:
 

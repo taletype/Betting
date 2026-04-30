@@ -6,6 +6,10 @@
       "schedule": "5 0 * * *"
     },
     {
+      "path": "/api/jobs/sync-polymarket",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/candles",
       "schedule": "15 0 * * *"
     },

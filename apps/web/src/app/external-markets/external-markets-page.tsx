@@ -191,6 +191,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const shareUrl = refCode ? `${siteUrl()}/polymarket?ref=${encodeURIComponent(refCode)}` : `${siteUrl()}/polymarket`;
   const externalMarketsEndpointReachable = !loadFailed;
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
+  const serviceApiReachable = dataReadiness.serviceApiSelected ? !loadFailed : dataReadiness.configuredApiBaseIsWebOrigin ? false : dataReadiness.apiBaseUrlConfigured;
+  const fallbackUsedOnLastRequest = markets.some(isPolymarketFallbackMarket);
+  const thirdwebClientConfigured = Boolean(process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim());
 
   return (
     <main className="stack">
@@ -226,9 +229,12 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           <div className="kv"><span className="kv-key">API base URL configured</span><span className="kv-value">{dataReadiness.apiBaseUrlConfigured ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">same-origin API reachable</span><span className="kv-value">{sameOriginApiReachable ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">{fallbackUsedOnLastRequest ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{routedTradingEnabled ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{hasBuilderCode ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
         </div>
       </section>
       <ThirdwebWalletFundingCard surface="polymarket_feed" walletConnected={false} />

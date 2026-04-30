@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@bet/supabase";
 
+import {
+  readExternalMarketByIdFromCache,
+  readExternalMarketBySlugFromCache,
+  readExternalMarketsFromCache,
+  upsertExternalMarketsCache,
+  type ExternalMarketCacheDiagnostics,
+} from "./external-market-cache";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "./external-market-read";
+import { syncPolymarketMarketCache } from "./polymarket-cache-sync";
 import {
   readPolymarketGammaFallbackMarketBySlugOrId,
   readPolymarketGammaFallbackMarkets,
@@ -23,34 +31,170 @@ const unavailablePayload = (source: string) => ({
 const safeMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Market source unavailable";
 
+const fallbackDiagnostics = (input?: Partial<ExternalMarketCacheDiagnostics>): ExternalMarketCacheDiagnostics => ({
+  supabaseCacheReachable: false,
+  marketCacheRowCount: null,
+  newestLastSyncedAt: null,
+  staleMarketCount: null,
+  lastSyncStatus: null,
+  fallbackUsedLastRequest: false,
+  routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true" || process.env.NEXT_PUBLIC_POLYMARKET_ROUTED_TRADING_ENABLED === "true",
+  builderCodeConfigured: Boolean(process.env.POLY_BUILDER_CODE?.trim() || process.env.POLYMARKET_BUILDER_CODE?.trim()),
+  ...input,
+});
+
+const marketsEnvelope = (input: {
+  source: "supabase_cache" | "polymarket_public_fallback";
+  fallbackUsed: boolean;
+  stale: boolean;
+  lastUpdatedAt: string | null;
+  markets: unknown[];
+  diagnostics: ExternalMarketCacheDiagnostics;
+}) => ({
+  ok: true,
+  source: input.source,
+  fallbackUsed: input.fallbackUsed,
+  stale: input.stale,
+  lastUpdatedAt: input.lastUpdatedAt,
+  markets: input.markets,
+  diagnostics: {
+    supabaseCacheReachable: input.diagnostics.supabaseCacheReachable,
+    marketCacheRowCount: input.diagnostics.marketCacheRowCount,
+    newestLastSyncedAt: input.diagnostics.newestLastSyncedAt,
+    staleMarketCount: input.diagnostics.staleMarketCount,
+    lastSyncStatus: input.diagnostics.lastSyncStatus,
+    fallbackUsedLastRequest: input.fallbackUsed,
+    routedTradingEnabled: input.diagnostics.routedTradingEnabled,
+    builderCodeConfigured: input.diagnostics.builderCodeConfigured,
+    errorCode: input.diagnostics.errorCode,
+  },
+});
+
 export async function externalMarketsResponse(adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
-  let backendError: unknown = null;
+  let cacheError: unknown = null;
 
   try {
-    return NextResponse.json(await readExternalMarkets(adminSupabase()), {
-      headers: { "x-market-source": "external_markets" },
+    const supabase = adminSupabase();
+    const cached = await readExternalMarketsFromCache(supabase);
+    if (cached.markets.length > 0) {
+      if (cached.stale) {
+        syncPolymarketMarketCache(supabase).catch((error) => {
+          console.warn("background Polymarket cache refresh failed", { message: safeMessage(error) });
+        });
+      }
+      return NextResponse.json(marketsEnvelope({
+        source: "supabase_cache",
+        fallbackUsed: false,
+        stale: cached.stale,
+        lastUpdatedAt: cached.lastUpdatedAt,
+        markets: cached.markets,
+        diagnostics: cached.diagnostics,
+      }), {
+        headers: { "x-market-source": "supabase_cache" },
+      });
+    }
+
+    const fallbackRecords = await readPolymarketGammaFallbackMarkets();
+    await upsertExternalMarketsCache(
+      supabase,
+      fallbackRecords.map((record) => ({
+        market: {
+          source: "polymarket",
+          externalId: record.externalId,
+          slug: record.slug,
+          title: record.title,
+          description: record.description,
+          url: record.marketUrl,
+          status: record.status,
+          closeTime: record.closeTime,
+          endTime: record.endTime,
+          resolvedAt: record.resolvedAt,
+          bestBid: record.bestBid,
+          bestAsk: record.bestAsk,
+          lastTradePrice: record.lastTradePrice,
+          volume24h: record.volume24h,
+          volumeTotal: record.volumeTotal,
+          outcomes: record.outcomes.map((outcome) => ({
+            externalOutcomeId: outcome.externalOutcomeId,
+            title: outcome.title,
+            slug: outcome.slug,
+            outcomeIndex: outcome.index,
+            yesNo: outcome.yesNo,
+            bestBid: outcome.bestBid,
+            bestAsk: outcome.bestAsk,
+            lastPrice: outcome.lastPrice,
+            volume: outcome.volume,
+          })),
+          recentTrades: [],
+          rawPayload: record.provenance,
+        },
+        rawJson: record.provenance,
+        sourceProvenance: record.sourceProvenance,
+      })),
+    ).catch((error) => {
+      console.warn("Polymarket fallback cache write failed", { message: safeMessage(error) });
+    });
+
+    return NextResponse.json(marketsEnvelope({
+      source: "polymarket_public_fallback",
+      fallbackUsed: true,
+      stale: false,
+      lastUpdatedAt: fallbackRecords[0]?.lastUpdatedAt ?? null,
+      markets: fallbackRecords,
+      diagnostics: fallbackDiagnostics({
+        supabaseCacheReachable: true,
+        marketCacheRowCount: 0,
+        staleMarketCount: 0,
+        fallbackUsedLastRequest: true,
+      }),
+    }), {
+      headers: {
+        "x-market-source": "gamma-api.polymarket.com/events",
+        "x-market-backend-fallback": "supabase_cache_empty",
+      },
     });
   } catch (error) {
-    backendError = error;
-    console.warn("public external markets backend source failed; trying Polymarket Gamma fallback", {
-      source: "external_markets",
+    cacheError = error;
+    console.warn("public external markets cache source failed; trying Polymarket Gamma fallback", {
+      source: "supabase_cache",
       message: safeMessage(error),
     });
     try {
-      return NextResponse.json(await readPolymarketGammaFallbackMarkets(), {
+      const fallbackRecords = await readPolymarketGammaFallbackMarkets();
+      return NextResponse.json(marketsEnvelope({
+        source: "polymarket_public_fallback",
+        fallbackUsed: true,
+        stale: false,
+        lastUpdatedAt: fallbackRecords[0]?.lastUpdatedAt ?? null,
+        markets: fallbackRecords,
+        diagnostics: fallbackDiagnostics({
+          fallbackUsedLastRequest: true,
+          errorCode: "SUPABASE_CACHE_UNAVAILABLE",
+        }),
+      }), {
         headers: {
           "x-market-source": "gamma-api.polymarket.com/events",
-          "x-market-backend-fallback": "external_markets",
+          "x-market-backend-fallback": "supabase_cache",
         },
       });
     } catch (fallbackError) {
       console.warn("public external markets Gamma fallback failed", {
         source: "gamma-api.polymarket.com/events",
         message: safeMessage(fallbackError),
-        backendMessage: safeMessage(backendError),
+        backendMessage: safeMessage(cacheError),
       });
       return NextResponse.json(
-        unavailablePayload("external_markets,gamma-api.polymarket.com/events"),
+        {
+          ...unavailablePayload("supabase_cache,gamma-api.polymarket.com/events"),
+          fallbackUsed: true,
+          stale: true,
+          lastUpdatedAt: null,
+          markets: [],
+          diagnostics: fallbackDiagnostics({
+            fallbackUsedLastRequest: true,
+            errorCode: "MARKET_SOURCE_UNAVAILABLE",
+          }),
+        },
         { status: 503 },
       );
     }
@@ -59,7 +203,11 @@ export async function externalMarketsResponse(adminSupabase: SupabaseAdminFactor
 
 export async function externalMarketDetailResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
-    const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
+    const supabase = adminSupabase();
+    const market = source === "polymarket"
+      ? await readExternalMarketByIdFromCache(supabase, decodeURIComponent(externalId))
+        ?? await readExternalMarketBySlugFromCache(supabase, decodeURIComponent(externalId))
+      : await readExternalMarketBySourceAndId(supabase, source, externalId);
     return NextResponse.json({ market }, { status: market ? 200 : 404 });
   } catch (error) {
     console.warn("public external market detail unavailable; serving fallback or null", error);

@@ -9,6 +9,7 @@ import { getPolymarketOperationsDashboard } from "./dashboard";
 export const dynamic = "force-dynamic";
 
 const yesNo = (value: boolean): string => (value ? "yes" : "no");
+const yesNoUnknown = (value: boolean | null): string => value === null ? "-" : yesNo(value);
 const count = (value: number | null): string => value?.toLocaleString(defaultLocale) ?? "-";
 const status = (value: number | "unreachable"): string => value === "unreachable" ? value : String(value);
 
@@ -37,8 +38,8 @@ export default async function AdminPolymarketPage() {
 
       <section className="panel stack">
         <h2 className="section-title">Market data health</h2>
-        <div className="kv"><span className="kv-key">backend/Supabase external_markets reachable</span><span className="kv-value">{yesNo(marketDataHealth.backendReachable)}</span></div>
-        <div className="kv"><span className="kv-key">backend market count</span><span className="kv-value">{count(marketDataHealth.backendMarketCount)}</span></div>
+        <div className="kv"><span className="kv-key">backend/Supabase external_market_cache reachable</span><span className="kv-value">{yesNo(marketDataHealth.backendReachable)}</span></div>
+        <div className="kv"><span className="kv-key">cache market count</span><span className="kv-value">{count(marketDataHealth.backendMarketCount)}</span></div>
         <div className="kv"><span className="kv-key">Gamma fallback reachable</span><span className="kv-value">{yesNo(marketDataHealth.gammaFallbackReachable)}</span></div>
         <div className="kv"><span className="kv-key">fallback market count</span><span className="kv-value">{count(marketDataHealth.gammaFallbackMarketCount)}</span></div>
         <div className="kv"><span className="kv-key">last checked time</span><span className="kv-value">{formatDateTime(defaultLocale, marketDataHealth.lastCheckedAt)}</span></div>
@@ -53,6 +54,11 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">/polymarket status</span><span className="kv-value">{status(publicPages.polymarketStatus)}</span></div>
         <div className="kv"><span className="kv-key">/api/external/markets status</span><span className="kv-value">{status(publicPages.externalMarketsStatus)}</span></div>
         <div className="kv"><span className="kv-key">latest market count</span><span className="kv-value">{count(publicPages.latestMarketCount)}</span></div>
+        <div className="kv"><span className="kv-key">Supabase cache reachable</span><span className="kv-value">{yesNoUnknown(publicPages.supabaseCacheReachable)}</span></div>
+        <div className="kv"><span className="kv-key">newest last_synced_at</span><span className="kv-value">{publicPages.newestLastSyncedAt ? formatDateTime(defaultLocale, publicPages.newestLastSyncedAt) : "-"}</span></div>
+        <div className="kv"><span className="kv-key">stale market count</span><span className="kv-value">{count(publicPages.staleMarketCount)}</span></div>
+        <div className="kv"><span className="kv-key">last sync status</span><span className="kv-value">{publicPages.lastSyncStatus ?? "-"}</span></div>
+        <div className="kv"><span className="kv-key">fallback used last request</span><span className="kv-value">{yesNoUnknown(publicPages.fallbackUsedLastRequest)}</span></div>
         <div className="kv"><span className="kv-key">safe empty/failure diagnosis</span><span className="kv-value">{diagnosisCopy[publicPages.diagnosis]}</span></div>
       </section>
 
@@ -83,8 +89,8 @@ export default async function AdminPolymarketPage() {
         <form action="/admin/polymarket" method="get">
           <button type="submit">Refresh market data health</button>
         </form>
-        <Link href="/docs/live-polymarket-trading-runbook">Runbook docs</Link>
-        <Link href="/docs/production-launch-checklist">Production launch checklist</Link>
+        <Link href="/admin/rewards">Review reward ledger</Link>
+        <Link href="/admin/payouts">Review payout requests</Link>
         <p className="muted">This dashboard is read-only. It does not enable live trading, submit orders, auto-pay rewards, or mutate ledger, balance, or matching state.</p>
       </section>
     </main>

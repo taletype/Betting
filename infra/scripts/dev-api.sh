@@ -25,7 +25,7 @@ cleanup() {
   local code=$?
   if ((${#pids[@]} > 0)); then
     echo ""
-    echo "Stopping API/WS services..."
+    echo "Stopping API service..."
     kill "${pids[@]}" >/dev/null 2>&1 || true
     wait "${pids[@]}" >/dev/null 2>&1 || true
   fi
@@ -38,9 +38,5 @@ echo "Starting API (http://127.0.0.1:4000)..."
 pnpm --filter @bet/service-api dev &
 pids+=("$!")
 
-echo "Starting WS (ws://127.0.0.1:4001/ws)..."
-pnpm --filter @bet/ws dev &
-pids+=("$!")
-
-echo "API + WS are running. Press Ctrl+C to stop."
+echo "API is running. Press Ctrl+C to stop."
 wait

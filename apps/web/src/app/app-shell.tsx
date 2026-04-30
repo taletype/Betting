@@ -24,7 +24,6 @@ export function AppShell({
             <a href={getLocaleHref(locale, "/polymarket")}>{copy.shell.nav.research}</a>
             <a href={getLocaleHref(locale, "/ambassador")}>{copy.shell.nav.invite}</a>
             <a href={getLocaleHref(locale, "/rewards")}>{copy.shell.nav.rewards}</a>
-            <a href={getLocaleHref(locale, "/guides")}>{copy.shell.nav.guides}</a>
             <a href={getLocaleHref(locale, "/account")}>{copy.shell.nav.account}</a>
             {showAdmin ? <a href="/admin">{copy.shell.nav.admin}</a> : null}
           </nav>

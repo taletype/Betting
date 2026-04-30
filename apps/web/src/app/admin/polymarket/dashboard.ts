@@ -24,6 +24,11 @@ export interface PolymarketOperationsDashboard {
     polymarketStatus: number | "unreachable";
     externalMarketsStatus: number | "unreachable";
     latestMarketCount: number | null;
+    supabaseCacheReachable: boolean | null;
+    newestLastSyncedAt: string | null;
+    staleMarketCount: number | null;
+    lastSyncStatus: string | null;
+    fallbackUsedLastRequest: boolean | null;
     diagnosis: "ok" | "safe_empty" | "unavailable";
   };
   readiness: {
@@ -57,7 +62,7 @@ interface DashboardDependencies {
 }
 
 interface SupabaseExternalMarketCounter {
-  from: (table: "external_markets") => {
+  from: (table: "external_market_cache") => {
     select: (
       columns: string,
       options: { count: "exact"; head: true },
@@ -100,7 +105,7 @@ const defaultFetchPublicPath = async (path: string): Promise<{ status: number; j
 const countBackendPolymarketRows = async (): Promise<number> => {
   const supabase = createSupabaseAdminClient() as unknown as SupabaseExternalMarketCounter;
   const { count, error } = await supabase
-    .from("external_markets")
+    .from("external_market_cache")
     .select("id", { count: "exact", head: true })
     .eq("source", "polymarket");
 
@@ -141,7 +146,21 @@ const getPublicPages = async (
   const polymarketStatus = polymarket.status === "fulfilled" ? polymarket.value.status : "unreachable";
   const externalMarketsStatus = externalMarkets.status === "fulfilled" ? externalMarkets.value.status : "unreachable";
   const payload = externalMarkets.status === "fulfilled" ? externalMarkets.value.json : null;
-  const latestMarketCount = Array.isArray(payload) ? payload.length : null;
+  const envelope = payload && typeof payload === "object" ? payload as {
+    fallbackUsed?: boolean;
+    diagnostics?: {
+      supabaseCacheReachable?: boolean;
+      newestLastSyncedAt?: string | null;
+      staleMarketCount?: number | null;
+      lastSyncStatus?: string | null;
+      fallbackUsedLastRequest?: boolean;
+    };
+  } : null;
+  const latestMarketCount = Array.isArray(payload)
+    ? payload.length
+    : payload && typeof payload === "object" && Array.isArray((payload as { markets?: unknown[] }).markets)
+      ? ((payload as { markets: unknown[] }).markets.length)
+      : null;
   const diagnosis = externalMarketsStatus === 200
     ? latestMarketCount === 0
       ? "safe_empty"
@@ -152,6 +171,11 @@ const getPublicPages = async (
     polymarketStatus,
     externalMarketsStatus,
     latestMarketCount,
+    supabaseCacheReachable: envelope?.diagnostics?.supabaseCacheReachable ?? null,
+    newestLastSyncedAt: envelope?.diagnostics?.newestLastSyncedAt ?? null,
+    staleMarketCount: envelope?.diagnostics?.staleMarketCount ?? null,
+    lastSyncStatus: envelope?.diagnostics?.lastSyncStatus ?? null,
+    fallbackUsedLastRequest: envelope?.diagnostics?.fallbackUsedLastRequest ?? envelope?.fallbackUsed ?? null,
     diagnosis,
   };
 };
@@ -212,7 +236,7 @@ export const getPolymarketOperationsDashboard = async (
   ]);
 
   if (backendResult.status === "rejected") {
-    lastError = redactedError(backendResult.reason, "external_markets");
+    lastError = redactedError(backendResult.reason, "external_market_cache");
   }
 
   if (gammaResult.status === "rejected") {
@@ -234,6 +258,11 @@ export const getPolymarketOperationsDashboard = async (
           polymarketStatus: "unreachable",
           externalMarketsStatus: "unreachable",
           latestMarketCount: null,
+          supabaseCacheReachable: null,
+          newestLastSyncedAt: null,
+          staleMarketCount: null,
+          lastSyncStatus: null,
+          fallbackUsedLastRequest: null,
           diagnosis: "unavailable",
         },
     readiness: getReadiness(),

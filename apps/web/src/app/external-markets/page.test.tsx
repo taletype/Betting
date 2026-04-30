@@ -175,6 +175,10 @@ test("Polymarket page renders empty-state when no synced rows exist", async (t) 
   assert.match(markup, /暫時未有市場資料/);
   assert.match(markup, /external_markets table 未返回任何 Polymarket row/);
   assert.match(markup, /外部同步尚未執行/);
+  assert.match(markup, /增值錢包 \/ Add funds/);
+  assert.match(markup, /資金會進入你的錢包。本平台不會託管你的資金。/);
+  assert.match(markup, /單純增值錢包不代表已完成 Polymarket 交易。/);
+  assert.match(markup, /連接錢包 錢包已連接 更換錢包 斷開連接/);
   assert.doesNotMatch(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.equal(calls[0], "http://127.0.0.1:3000/api/external/markets");
 });
@@ -720,7 +724,7 @@ test("Polymarket referral code survives navigation into market detail", async (t
   assert.match(markup, /href="\/polymarket\/polyref-1\?ref=HKREF001"/);
 });
 
-test("Polymarket page uses same-site route when configured API base is unavailable", async (t) => {
+test("Polymarket page uses same-site route instead of configured service API base", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -792,12 +796,11 @@ test("Polymarket page uses same-site route when configured API base is unavailab
   assert.doesNotMatch(markup, /市場資料暫時未能更新/);
   assert.doesNotMatch(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.match(markup, /Fallback Polymarket/);
-  assert.equal(calls[0], "https://api.example.com/external/markets");
-  assert.equal(calls[1], "https://bet.example.vercel.app/api/external/markets");
-  assert.equal(calls.length, 2);
+  assert.equal(calls[0], "https://bet.example.vercel.app/api/external/markets");
+  assert.equal(calls.length, 1);
 });
 
-test("Polymarket page uses same-site route when configured API lacks external markets endpoint", async (t) => {
+test("Polymarket page does not call configured API when service lacks external markets endpoint", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -876,10 +879,51 @@ test("Polymarket page uses same-site route when configured API lacks external ma
   assert.match(markup, /Polymarket fallback enabled<\/span><span class="kv-value">yes/);
   assert.match(markup, /routed trading enabled<\/span><span class="kv-value">no/);
   assert.doesNotMatch(markup, /市場資料暫時未能更新/);
-  assert.deepEqual(calls, [
-    "https://api.example.com/external/markets",
-    "https://bet.example.vercel.app/api/external/markets",
-  ]);
+  assert.deepEqual(calls, ["https://bet.example.vercel.app/api/external/markets"]);
+});
+
+test("Polymarket page treats a web-origin public API base as same-origin mode", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const calls: string[] = [];
+
+  delete process.env.API_BASE_URL;
+  process.env.NEXT_PUBLIC_API_BASE_URL = "https://betting-web-ten.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL = "https://betting-web-ten.vercel.app";
+
+  globalThis.fetch = (async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+    if (originalSiteUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_SITE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_SITE_URL = originalSiteUrl;
+    }
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /資料 URL<\/span><span class="kv-value mono">https:\/\/betting-web-ten\.vercel\.app\/api\/external\/markets/);
+  assert.doesNotMatch(markup, /https:\/\/betting-web-ten\.vercel\.app\/external\/markets/);
+  assert.deepEqual(calls, ["https://betting-web-ten.vercel.app/api/external/markets"]);
 });
 
 test("Polymarket page renders operator-visible diagnostics when production API base is missing and fallback fails", async (t) => {
@@ -935,7 +979,7 @@ test("Polymarket page renders operator-visible diagnostics when production API b
   assert.equal(calls[0], "https://bet.example.vercel.app/api/external/markets");
 });
 
-test("Polymarket page renders safe diagnostic when production API base points to localhost", async (t) => {
+test("Polymarket page ignores localhost service API base for public market browsing", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -973,12 +1017,13 @@ test("Polymarket page renders safe diagnostic when production API base points to
 
   await withNodeEnv("production", async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /市場資料暫時未能更新/);
-    assert.match(markup, /正式環境的 API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL 指向不可連線地址/);
+    assert.doesNotMatch(markup, /市場資料暫時未能更新/);
+    assert.match(markup, /資料 URL<\/span><span class="kv-value mono">http:\/\/127\.0\.0\.1:3000\/api\/external\/markets/);
     assert.doesNotMatch(markup, /localhost:4000/);
   });
 
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], "http://127.0.0.1:3000/api/external/markets");
 });
 
 test("Polymarket page defaults routed trading disabled", async () => {
@@ -1029,6 +1074,7 @@ test("Polymarket readiness keeps feature disabled as top launch reason while che
   assert.deepEqual(checklist.map((item) => item.id), [
     "login",
     "wallet",
+    "funding",
     "region",
     "credentials",
     "signature",

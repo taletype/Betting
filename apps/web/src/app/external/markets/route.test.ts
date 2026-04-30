@@ -49,21 +49,29 @@ test("GET /external/markets works without login using public Polymarket Gamma fa
   });
 
   const response = await GET();
-  const payload = (await response.json()) as Array<{
+  const payload = (await response.json()) as {
+    ok: boolean;
     source: string;
-    externalId: string;
-    title: string;
-    outcomes: Array<{ title: string; lastPrice: number | null }>;
-    sourceProvenance: { upstream?: string };
-  }>;
+    fallbackUsed: boolean;
+    markets: Array<{
+      source: string;
+      externalId: string;
+      title: string;
+      outcomes: Array<{ title: string; lastPrice: number | null }>;
+      sourceProvenance: { upstream?: string };
+    }>;
+  };
 
   assert.equal(response.status, 200);
-  assert.equal(payload[0]?.source, "polymarket");
-  assert.equal(payload[0]?.externalId, "gamma-1");
-  assert.equal(payload[0]?.title, "Will public Gamma data load?");
-  assert.equal(payload[0]?.outcomes[0]?.title, "Yes");
-  assert.equal(payload[0]?.outcomes[0]?.lastPrice, 0.61);
-  assert.equal(payload[0]?.sourceProvenance.upstream, "gamma-api.polymarket.com");
+  assert.equal(payload.ok, true);
+  assert.equal(payload.source, "polymarket_public_fallback");
+  assert.equal(payload.fallbackUsed, true);
+  assert.equal(payload.markets[0]?.source, "polymarket");
+  assert.equal(payload.markets[0]?.externalId, "gamma-1");
+  assert.equal(payload.markets[0]?.title, "Will public Gamma data load?");
+  assert.equal(payload.markets[0]?.outcomes[0]?.title, "Yes");
+  assert.equal(payload.markets[0]?.outcomes[0]?.lastPrice, 0.61);
+  assert.equal(payload.markets[0]?.sourceProvenance.upstream, "gamma-api.polymarket.com");
 });
 
 test("GET /external/markets returns clear JSON error when backend and Gamma fail", async (t) => {
@@ -102,7 +110,7 @@ test("GET /external/markets returns clear JSON error when backend and Gamma fail
     {
       ok: false,
       error: "MARKET_SOURCE_UNAVAILABLE",
-      source: "external_markets,gamma-api.polymarket.com/events",
+      source: "supabase_cache,gamma-api.polymarket.com/events",
       message: "Configured market data sources are temporarily unavailable.",
     },
   );

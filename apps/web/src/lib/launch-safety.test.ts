@@ -74,10 +74,11 @@ test("Thirdweb funding CTA renders as non-custodial wallet utility without login
   );
 
   assert.match(markup, /連接錢包/);
-  assert.match(markup, /為錢包增值/);
-  assert.match(markup, /使用第三方付款服務/);
+  assert.match(markup, /增值錢包/);
+  assert.match(markup, /Polygon \/ USDC/);
   assert.match(markup, /資金會進入你的錢包/);
-  assert.match(markup, /本平台不託管用戶資金/);
+  assert.match(markup, /本平台不會託管你的資金/);
+  assert.match(markup, /單純增值錢包不代表已完成 Polymarket 交易/);
   assert.match(markup, new RegExp(thirdwebDisclosure));
   assert.doesNotMatch(markup, /已登入|管理員/);
 });

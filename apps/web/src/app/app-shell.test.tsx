@@ -17,7 +17,6 @@ test("app shell points the public nav at the Polymarket funnel", () => {
   assert.match(markup, /邀請朋友/);
   assert.match(markup, /href="\/"/);
   assert.match(markup, /href="\/polymarket"/);
-  assert.match(markup, /href="\/guides"/);
   assert.match(markup, /href="\/ambassador"/);
   assert.match(markup, /href="\/rewards"/);
   assert.match(markup, /href="\/account"/);
@@ -28,6 +27,7 @@ test("app shell points the public nav at the Polymarket funnel", () => {
   assert.doesNotMatch(markup, /href="\/markets"/);
   assert.doesNotMatch(markup, /href="\/portfolio"/);
   assert.doesNotMatch(markup, /href="\/claims"/);
+  assert.doesNotMatch(markup, /href="\/guides"/);
   assert.doesNotMatch(markup, /external-markets/);
 });
 

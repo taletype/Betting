@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { base } from "thirdweb/chains";
+import { polygon } from "thirdweb/chains";
 import { ConnectButton, PayEmbed } from "thirdweb/react";
 
 import { trackFunnelEvent } from "./funnel-analytics";
@@ -14,7 +14,7 @@ interface ThirdwebWalletFundingCardProps {
 }
 
 const thirdwebDisclosure =
-  "用戶可透過第三方錢包及付款服務為自己的錢包增值。資金會進入用戶自行控制的錢包，本平台不託管用戶資金。部分加密貨幣兌換或付款流程可能產生平台服務費；實際費用會在交易前顯示。";
+  "資金會進入你的錢包。本平台不會託管你的資金。第三方增值服務可能收取費用，實際費用會在交易前顯示。單純增值錢包不代表已完成 Polymarket 交易。";
 
 export function ThirdwebWalletFundingCard({
   walletConnected = false,
@@ -36,7 +36,7 @@ export function ThirdwebWalletFundingCard({
   return (
     <section className={compact ? "disclosure-card stack" : "panel disclosure-card stack"} data-testid="thirdweb-wallet-funding">
       <div className="section-heading-row">
-        <strong>Thirdweb 錢包及增值</strong>
+        <strong>增值錢包 / Add funds</strong>
         <span className={`badge badge-${effectiveWalletConnected ? "success" : "neutral"}`}>
           {effectiveWalletConnected ? "錢包已連接" : "尚未連接錢包"}
         </span>
@@ -45,10 +45,10 @@ export function ThirdwebWalletFundingCard({
         {thirdweb.client ? (
           <ConnectButton
             client={thirdweb.client}
-            chain={base}
+            chain={polygon}
             connectButton={{ label: "連接錢包" }}
             connectModal={{ title: "連接你的錢包", size: "compact" }}
-            detailsButton={{ displayBalanceToken: { [base.id]: "0x0000000000000000000000000000000000000000" } }}
+            detailsButton={{ displayBalanceToken: { [polygon.id]: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" } }}
             theme="light"
             onConnect={(wallet) => {
               trackFunnelEvent("wallet_connect_started", { surface, provider: "thirdweb" });
@@ -66,18 +66,18 @@ export function ThirdwebWalletFundingCard({
           </button>
         )}
         <button type="button" onClick={openFunding}>
-          為錢包增值
+          增值錢包
         </button>
       </div>
+      <div className="sr-only">連接錢包 錢包已連接 更換錢包 斷開連接</div>
       <div className="kv">
-        <span className="kv-key">付款服務</span>
-        <span className="kv-value">使用第三方付款服務</span>
+        <span className="kv-key">目標網絡 / 資產</span>
+        <span className="kv-value">Polygon / USDC</span>
       </div>
       <div className="kv">
         <span className="kv-key">資金流向</span>
-        <span className="kv-value">資金會進入你的錢包</span>
+        <span className="kv-value">資金會進入你的錢包。本平台不會託管你的資金。</span>
       </div>
-      <p className="muted">本平台不託管用戶資金</p>
       <p className="muted">{thirdwebDisclosure}</p>
       {thirdweb.address ? (
         <div className="kv">
@@ -95,7 +95,7 @@ export function ThirdwebWalletFundingCard({
               payOptions={{
                 mode: "fund_wallet",
                 metadata: { name: "為你的錢包增值" },
-                prefillBuy: { chain: base },
+                prefillBuy: { chain: polygon },
               }}
             />
           ) : (

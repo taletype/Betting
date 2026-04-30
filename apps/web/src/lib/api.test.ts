@@ -10,7 +10,6 @@ import {
   getExternalMarketStats,
   getExternalMarketTrades,
   listExternalMarkets,
-  listMarkets,
 } from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
@@ -41,69 +40,6 @@ const createFetchMock = (payload: unknown, calls: FetchCall[]): typeof globalThi
       headers: { "content-type": "application/json" },
     });
   }) as typeof globalThis.fetch;
-
-test("listMarkets uses local Next API route when API base is not configured", async (t) => {
-  const originalFetch = globalThis.fetch;
-  const originalApiBaseUrl = process.env.API_BASE_URL;
-  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const calls: FetchCall[] = [];
-
-  delete process.env.API_BASE_URL;
-  delete process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  globalThis.fetch = createFetchMock([], calls);
-
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-    if (originalApiBaseUrl === undefined) {
-      delete process.env.API_BASE_URL;
-    } else {
-      process.env.API_BASE_URL = originalApiBaseUrl;
-    }
-    if (originalPublicApiBaseUrl === undefined) {
-      delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    } else {
-      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
-    }
-  });
-
-  await listMarkets();
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/markets");
-});
-
-test("listMarkets uses configured absolute API base URL without trailing slash", async (t) => {
-  const originalFetch = globalThis.fetch;
-  const originalApiBaseUrl = process.env.API_BASE_URL;
-  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const calls: FetchCall[] = [];
-
-  process.env.API_BASE_URL = "https://api.example.com///";
-  delete process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  globalThis.fetch = createFetchMock([], calls);
-
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-    if (originalApiBaseUrl === undefined) {
-      delete process.env.API_BASE_URL;
-    } else {
-      process.env.API_BASE_URL = originalApiBaseUrl;
-    }
-    if (originalPublicApiBaseUrl === undefined) {
-      delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    } else {
-      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
-    }
-  });
-
-  await listMarkets();
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "https://api.example.com/markets");
-});
-
 
 test("listExternalMarkets returns empty array for non-array payload", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -166,6 +102,44 @@ test("listExternalMarkets uses local Next API route when API base is not configu
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
+});
+
+test("listExternalMarkets treats web-origin NEXT_PUBLIC_API_BASE_URL as same-origin mode", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const calls: FetchCall[] = [];
+
+  delete process.env.API_BASE_URL;
+  process.env.NEXT_PUBLIC_API_BASE_URL = "https://betting-web-ten.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL = "https://betting-web-ten.vercel.app";
+
+  globalThis.fetch = createFetchMock([], calls);
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+    if (originalSiteUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_SITE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_SITE_URL = originalSiteUrl;
+    }
+  });
+
+  await listExternalMarkets();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.[0], "https://betting-web-ten.vercel.app/api/external/markets");
 });
 
 test("public external market detail helpers use same-site Next API route when API base is not configured", async (t) => {
@@ -241,7 +215,7 @@ test("public external market detail helpers use same-site Next API route when AP
   ]);
 });
 
-test("listExternalMarkets uses standalone API route when API base is configured", async (t) => {
+test("listExternalMarkets uses same-site Next API route even when API base is configured", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -269,10 +243,10 @@ test("listExternalMarkets uses standalone API route when API base is configured"
   await listExternalMarkets();
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
 });
 
-test("listExternalMarkets falls back to same-site route when configured API base is unreachable", async (t) => {
+test("listExternalMarkets ignores configured service API base for public market browsing", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -316,9 +290,8 @@ test("listExternalMarkets falls back to same-site route when configured API base
   const markets = await listExternalMarkets();
 
   assert.deepEqual(markets, []);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
-  assert.equal(calls[1]?.[0], "https://bet.example.vercel.app/api/external/markets");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/api/external/markets");
 });
 
 test("listExternalMarkets uses same-site Next API route in production when API_BASE_URL is not configured", async (t) => {
@@ -398,16 +371,12 @@ test("listExternalMarkets returns safe diagnostic for localhost API base in prod
   });
 
   await withNodeEnv("production", async () => {
-    await assert.rejects(
-      () => listExternalMarkets(),
-      (error: unknown) =>
-        error instanceof ExternalMarketsLoadError &&
-        error.diagnostics.includes("configured_api_base_unreachable") &&
-        !error.message.includes("localhost"),
-    );
+    const markets = await listExternalMarkets();
+    assert.deepEqual(markets, []);
   });
 
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
   assert.equal(warnings.length, 1);
   assert.doesNotMatch(warnings[0] ?? "", /localhost:4000/);
 });
@@ -492,7 +461,7 @@ test("listExternalMarkets classifies market source unavailable with sanitized so
   );
 });
 
-test("listExternalMarkets falls back to same-site route when configured /external/markets is missing", async (t) => {
+test("listExternalMarkets does not call configured /external/markets service endpoint", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -541,10 +510,7 @@ test("listExternalMarkets falls back to same-site route when configured /externa
   const markets = await listExternalMarkets();
 
   assert.deepEqual(markets, []);
-  assert.deepEqual(calls, [
-    "https://api.example.com/external/markets",
-    "https://bet.example.vercel.app/api/external/markets",
-  ]);
+  assert.deepEqual(calls, ["https://bet.example.vercel.app/api/external/markets"]);
 });
 
 test("getAmbassadorDashboard uses local Next API route when API base is not configured", async (t) => {

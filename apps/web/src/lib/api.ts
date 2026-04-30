@@ -1,13 +1,6 @@
 import {
-  MarketSnapshotSchema,
-  MarketTradesSchema,
-  OrderBookSchema,
-  PortfolioSnapshotSchema,
-  WithdrawalRecordSchema,
   GetAmbassadorDashboardResponseSchema,
   GetAdminAmbassadorOverviewResponseSchema,
-  CreateOrderRequestSchema,
-  PostOrdersResponseSchema,
 } from "@bet/contracts";
 
 const getServerCookieHeader = async (): Promise<string | null> => {
@@ -76,6 +69,16 @@ const getConfiguredApiBaseUrl = (): string => {
   return "";
 };
 
+const getConfiguredPublicApiBaseUrl = (): string => {
+  const configuredUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.API_BASE_URL;
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+
+  return "";
+};
+
 const getLocalWebBaseUrl = (): string => {
   if (typeof window !== "undefined") {
     return "";
@@ -100,9 +103,41 @@ const getLocalApiUrl = (path: string): string => {
   return localBase ? `${localBase}${localPath}` : localPath;
 };
 
+const normalizeOrigin = (value: string): string | null => {
+  try {
+    return new URL(value).origin.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+};
+
+const isConfiguredApiBaseSameAsWebOrigin = (base: string): boolean => {
+  const configuredOrigin = normalizeOrigin(base);
+  if (!configuredOrigin) return false;
+
+  if (typeof window !== "undefined") {
+    return configuredOrigin === window.location.origin.replace(/\/+$/, "");
+  }
+
+  const knownWebOrigins = [
+    getLocalWebBaseUrl(),
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? process.env.VERCEL_PROJECT_PRODUCTION_URL.startsWith("http")
+        ? process.env.VERCEL_PROJECT_PRODUCTION_URL
+        : `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : undefined,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  ]
+    .map((origin) => (origin ? normalizeOrigin(origin) : null))
+    .filter((origin): origin is string => Boolean(origin));
+
+  return knownWebOrigins.includes(configuredOrigin);
+};
+
 const getPublicRouteUrl = (path: string): string => {
-  const base = getConfiguredApiBaseUrl();
-  if (base && !hasUnreachableProductionApiBaseUrl()) {
+  const base = getConfiguredPublicApiBaseUrl();
+  if (base && !hasUnreachableProductionApiBaseUrl() && !isConfiguredApiBaseSameAsWebOrigin(base)) {
     return `${base}${path}`;
   }
 
@@ -126,7 +161,7 @@ const isLocalhostApiBaseUrl = (base: string): boolean => {
 let warnedAboutProductionLocalApiBase = false;
 
 const hasUnreachableProductionApiBaseUrl = (): boolean => {
-  const base = getConfiguredApiBaseUrl();
+  const base = getConfiguredPublicApiBaseUrl();
   if (!base || !isProductionRuntime() || !isLocalhostApiBaseUrl(base)) {
     return false;
   }
@@ -269,7 +304,7 @@ const executePublicRouteRequest = async <T>(
     return await executeApiRequest<T>(primaryUrl, init);
   } catch (error) {
     const fallbackUrl = getLocalApiUrl(path);
-    if (!getConfiguredApiBaseUrl() || fallbackUrl === primaryUrl || !shouldRetryPublicReadViaLocalRoute(error)) {
+    if (!getConfiguredPublicApiBaseUrl() || fallbackUrl === primaryUrl || !shouldRetryPublicReadViaLocalRoute(error)) {
       throw error;
     }
 
@@ -337,104 +372,6 @@ export const toBigInt = (value: string | number | bigint | null | undefined): bi
   }
 
   return BigInt(value);
-};
-
-export const listMarkets = async () => {
-  const data = await readApiJson("/markets");
-  if (!data || !Array.isArray(data)) {
-    return [];
-  }
-  try {
-    return MarketSnapshotSchema.array().parse(data);
-  } catch {
-    return data;
-  }
-};
-
-export const getMarket = async (marketId: string) => {
-  const payload = await readApiJson(`/markets/${marketId}`, { allowNotFound: true });
-
-  if (payload === null) {
-    return null;
-  }
-
-  return MarketSnapshotSchema.nullable().parse((payload as { market: unknown }).market);
-};
-
-export const getOrderBook = async (marketId: string) =>
-  OrderBookSchema.parse(await readApiJson(`/markets/${marketId}/orderbook`));
-
-export const getRecentTrades = async (marketId: string) =>
-  MarketTradesSchema.parse(await readApiJson(`/markets/${marketId}/trades`));
-
-export const getPortfolio = async () =>
-  PortfolioSnapshotSchema.parse(await readApiJson("/portfolio"));
-
-export const linkWallet = async (input: {
-  walletAddress: string;
-  signature: string;
-  signedMessage: string;
-}) => readApiJson("/wallets/link", { method: "POST", body: input });
-
-export const verifyDepositTx = async (txHash: string) =>
-  readApiJson("/deposits/verify", { method: "POST", body: { txHash } });
-
-export const requestWithdrawal = async (input: {
-  amountAtoms: bigint;
-  destinationAddress: string;
-}) =>
-  readApiJson("/withdrawals", {
-    method: "POST",
-    body: { amountAtoms: input.amountAtoms.toString(), destinationAddress: input.destinationAddress },
-  });
-
-export const listWithdrawals = async () => {
-  const payload = await readApiJson("/withdrawals");
-  return WithdrawalRecordSchema.array().parse((payload as { withdrawals: unknown[] }).withdrawals);
-};
-
-export const listAdminRequestedWithdrawals = async () => {
-  const payload = await readApiJson("/admin/withdrawals");
-
-  return WithdrawalRecordSchema.array().parse((payload as { withdrawals: unknown[] }).withdrawals);
-};
-
-export const executeAdminWithdrawal = async (withdrawalId: string, txHash: string) =>
-  readApiJson(`/admin/withdrawals/${withdrawalId}/execute`, {
-    method: "POST",
-    body: { txHash },
-  });
-
-export const failAdminWithdrawal = async (withdrawalId: string, reason: string) =>
-  readApiJson(`/admin/withdrawals/${withdrawalId}/fail`, {
-    method: "POST",
-    body: { reason },
-  });
-
-export const createOrder = async (input: {
-  marketId: string;
-  outcomeId: string;
-  side: "buy" | "sell";
-  orderType: "limit" | "market";
-  price: string;
-  quantity: string;
-  clientOrderId?: string | null;
-}) => {
-  const validated = CreateOrderRequestSchema.parse({
-    marketId: input.marketId,
-    outcomeId: input.outcomeId,
-    side: input.side,
-    orderType: input.orderType,
-    price: input.price,
-    quantity: input.quantity,
-    clientOrderId: input.clientOrderId ?? null,
-  });
-  return PostOrdersResponseSchema.parse(
-    await readApiJson("/orders", {
-      method: "POST",
-      body: validated,
-    }),
-  );
 };
 
 export const getAmbassadorDashboard = async () =>
@@ -618,16 +555,39 @@ export interface ExternalMarketApiRecord {
   latestOrderbook?: ExternalMarketApiOrderbookSnapshot[];
 }
 
+export interface ExternalMarketsApiEnvelope {
+  ok: boolean;
+  source: string;
+  fallbackUsed: boolean;
+  stale: boolean;
+  lastUpdatedAt: string | null;
+  markets: ExternalMarketApiRecord[];
+  diagnostics?: {
+    supabaseCacheReachable?: boolean;
+    marketCacheRowCount?: number | null;
+    newestLastSyncedAt?: string | null;
+    staleMarketCount?: number | null;
+    lastSyncStatus?: string | null;
+    fallbackUsedLastRequest?: boolean;
+    routedTradingEnabled?: boolean;
+    builderCodeConfigured?: boolean;
+    errorCode?: string;
+  };
+}
+
 export const getPublicExternalMarketsReadiness = () => {
-  const configuredApiBaseUrl = getConfiguredApiBaseUrl();
+  const configuredApiBaseUrl = getConfiguredPublicApiBaseUrl();
   const sameOriginUrl = getLocalApiUrl("/external/markets");
-  const dataUrl = getPublicRouteUrl("/external/markets");
+  const dataUrl = sameOriginUrl;
+  const configuredApiBaseIsWebOrigin = configuredApiBaseUrl ? isConfiguredApiBaseSameAsWebOrigin(configuredApiBaseUrl) : false;
 
   return {
     dataUrl,
     sameOriginUrl,
     apiBaseUrlConfigured: Boolean(configuredApiBaseUrl),
+    configuredApiBaseIsWebOrigin,
     sameOriginApiSelected: dataUrl === sameOriginUrl,
+    serviceApiSelected: Boolean(configuredApiBaseUrl) && !configuredApiBaseIsWebOrigin && dataUrl !== sameOriginUrl,
     polymarketFallbackEnabled: true,
   };
 };
@@ -635,19 +595,20 @@ export const getPublicExternalMarketsReadiness = () => {
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
-  if (!getConfiguredApiBaseUrl()) {
+  if (!getConfiguredPublicApiBaseUrl()) {
     diagnostics.push("missing_api_base_url");
   }
   if (hasUnreachableProductionApiBaseUrl()) {
-    throw new ExternalMarketsLoadError(
-      "Configured API base is unreachable in production",
-      ["configured_api_base_unreachable"],
-    );
+    diagnostics.push("configured_api_base_unreachable");
   }
 
   try {
-    const payload = await executePublicRouteRequest<unknown>("/external/markets");
-    return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
+    const payload = await executeApiRequest<unknown>(getLocalApiUrl("/external/markets"));
+    if (Array.isArray(payload)) return payload as ExternalMarketApiRecord[];
+    if (payload && typeof payload === "object" && Array.isArray((payload as ExternalMarketsApiEnvelope).markets)) {
+      return (payload as ExternalMarketsApiEnvelope).markets;
+    }
+    return [];
   } catch (error) {
     if (error instanceof ApiResponseError) {
       if (error.code === "MARKET_SOURCE_UNAVAILABLE") {

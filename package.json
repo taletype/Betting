@@ -10,19 +10,10 @@
     "test": "turbo test",
     "dev:web": "pnpm --filter @bet/web dev",
     "dev:api": "./infra/scripts/dev-api.sh",
-    "dev:ws": "pnpm --filter @bet/ws dev",
-    "dev:workers": "./infra/scripts/dev-workers.sh",
     "db:reset": "./infra/scripts/reset-local-db.sh",
     "smoke:local": "./infra/scripts/smoke-local.sh",
-    "load:launch": "node --import tsx infra/load/launch-load-harness.ts",
-    "smoke:db": "./infra/scripts/smoke-db.sh",
-    "smoke:base-sepolia": "./infra/scripts/smoke-base-sepolia.sh",
-    "ci:smoke:db": "SMOKE_DB_PREP_MODE=none ./infra/scripts/smoke-db.sh",
-    "drill:staging": "./infra/scripts/staging-launch-drill.sh",
     "sync:external": "pnpm --filter @bet/external-sync-worker run run",
-    "smoke:launch-proof": "./infra/scripts/smoke-launch-proof.sh",
-    "smoke:polymarket-public": "./infra/scripts/smoke-polymarket-public.sh",
-    "screenshots:pack": "./infra/scripts/screenshot-pack.sh"
+    "smoke:polymarket-public": "./infra/scripts/smoke-polymarket-public.sh"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
