@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseClient } from "@bet/db";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
 import { normalizeApiPayload } from "../_shared/api-serialization";
+import { adminPolymarketStatusResponse } from "../_shared/admin-polymarket-status";
 import { readExternalMarkets } from "../_shared/external-market-read";
 import {
   externalMarketDetailResponse,
@@ -381,6 +382,10 @@ async function handleRequest(
       }
 
       const adminActorId = user!.id;
+
+      if (apiPath === "admin/polymarket/status" && request.method === "GET") {
+        return adminPolymarketStatusResponse(request, adminSupabase);
+      }
 
       if (apiPath === "admin/withdrawals" && request.method === "GET") {
         const { data, error } = await adminSupabase().rpc("rpc_admin_list_requested_withdrawals");

@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { GET, POST, setSupabaseAdminClientFactoryForTests } from "./[...path]/route";
+import { getAdminPolymarketStatusPayload } from "./_shared/admin-polymarket-status";
 import { GET as healthGET } from "./health/route";
 import { GET as versionGET } from "./version/route";
 import { GET as externalMarketsGET } from "./external/markets/route";
@@ -116,7 +117,19 @@ const makeExternalMarketsSupabase = (options: { staleAfter?: string } = {}) => (
         select: () => ({
           eq: () => ({
             order: () => ({
-              limit: async () => ({ data: [{ status: "success" }], error: null }),
+              limit: async () => ({
+                data: [{
+                  sync_kind: "market_list",
+                  status: "success",
+                  started_at: "2099-05-01T01:02:00.000Z",
+                  finished_at: "2099-05-01T01:02:10.000Z",
+                  markets_seen: 1,
+                  markets_upserted: 1,
+                  error_message: null,
+                  diagnostics: { source: "cache" },
+                }],
+                error: null,
+              }),
             }),
           }),
         }),
@@ -406,6 +419,26 @@ test("admin launch status rejects anonymous users and does not expose secrets", 
     assert.equal(response.status, 401);
     assert.doesNotMatch(text, /do-not-show|POLYMARKET_API_SECRET/);
   });
+});
+
+test("admin Polymarket status is protected and reports cache sync audit", async () => {
+  setSupabaseAdminClientFactoryForTests(() => makeExternalMarketsSupabase() as never);
+  try {
+    const anonymousResponse = await GET(new NextRequest("http://localhost/api/admin/polymarket/status"), {
+      params: Promise.resolve({ path: ["admin", "polymarket", "status"] }),
+    });
+    assert.equal(anonymousResponse.status, 401);
+
+    const payload = await getAdminPolymarketStatusPayload(() => makeExternalMarketsSupabase() as never);
+    assert.equal(payload.source, "polymarket");
+    assert.deepEqual(payload.marketCounts, { total: 1, open: 1, stale: 0, errored: 0 });
+    assert.equal(payload.recentRuns[0]?.syncKind, "market_list");
+    assert.equal(payload.recentRuns[0]?.status, "success");
+    assert.equal(payload.recentRuns[0]?.startedAt, "2099-05-01T01:02:00.000Z");
+    assert.equal(payload.preflight.routedTradingEnabled, false);
+  } finally {
+    setSupabaseAdminClientFactoryForTests(null);
+  }
 });
 
 test("public API routes do not import command modules that mutate balances or ledger", () => {

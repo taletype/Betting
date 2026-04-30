@@ -123,6 +123,25 @@ test("Polymarket preflight endpoint requires admin role", async () => {
   }
 });
 
+test("Polymarket status endpoint requires admin role", async () => {
+  const server = await getServer();
+  let response = await server.handleRequest(new Request("http://localhost/admin/polymarket/status"));
+  assert.equal(response.status, 401);
+
+  server.setApiAuthVerifierForTests(async () => ({
+    id: "11111111-1111-4111-8111-111111111111",
+    email: "user@example.test",
+    role: "user",
+    claims: {},
+  }));
+  try {
+    response = await server.handleRequest(new Request("http://localhost/admin/polymarket/status"));
+    assert.equal(response.status, 403);
+  } finally {
+    server.setApiAuthVerifierForTests(null);
+  }
+});
+
 test("userId in command body cannot authenticate or impersonate", async () => {
   const handleRequest = await getHandleRequest();
   const response = await handleRequest(
