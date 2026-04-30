@@ -211,7 +211,8 @@ test("Thirdweb connected wallet state is display-only and does not imply app log
     }),
   );
 
-  assert.match(tradeMarkup, /data-testid="top-blocking-reason">尚未登入/);
+  assert.match(tradeMarkup, /登入以保存推薦獎勵/);
+  assert.doesNotMatch(tradeMarkup, /data-testid="top-blocking-reason">尚未登入/);
   assert.match(tradeMarkup, /disabled=""/);
 });
 
@@ -346,6 +347,7 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
 
   const credentialMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasCredentials: false }));
   assert.match(credentialMarkup, /data-testid="top-blocking-reason">需要 Polymarket 憑證/);
+  assert.match(credentialMarkup, /設定 Polymarket 憑證/);
 
   const featureMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, featureEnabled: false }));
   assert.match(featureMarkup, /data-testid="top-blocking-reason">交易介面預覽/);

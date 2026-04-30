@@ -70,7 +70,7 @@ const getTradeTicketActionLabel = (
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false) return "增值錢包";
   if (!input.featureEnabled) return "交易功能尚未啟用";
-  if (!input.hasCredentials) return "需要 Polymarket 憑證";
+  if (!input.hasCredentials) return "設定 Polymarket 憑證";
   if (!input.hasBuilderCode) return "Builder Code 未設定";
   if (!input.marketTradable || input.orderValid === false) return "市場只供瀏覽";
   if (input.submitModeEnabled === false || !input.submitterAvailable) return "實盤提交已停用";
@@ -132,7 +132,11 @@ export function PolymarketTradeTicket(props: Props) {
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
   const disabled = readiness !== "ready_to_submit" || !finalConfirmation;
-  const tradeButtonLabel = disabled ? getTradeTicketActionLabel(readinessInput, readiness) : "透過 Polymarket 交易";
+  const tradeButtonLabel = disabled
+    ? readiness === "ready_to_submit"
+      ? "準備自行簽署訂單"
+      : getTradeTicketActionLabel(readinessInput, readiness)
+    : "透過 Polymarket 交易";
   const publicTradingReady = Boolean(
     props.featureEnabled &&
     props.hasBuilderCode &&

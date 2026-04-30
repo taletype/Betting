@@ -1163,7 +1163,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
       invalid_order: "價格或數量無效",
       submitter_unavailable: "交易提交器未準備好",
       signature_required: "需要用戶自行簽署訂單",
-      ready_to_submit: "透過 Polymarket 交易",
+      ready_to_submit: "準備自行簽署訂單",
       submitted: "已提交到 Polymarket",
     },
     polymarketRoutingPending: "用戶簽署及 API 憑證流程完成前，POLYMARKET_ROUTED_TRADING_ENABLED 會保持關閉。",

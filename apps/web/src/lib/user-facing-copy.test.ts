@@ -133,11 +133,12 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "價格或數量無效",
     "交易提交器未準備好",
     "需要用戶自行簽署訂單",
-    "透過 Polymarket 交易",
+    "準備自行簽署訂單",
     "已提交到 Polymarket",
   ]) {
     assert.ok(Object.values(readiness).includes(text), text);
   }
+  assert.equal(getLocaleCopy("zh-HK").research.tradeViaPolymarket, "透過 Polymarket 交易");
   assert.equal(
     getLocaleCopy("zh-HK").research.nonCustodialNotice,
     "用戶需要自行簽署訂單。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。",

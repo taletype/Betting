@@ -25,7 +25,7 @@ const readyInput = (): PolymarketRoutingReadinessInput => ({
 });
 
 test("readiness model enumerates disabled states", () => {
-  assert.equal(getPolymarketRoutingReadiness({ loggedIn: false, hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "auth_required");
+  assert.equal(getPolymarketRoutingReadiness({ loggedIn: false, hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "signature_required");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: false, featureEnabled: true, walletConnected: true, hasCredentials: true, marketTradable: true, submitterAvailable: true }), "builder_code_missing");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: false, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "feature_disabled");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, betaUserAllowlisted: false, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "beta_user_not_allowlisted");
@@ -62,7 +62,7 @@ test("readiness returns ready when all conditions are met", () => {
   assert.equal(getPolymarketRoutingReadiness({ loggedIn: true, hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true, userSigned: true, submitted: true }), "submitted");
 });
 
-test("feature disabled is the top public launch blocker while other checklist items remain visible", () => {
+test("wallet trade intent is the top public launch blocker while other checklist items remain visible", () => {
   const input = {
     ...readyInput(),
     featureEnabled: false,
@@ -73,7 +73,7 @@ test("feature disabled is the top public launch blocker while other checklist it
   };
 
   assert.equal(getPolymarketRoutingReadiness(input), "feature_disabled");
-  assert.equal(getPolymarketTopBlockingReason(input), "feature_disabled");
+  assert.equal(getPolymarketTopBlockingReason(input), "wallet_not_connected");
   assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
     "feature_disabled",
     "wallet_not_connected",
@@ -83,6 +83,7 @@ test("feature disabled is the top public launch blocker while other checklist it
 
   const checklist = getPolymarketReadinessChecklist(input);
   assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "login")?.actionLabel, "登入以保存推薦獎勵");
   assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "trading_feature")?.status, "blocked");

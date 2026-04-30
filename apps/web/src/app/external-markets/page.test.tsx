@@ -568,7 +568,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     assert.match(markup, /Will Polymarket routing be scaffolded/);
     assert.match(markup, /你正在使用推薦碼：FRIEND001/);
     assert.match(markup, /href="\/polymarket\/poly-1\?source=polymarket&amp;externalId=POLY-1&amp;ref=FRIEND001"/);
-    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /連接錢包/);
     assert.match(markup, /Builder Code 未設定/);
     assert.match(markup, /來源：Polymarket/);
     assert.match(markup, /資料來源：Polymarket API/);
@@ -578,9 +578,9 @@ test("Polymarket page browsing works without builder code and shows disabled tra
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /連接錢包/);
     assert.match(markup, /交易介面預覽/);
-    assert.match(markup, /title="尚未登入"/);
+    assert.match(markup, /title="連接錢包"/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
@@ -645,7 +645,7 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /上次同步/);
   assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
   assert.match(markup, /mobile-trade-sheet/);
-  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
+  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未連接錢包<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
   assert.match(markup, /<button[^>]*>連接錢包<\/button>/);
   assert.match(markup, /複製市場推薦連結/);
@@ -1264,7 +1264,7 @@ test("Polymarket detail browsing works without POLY_BUILDER_CODE", async (t) => 
 
     assert.match(markup, /Will browsing work without builder code/);
     assert.match(markup, /Builder Code 未設定/);
-    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /連接錢包/);
     assert.match(markup, /disabled=""/);
   });
 });
@@ -1945,8 +1945,7 @@ test("Polymarket page keeps routed trade CTA disabled when submitter is unavaila
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /交易狀態<\/span><span class="kv-value">交易介面預覽已啟用；實盤提交仍然停用/);
-    assert.match(markup, /透過 Polymarket 交易/);
-    assert.match(markup, /尚未登入/);
+    assert.match(markup, /連接錢包/);
     assert.match(markup, /disabled=""/);
   });
 });

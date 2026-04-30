@@ -302,6 +302,16 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     submitterAvailable,
   };
   const disabledReasonLabel = (reason: PolymarketRoutingReadiness) => copy.readinessCopy[reason] ?? reason;
+  const tradeActionLabel = (reason: PolymarketRoutingReadiness | null): string => {
+    if (reason === "wallet_not_connected") return "連接錢包";
+    if (reason === "wallet_funds_insufficient") return "增值錢包";
+    if (reason === "credentials_missing") return "設定 Polymarket 憑證";
+    if (reason === "market_not_tradable" || reason === "invalid_order" || reason === "geoblocked") return "市場只供瀏覽";
+    if (reason === "submit_mode_disabled" || reason === "submitter_unavailable") return "實盤提交已停用";
+    if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
+    if (reason === "feature_disabled") return "交易功能尚未啟用";
+    return copy.tradeViaPolymarket;
+  };
   const shareUrl = refCode ? `${getSiteUrl()}/polymarket?ref=${encodeURIComponent(refCode)}` : `${getSiteUrl()}/polymarket`;
   const externalMarketsEndpointReachable = !loadFailed;
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
@@ -469,6 +479,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                     orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && (market.lastTradePrice ?? market.bestAsk ?? market.bestBid)),
                   });
                   const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+                  const marketActionLabel = tradeActionLabel(marketTopReason);
                   const stale = isExternalMarketStale(market);
 
                   return (
@@ -507,7 +518,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       </td>
                       <td>
                         <div className="table-actions">
-                          <button type="button" className="primary-cta" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
+                          <button type="button" className="primary-cta" disabled title={marketActionLabel}>{marketActionLabel}</button>
                           <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
                           <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                         </div>
@@ -527,6 +538,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
             });
             const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+            const marketActionLabel = tradeActionLabel(marketTopReason);
             const marketShareUrl = `${getSiteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
             const closeState = getCloseState(market);
@@ -587,9 +599,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                {market.marketUrl ? <Link className="button-link" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
                 <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
-                <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
+                <button type="button" disabled title={marketActionLabel}>{marketActionLabel}</button>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
                 <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                 <TrackedCopyButton

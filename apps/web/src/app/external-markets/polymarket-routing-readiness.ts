@@ -145,7 +145,6 @@ export const getPolymarketRoutingReadiness = (
 ): PolymarketRoutingReadiness => {
   if (!input.featureEnabled) return "feature_disabled";
   if (input.betaUserAllowlisted === false) return "beta_user_not_allowlisted";
-  if (input.loggedIn === false) return "auth_required";
   if (!input.walletConnected) return "wallet_not_connected";
   if (input.walletAddressKnown === false) return "wallet_not_connected";
   if (input.walletFundsSufficient === false) return "wallet_funds_insufficient";
@@ -171,7 +170,6 @@ export const getPolymarketRoutingDisabledReasons = (
 
   if (!input.featureEnabled) reasons.push("feature_disabled");
   if (input.betaUserAllowlisted === false) reasons.push("beta_user_not_allowlisted");
-  if (input.loggedIn === false) reasons.push("auth_required");
   if (!input.walletConnected) reasons.push("wallet_not_connected");
   if (input.walletConnected && input.walletAddressKnown === false) reasons.push("wallet_not_connected");
   if (input.walletFundsSufficient === false) reasons.push("wallet_funds_insufficient");
@@ -193,7 +191,6 @@ export const isPolymarketRoutingFullyEnabled = (input: PolymarketRoutingReadines
 export const getPolymarketTopBlockingReason = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness | null => {
-  if (input.loggedIn === false) return "auth_required";
   if (!input.walletConnected || input.walletAddressKnown === false) return "wallet_not_connected";
   if (!input.hasCredentials) return "credentials_missing";
   if (!input.marketTradable || input.orderValid === false) return "market_not_tradable";
@@ -235,10 +232,10 @@ export const getPolymarketReadinessChecklist = (
     {
       id: "login",
       label: "登入",
-      explanation: input.loggedIn === false ? "登入後才可準備用戶簽署訂單。" : "已確認登入狀態。",
+      explanation: input.loggedIn === false ? "登入以保存推薦獎勵。" : "已確認登入狀態。",
       status: input.loggedIn === false ? "missing" : "complete",
       actionHref: input.loggedIn === false ? "/login" : undefined,
-      actionLabel: input.loggedIn === false ? "登入" : undefined,
+      actionLabel: input.loggedIn === false ? "登入以保存推薦獎勵" : undefined,
     },
     {
       id: "wallet",
