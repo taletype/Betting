@@ -370,6 +370,11 @@ button:disabled:hover {
   min-width: 0;
 }
 
+.invite-link-card {
+  border-color: rgba(15, 118, 110, 0.22);
+  background: linear-gradient(180deg, #ffffff, #f3fbf8);
+}
+
 .premium-band {
   padding: 32px 0;
 }
@@ -792,7 +797,7 @@ button:disabled:hover {
 
 .market-card {
   min-height: 0;
-  padding: 22px;
+  padding: 24px;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
@@ -806,7 +811,7 @@ button:disabled:hover {
   align-items: flex-start;
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(210px, 0.72fr) minmax(150px, 0.55fr);
-  gap: 18px;
+  gap: 22px;
 }
 
 .market-card-title {
@@ -841,6 +846,18 @@ button:disabled:hover {
   padding: 6px 10px;
   color: #334155;
   font-size: 13px;
+}
+
+.outcome-card {
+  border: 1px solid rgba(21, 34, 58, 0.12);
+  border-radius: var(--radius);
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.market-hero-warning {
+  border-left: 3px solid rgba(15, 118, 110, 0.38);
+  padding-left: 12px;
 }
 
 .skeleton-grid {
@@ -1094,7 +1111,7 @@ button:disabled:hover {
 
   .mobile-nav {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
     position: fixed;
     left: 8px;
     right: 8px;
@@ -1254,7 +1271,7 @@ button:disabled:hover {
   .market-card-main {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 16px;
   }
 
   .market-card-chart,

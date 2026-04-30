@@ -57,21 +57,21 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
     <main className="stack">
       <FunnelEventTracker name="landing_page_view" metadata={refCode ? { ref: refCode } : undefined} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
-      {refCode ? <div className="banner banner-success referral-banner sticky-referral">你正在使用推薦碼：{refCode}</div> : null}
+      {refCode ? <div className="banner banner-success referral-banner sticky-referral">你正在使用推薦碼：{refCode}。市場連結會保留直接推薦歸因。</div> : null}
       <section className="hero landing-hero">
         <div className="hero-copy stack">
-          <h1>用中文追蹤熱門 Polymarket 市場</h1>
+          <h1>繁中 Polymarket 市場入口</h1>
           <span className="sr-only">用一個頁面追蹤熱門 Polymarket 市場</span>
-          <p>以繁體中文瀏覽市場、比較價格、分享有用市場連結，並為未來用戶自行簽署的非託管交易做好準備。</p>
+          <p>以繁體中文瀏覽市場、比較價格、分享有用市場連結，並清楚查看推薦獎勵及 Beta 交易狀態。</p>
           {!refCode ? <PendingReferralNotice /> : null}
           <div className="trust-badge-row" aria-label="平台安全披露">
-            {["非託管", "用戶自行簽署", "直接推薦", "人工審批支付"].map((label) => (
+            {["Beta", "非託管", "交易尚未啟用", "直接推薦", "人手審批"].map((label) => (
               <StatusChip key={label}>{label}</StatusChip>
             ))}
           </div>
           <div className="market-actions">
-            <Link className="button-link primary-cta" href={marketHref}>查看熱門市場</Link>
-            <Link className="button-link secondary" href={getLocaleHref(locale, "/ambassador")}>邀請朋友</Link>
+            <Link className="button-link primary-cta" href={marketHref}>前往 Polymarket 市場</Link>
+            <Link className="button-link secondary" href={getLocaleHref(locale, "/ambassador")}>查看邀請獎勵</Link>
             <TrackedCopyButton
               value={inviteUrl}
               label="複製邀請連結"

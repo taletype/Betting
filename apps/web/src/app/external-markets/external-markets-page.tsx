@@ -275,6 +275,12 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       <section className="hero">
         <h1>{copy.title}</h1>
         <p>{copy.subtitle}</p>
+        <div className="trust-badge-row" aria-label="Polymarket Beta 狀態">
+          <span className="badge badge-info">Beta</span>
+          <span className="badge badge-success">非託管</span>
+          <span className="badge badge-warning">交易尚未啟用</span>
+          <span className="badge badge-warning">人手審批</span>
+        </div>
         {refCode ? <div className="banner banner-success referral-banner">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice prefix="你正在使用推薦碼：" />}
         <div className="market-actions">
           <TrackedCopyButton
@@ -358,6 +364,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       <section className="stack">
         {loadFailed ? (
           <div className="panel empty-state">
+            <strong>市場資料暫時未能更新</strong>
             <p>{copy.loadError}</p>
             {loadDiagnostics.includes("market_source_unavailable") ? (
               <>
@@ -376,9 +383,11 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 </ul>
               ) : null
             )}
+            <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>重新整理市場</Link>
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
+            <strong>未找到符合條件的市場</strong>
             <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : "暫時未有符合條件的開放市場。"}</p>
             <span className="sr-only">暫時未有活躍市場資料</span>
             {defaultFeed ? (
@@ -455,8 +464,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <td>
                         <div className="table-actions">
                           <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
-                          {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                          {market.marketUrl ? <Link className="button-link" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
                           <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
+                          <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
                         </div>
                       </td>
                     </tr>
@@ -531,7 +541,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                {market.marketUrl ? <Link className="button-link" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
                 <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                 <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>

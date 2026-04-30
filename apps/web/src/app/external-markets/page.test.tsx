@@ -112,7 +112,8 @@ test("home page renders Chinese-first Polymarket landing page", async (t) => {
   assert.match(markup, /瀏覽市場、比較價格/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
-  assert.match(markup, /查看熱門市場/);
+  assert.match(markup, /前往 Polymarket 市場/);
+  assert.match(markup, /交易尚未啟用/);
   assert.match(markup, /複製邀請連結/);
   assert.match(markup, /本平台不會代用戶下注或交易/);
 });

@@ -109,9 +109,9 @@ test("public beta launch mode renders explicit disabled trading and manual payou
 
   const markup = renderToStaticMarkup(await RewardsPage());
   assert.match(markup, /Beta 公開預覽/);
-  assert.match(markup, /交易路由已停用/);
+  assert.match(markup, /交易尚未啟用/);
   assert.match(markup, /非託管/);
-  assert.match(markup, /人工審批支付/);
+  assert.match(markup, /人手審批/);
 });
 
 test("safe launch status reports beta mode with routed trading and auto payout disabled by default", async (t) => {

@@ -20,8 +20,14 @@ export default async function RewardsPage() {
     <main className="stack">
       <section className="hero">
         <h1>推薦獎勵帳務紀錄</h1>
-        <p>此頁顯示推薦獎勵的會計紀錄。獎勵在人工審批並完成 Polygon 上的 pUSD 支付前，並不是可自由使用的交易資金。</p>
-        <p>獎勵計算可自動記錄，但實際支付不會自動執行，不會自動從金庫轉帳，需要人工審批。</p>
+        <p>此頁只顯示推薦獎勵的會計紀錄，與交易結餘分開。獎勵在管理員審批並完成 Polygon 上的 pUSD 支付前，並不是可自由使用的交易資金。</p>
+        <p>獎勵計算可自動記錄，但實際支付不會自動執行，不會自動從金庫轉帳，需要管理員審批。</p>
+        <div className="trust-badge-row">
+          <span className="badge badge-warning">待確認獎勵</span>
+          <span className="badge badge-success">可提取獎勵</span>
+          <span className="badge badge-neutral">已支付獎勵</span>
+          <span className="badge badge-warning">人手審批</span>
+        </div>
         <PendingReferralNotice />
       </section>
       <BetaLaunchDisclosure />
@@ -38,7 +44,7 @@ export default async function RewardsPage() {
         <>
           <section className="grid">
             <MetricCard label="待確認獎勵" value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" note="仍需確認 Builder 費用收入及歸因。" />
-            <MetricCard label="可申請提取" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" note="可提交人工支付申請。" />
+            <MetricCard label="可提取獎勵" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" note="可提交人工支付申請。" />
             <MetricCard label="已支付獎勵" value={formatUsdc(dashboard.rewards.paidRewards, locale)} note="已由管理員標記為支付完成。" />
             <MetricCard label="支付資產" value="Polygon pUSD" note="需要管理員審批及鏈上交易紀錄。" />
           </section>

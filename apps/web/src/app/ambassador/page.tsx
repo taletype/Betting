@@ -30,8 +30,9 @@ export default async function AmbassadorPage() {
           <p>獎勵計算可自動記錄，但實際支付需要管理員審批。</p>
           <div className="trust-badge-row">
             <StatusChip>直接推薦</StatusChip>
-            <StatusChip>無預繳費用</StatusChip>
-            <StatusChip>人工審批支付</StatusChip>
+            <StatusChip>無需付費</StatusChip>
+            <StatusChip>人手審批</StatusChip>
+            <StatusChip tone="warning">待確認獎勵</StatusChip>
             <StatusChip>非託管</StatusChip>
           </div>
           <PendingReferralNotice />
@@ -39,7 +40,7 @@ export default async function AmbassadorPage() {
       </section>
       <BetaLaunchDisclosure />
       <SafetyDisclosure title="推薦規則">
-        推薦獎勵只來自直接推薦及已確認的 Builder 費用收入，不設多層推薦，不代表任何交易盈利或保證收入。
+        推薦獎勵只來自直接推薦及已確認的 Builder 費用收入，不設多層推薦，不代表任何交易盈利或確定收入。
       </SafetyDisclosure>
 
       {!dashboard ? (
@@ -50,11 +51,11 @@ export default async function AmbassadorPage() {
       ) : (
         <>
           <PendingReferralApplier />
-          <section className="panel ambassador-code-card">
+          <section className="panel ambassador-code-card invite-link-card">
             <div className="stack">
-              <span className="metric-label">你的推薦碼</span>
+              <span className="metric-label">你的邀請連結</span>
               <div className="metric-sm mono">{dashboard.ambassadorCode.code}</div>
-              <p className="muted">推薦碼只作直接歸因，不代表入會層級或保證獎勵。</p>
+              <p className="muted">推薦碼只作直接歸因。分享市場連結後，直接推薦及已確認 Builder 費用收入會用作獎勵帳務紀錄。</p>
             </div>
             <div className="market-actions">
               <TrackedCopyButton value={dashboard.ambassadorCode.inviteUrl} label="複製邀請連結" copiedLabel="已複製" eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
@@ -71,7 +72,7 @@ export default async function AmbassadorPage() {
           <section className="grid">
             <MetricCard label="直接推薦用戶" value={dashboard.rewards.directReferralCount.toLocaleString(locale)} note={`${copy.directTradingVolume}: ${formatUsdc(dashboard.rewards.directTradingVolumeUsdcAtoms, locale)}`} />
             <MetricCard label="待確認獎勵" value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" />
-            <MetricCard label="可申請提取" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" />
+            <MetricCard label="可提取獎勵" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" />
             <MetricCard label="已支付獎勵" value={formatUsdc(dashboard.rewards.paidRewards, locale)} />
           </section>
 

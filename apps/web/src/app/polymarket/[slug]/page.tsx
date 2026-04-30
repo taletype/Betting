@@ -262,7 +262,10 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
       <section className="hero">
         <div className="market-card-meta">
-          <div className="badge badge-neutral">polymarket</div>
+          <div className="badge badge-info">Polymarket</div>
+          <div className="badge badge-info">Beta</div>
+          <div className="badge badge-success">非託管</div>
+          <div className="badge badge-warning">交易尚未啟用</div>
           <div className={`badge badge-${market.status === "open" ? "success" : "warning"}`}>{copy.statuses[market.status] ?? market.status}</div>
           {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
           {!orderValid ? <div className="badge badge-warning">暫無成交資料</div> : null}
@@ -284,9 +287,10 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
             {market.descriptionOriginal ? <p className="muted">{market.descriptionOriginal}</p> : null}
           </details>
         ) : null}
-        <p>{copy.nonCustodialNotice}</p>
+        <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
+          {market.marketUrl ? <Link className="button-link primary-cta" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : null}
           <TrackedCopyButton
             value={marketShareUrl}
             label="複製市場推薦連結"
@@ -342,7 +346,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         ) : (
           <div className="grid">
             {market.outcomes.map((outcome) => (
-              <article className="stack" key={outcome.externalOutcomeId}>
+              <article className="outcome-card stack" key={outcome.externalOutcomeId}>
                 <strong>{outcome.title}</strong>
                 <div className="kv"><span className="kv-key">{copy.price}</span><span className="kv-value">{toPriceDisplay(outcome.lastPrice)}</span></div>
                 <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(outcome.bestBid)}</span></div>
@@ -450,7 +454,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                   <li key={reason}>{copy.readinessCopy[reason] ?? reason}</li>
                 ))}
               </ul>
-              <p className="muted">交易功能預設停用；只有所有生產準備檢查通過後，才會允許提交用戶自行簽署的訂單。</p>
+              <p className="muted">交易功能尚未啟用；只有所有生產準備檢查通過後，才會允許提交用戶自行簽署的訂單。</p>
             </div>
             <div className="warning-card">非託管：本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</div>
             <PolymarketTradeTicket {...tradeTicketProps} />

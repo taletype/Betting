@@ -19,12 +19,11 @@ export function AppShell({
   const shortCopy = siteCopy[locale];
   const launch = getPublicBetaLaunchState();
   const navItems = [
-    { href: "/", label: copy.shell.nav.home, mobileLabel: copy.shell.nav.home, showMobile: false },
+    { href: "/", label: copy.shell.nav.home, mobileLabel: "首頁", showMobile: true },
     { href: "/polymarket", label: copy.shell.nav.research, mobileLabel: "市場", showMobile: true },
     { href: "/ambassador", label: copy.shell.nav.invite, mobileLabel: "邀請", showMobile: true },
     { href: "/rewards", label: copy.shell.nav.rewards, mobileLabel: "獎勵", showMobile: true },
-    { href: "/guides", label: copy.shell.nav.guides, mobileLabel: "指南", showMobile: true },
-    { href: "/account", label: copy.shell.nav.account, mobileLabel: "帳戶", showMobile: false },
+    { href: "/account", label: copy.shell.nav.account, mobileLabel: "帳戶", showMobile: true },
     ...(showAdmin ? [{ href: "/admin", label: copy.shell.nav.admin, mobileLabel: "管理", showMobile: true }] : []),
   ];
 
