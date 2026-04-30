@@ -11,10 +11,17 @@ function extractBearerToken(request: Request) {
 }
 
 export function verifyCronRequest(request: Request) {
-  const configuredSecret = process.env.CRON_SECRET;
+  const configuredSecret = process.env.CRON_SECRET?.trim();
 
   if (!configuredSecret) {
-    return null;
+    return Response.json(
+      {
+        ok: false,
+        error: "CRON_SECRET is not configured — cron requests cannot be verified",
+        code: "CRON_SECRET_MISSING",
+      },
+      { status: 500 },
+    );
   }
 
   const providedSecret =
