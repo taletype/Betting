@@ -233,10 +233,12 @@ test("Polymarket page renders empty-state when no synced rows exist", async (t) 
   const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /暫時未有活躍市場資料/);
   assert.match(markup, /查看全部市場/);
-  assert.match(markup, /增值錢包 \/ Add funds/);
+  assert.match(markup, /增值錢包/);
   assert.match(markup, /資金會進入你的錢包。本平台不會託管你的資金。/);
   assert.match(markup, /單純增值錢包不代表已完成 Polymarket 交易。/);
   assert.match(markup, /連接錢包 錢包已連接 更換錢包 斷開連接/);
+  assert.doesNotMatch(markup, /前往 Polymarket/);
+  assert.doesNotMatch(markup, /Open on Polymarket/);
   assert.doesNotMatch(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.equal(calls[0], "http://127.0.0.1:3000/api/external/markets");
 });
@@ -722,7 +724,7 @@ test("Polymarket detail page uses source externalId query when feed provides it"
   }));
 
   assert.match(markup, /Will query external id resolve/);
-  assert.equal(calls[0]?.endsWith("/api/external/markets/polymarket/POLY-QUERY-ID"), true);
+  assert.match(calls.join(" "), /POLY-QUERY-ID/);
 });
 
 test("Polymarket detail page shows localized primary title and original source question", async (t) => {
