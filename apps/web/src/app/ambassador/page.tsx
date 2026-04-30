@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 const rewardExplanation =
   "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。";
 const safetyExplanation =
-  "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。";
+  "參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。";
 const payoutApprovalExplanation = "獎勵計算可自動記錄，但實際支付需要管理員審批。";
 const manualPayoutExplanation = "實際支付不會自動執行，必須由管理員審批及記錄交易哈希。";
 const polygonPayoutExplanation = "請確認你的收款地址支援 Polygon 網絡。";

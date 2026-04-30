@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { GET, POST, setSupabaseAdminClientFactoryForTests } from "./[...path]/route";
+import { DELETE, GET, POST, setSupabaseAdminClientFactoryForTests } from "./[...path]/route";
 import { getAdminPolymarketStatusPayload } from "./_shared/admin-polymarket-status";
 import { GET as healthGET } from "./health/route";
 import { GET as versionGET } from "./version/route";
@@ -454,10 +454,10 @@ test("public health, version, and external markets survive missing Supabase conf
 });
 
 test("command routes remain protected without trusting request body user ids", async () => {
-  const response = await POST(new NextRequest("http://localhost/api/orders", {
+  const response = await POST(new NextRequest("http://localhost/api/ambassador/capture", {
     method: "POST",
     body: JSON.stringify({ userId: "11111111-1111-4111-8111-111111111111" }),
-  }), { params: Promise.resolve({ path: ["orders"] }) });
+  }), { params: Promise.resolve({ path: ["ambassador", "capture"] }) });
 
   assert.equal(response.status, 401);
 });
@@ -520,6 +520,37 @@ test("public API routes do not import command modules that mutate balances or le
     "src/app/api/_shared/public-external-market-routes.ts",
   ].map((path) => readFileSync(resolve(process.cwd(), path), "utf8")).join("\n");
   assert.doesNotMatch(publicFiles, /rpc_place_order|ledger|withdrawal|ambassador_reward_payouts|createOrder|requestWithdrawal/);
+});
+
+test("web API quarantines legacy internal exchange endpoints by default", async () => {
+  await withEnv({ INTERNAL_EXCHANGE_ENABLED: undefined }, async () => {
+    for (const [method, path] of [
+      ["GET", "markets"],
+      ["GET", "markets/market-1/orderbook"],
+      ["POST", "orders"],
+      ["DELETE", "orders/order-1"],
+      ["GET", "portfolio"],
+      ["GET", "claims"],
+      ["POST", "claims/market-1"],
+      ["POST", "claims/market-1/state"],
+      ["GET", "deposits"],
+      ["POST", "deposits/verify"],
+      ["GET", "withdrawals"],
+      ["POST", "withdrawals"],
+    ] as const) {
+      const handler = method === "GET" ? GET : method === "POST" ? POST : DELETE;
+      const response = await handler(
+        new NextRequest(`http://localhost/api/${path}`, {
+          method,
+          body: method === "GET" ? undefined : JSON.stringify({}),
+        }),
+        { params: Promise.resolve({ path: path.split("/") }) },
+      );
+      const payload = await response.json() as { code?: string };
+      assert.equal(response.status, 404, `${method} /api/${path}`);
+      assert.equal(payload.code, "INTERNAL_EXCHANGE_DISABLED", `${method} /api/${path}`);
+    }
+  });
 });
 
 test("external market UI does not import internal ledger or balance modules", () => {

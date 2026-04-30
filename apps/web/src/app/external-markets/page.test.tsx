@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -176,6 +178,24 @@ test("home page renders Chinese-first Polymarket landing page", async (t) => {
   assert.match(markup, /暫時未有符合條件的開放市場/);
   assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
   assert.doesNotMatch(markup, /下線|downline|guaranteed profit|保證獲利/);
+});
+
+test("Polymarket public pages only call and link read-only external market routes", () => {
+  const publicPageSources = [
+    "src/app/page.tsx",
+    "src/app/polymarket/page.tsx",
+    "src/app/polymarket/[slug]/page.tsx",
+    "src/app/[locale]/polymarket/page.tsx",
+    "src/app/[locale]/polymarket/[slug]/page.tsx",
+    "src/lib/api.ts",
+  ].map((path) => readFileSync(resolve(process.cwd(), path), "utf8")).join("\n");
+
+  assert.match(publicPageSources, /\/external\/markets/);
+  assert.doesNotMatch(publicPageSources, /href=\{?[`"']\/(?:orders|markets|portfolio|claims|deposits|withdrawals)\b/);
+  assert.doesNotMatch(publicPageSources, /getLocalApiUrl\(["'`](?:\/orders|\/markets|\/portfolio|\/claims|\/deposits|\/withdrawals)\b/);
+  assert.doesNotMatch(publicPageSources, /fetch\([^)]*["'`](?:\/api)?\/(?:orders|markets|portfolio|claims|deposits|withdrawals)\b/);
+  assert.doesNotMatch(publicPageSources, /rpc_place_order|rpc_request_withdrawal|rpc_verify_deposit|rpc_get_portfolio_snapshot|ledger_entries|ledger_journals/);
+  assert.doesNotMatch(publicPageSources, /前往 Polymarket|Open on Polymarket/);
 });
 
 test("home page renders market cards with safe image behavior", async (t) => {

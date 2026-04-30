@@ -13,7 +13,7 @@ test("production request rejects spoofed x-user-id impersonation", async () => {
   process.env.NODE_ENV = "production";
   try {
     const response = await handleRequest(
-      new Request("http://localhost/portfolio", {
+      new Request("http://localhost/wallets/linked", {
         headers: {
           "x-user-id": "11111111-1111-1111-1111-111111111111",
         },
@@ -24,6 +24,68 @@ test("production request rejects spoofed x-user-id impersonation", async () => {
     assert.deepEqual(await response.json(), { error: "authentication required" });
   } finally {
     process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
+test("legacy internal exchange routes are quarantined unless explicitly enabled", async () => {
+  const server = await getServer();
+  const previous = process.env.INTERNAL_EXCHANGE_ENABLED;
+  delete process.env.INTERNAL_EXCHANGE_ENABLED;
+  server.setApiAuthVerifierForTests(async () => ({
+    id: "11111111-1111-4111-8111-111111111111",
+    email: "user@example.test",
+    role: "user",
+    claims: {},
+  }));
+  try {
+    for (const [method, path] of [
+      ["GET", "/markets"],
+      ["GET", "/markets/market-1/orderbook"],
+      ["POST", "/orders"],
+      ["DELETE", "/orders/order-1"],
+      ["GET", "/portfolio"],
+      ["GET", "/claims"],
+      ["GET", "/claims/market-1/state"],
+      ["POST", "/claims/market-1"],
+      ["GET", "/deposits"],
+      ["POST", "/deposits/verify"],
+      ["GET", "/withdrawals"],
+      ["POST", "/withdrawals"],
+    ] as const) {
+      const response = await server.handleRequest(
+        new Request(`http://localhost${path}`, {
+          method,
+          headers: method === "GET" ? undefined : { "content-type": "application/json" },
+          body: method === "GET" ? undefined : JSON.stringify({}),
+        }),
+      );
+      const payload = await response.json() as { code?: string };
+      assert.equal(response.status, 404, `${method} ${path}`);
+      assert.equal(payload.code, "INTERNAL_EXCHANGE_DISABLED", `${method} ${path}`);
+    }
+  } finally {
+    server.setApiAuthVerifierForTests(null);
+    if (previous === undefined) delete process.env.INTERNAL_EXCHANGE_ENABLED;
+    else process.env.INTERNAL_EXCHANGE_ENABLED = previous;
+  }
+});
+
+test("Polymarket public routes remain available while internal exchange is quarantined", async () => {
+  const handleRequest = await getHandleRequest();
+  const previous = process.env.INTERNAL_EXCHANGE_ENABLED;
+  delete process.env.INTERNAL_EXCHANGE_ENABLED;
+  try {
+    const response = await handleRequest(new Request("http://localhost/polymarket/orders/submit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }));
+    const payload = await response.json() as { code?: string };
+    assert.equal(response.status, 503);
+    assert.notEqual(payload.code, "INTERNAL_EXCHANGE_DISABLED");
+  } finally {
+    if (previous === undefined) delete process.env.INTERNAL_EXCHANGE_ENABLED;
+    else process.env.INTERNAL_EXCHANGE_ENABLED = previous;
   }
 });
 

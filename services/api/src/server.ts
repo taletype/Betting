@@ -159,6 +159,30 @@ const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | nul
 };
 
 const isProductionRuntime = (): boolean => process.env.NODE_ENV === "production";
+const isInternalExchangeEnabled = (): boolean => process.env.INTERNAL_EXCHANGE_ENABLED === "true";
+
+const isInternalExchangePublicPath = (segments: string[]): boolean => {
+  const [resource, , action] = segments;
+  if (!resource) return false;
+
+  if (resource === "markets") return true;
+  if (resource === "orders") return true;
+  if (resource === "portfolio" && segments.length === 1) return true;
+  if (resource === "claims" && (segments.length === 1 || segments.length === 2 || action === "state")) return true;
+  if (resource === "deposits" && segments.length <= 2) return true;
+  if (resource === "withdrawals" && segments.length === 1) return true;
+
+  return false;
+};
+
+const internalExchangeDisabledResponse = (): Response =>
+  Response.json(
+    {
+      error: "internal exchange routes are disabled for production beta",
+      code: "INTERNAL_EXCHANGE_DISABLED",
+    },
+    { status: 404 },
+  );
 
 const safeErrorPayload = (error: unknown): ApiErrorResponse & { code?: string; message?: string } => {
   if (error instanceof ApiRequestBodyError) {
@@ -488,6 +512,10 @@ const handleRequest = async (request: Request): Promise<Response> => {
         headers: { "content-type": "application/json" },
         status: market ? 200 : 404,
       });
+    }
+
+    if (!isInternalExchangeEnabled() && isInternalExchangePublicPath(segments)) {
+      return internalExchangeDisabledResponse();
     }
 
     if (request.method === "GET" && url.pathname === "/markets") {

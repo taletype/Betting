@@ -119,6 +119,29 @@ const recordAdminAuditLog = async (input: {
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+const isInternalExchangeEnabled = (): boolean => process.env.INTERNAL_EXCHANGE_ENABLED === "true";
+
+const isInternalExchangeApiPath = (apiPath: string): boolean =>
+  apiPath === "markets" ||
+  apiPath.startsWith("markets/") ||
+  apiPath === "orders" ||
+  /^orders\/[^/]+$/.test(apiPath) ||
+  apiPath === "portfolio" ||
+  apiPath === "claims" ||
+  /^claims\/[^/]+(?:\/state)?$/.test(apiPath) ||
+  apiPath === "deposits" ||
+  apiPath === "deposits/verify" ||
+  apiPath === "withdrawals";
+
+const internalExchangeDisabledResponse = () =>
+  NextResponse.json(
+    {
+      error: "internal exchange routes are disabled for production beta",
+      code: "INTERNAL_EXCHANGE_DISABLED",
+    },
+    { status: 404 },
+  );
+
 async function handleRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -233,6 +256,10 @@ async function handleRequest(
         },
         { status: 503 },
       );
+    }
+
+    if (!isInternalExchangeEnabled() && isInternalExchangeApiPath(apiPath)) {
+      return internalExchangeDisabledResponse();
     }
 
     if (!userId) {

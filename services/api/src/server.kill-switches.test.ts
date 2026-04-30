@@ -48,7 +48,7 @@ const withEnv = async (vars: Record<string, string | undefined>, run: () => Prom
 };
 
 test("rejects order placement when global kill switch is enabled", async () => {
-  await withEnv({ OP_DISABLE_ORDER_PLACEMENT: "true", OP_DISABLED_ORDER_MARKET_IDS: undefined }, async () => {
+  await withEnv({ INTERNAL_EXCHANGE_ENABLED: "true", OP_DISABLE_ORDER_PLACEMENT: "true", OP_DISABLED_ORDER_MARKET_IDS: undefined }, async () => {
     await withTestUser(async (handleRequest) => {
       const response = await handleRequest(
         new Request("http://localhost/orders", {
@@ -75,6 +75,7 @@ test("rejects order placement for a halted market", async () => {
     {
       OP_DISABLE_ORDER_PLACEMENT: "false",
       OP_DISABLED_ORDER_MARKET_IDS: "11111111-1111-1111-1111-111111111111",
+      INTERNAL_EXCHANGE_ENABLED: "true",
     },
     async () => {
       await withTestUser(async (handleRequest) => {
@@ -102,7 +103,7 @@ test("rejects order placement for a halted market", async () => {
 });
 
 test("rejects withdrawal requests when kill switch is enabled", async () => {
-  await withEnv({ OP_DISABLE_WITHDRAWAL_REQUEST: "true" }, async () => {
+  await withEnv({ INTERNAL_EXCHANGE_ENABLED: "true", OP_DISABLE_WITHDRAWAL_REQUEST: "true" }, async () => {
     await withTestUser(async (handleRequest) => {
       const response = await handleRequest(
         new Request("http://localhost/withdrawals", {
@@ -123,7 +124,7 @@ test("rejects withdrawal requests when kill switch is enabled", async () => {
 });
 
 test("rejects deposit verification when kill switch is enabled", async () => {
-  await withEnv({ OP_DISABLE_DEPOSIT_VERIFY: "true" }, async () => {
+  await withEnv({ INTERNAL_EXCHANGE_ENABLED: "true", OP_DISABLE_DEPOSIT_VERIFY: "true" }, async () => {
     await withTestUser(async (handleRequest) => {
       const response = await handleRequest(
         new Request("http://localhost/deposits/verify", {

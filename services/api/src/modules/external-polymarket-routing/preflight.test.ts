@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { validateApiEnvironment } from "../../env";
 import { evaluatePolymarketPreflight } from "./preflight";
 
 const validBuilderCode = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
@@ -50,6 +51,15 @@ test("preflight is blocked when submitter is disabled and does not expose secret
     const serialized = JSON.stringify(evaluatePolymarketPreflight());
     assert.match(serialized, /blocked/);
     assert.doesNotMatch(serialized, /super-secret-value|POLYMARKET_API_SECRET/);
+  });
+});
+
+test("platform-owned Polymarket API credentials are rejected by API environment validation", () => {
+  withEnv({ POLYMARKET_API_KEY: "platform-key", POLYMARKET_CLOB_SUBMITTER: "real" }, () => {
+    assert.throws(
+      () => validateApiEnvironment(),
+      /POLYMARKET_API_KEY must not be configured for routed user trading/,
+    );
   });
 });
 

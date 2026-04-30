@@ -72,6 +72,7 @@ export const validateApiEnvironment = (): void => {
   readPositiveInteger("BASE_RECON_MIN_CONFIRMATIONS", { defaultInLocal: 12 });
 
   readOptionalBytes32Hex("POLY_BUILDER_CODE");
+  readBooleanFlag("INTERNAL_EXCHANGE_ENABLED", { defaultValue: false });
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_BETA_ENABLED", { defaultValue: false });
   readStringList("POLYMARKET_ROUTED_TRADING_ALLOWLIST", { defaultValue: [] });
