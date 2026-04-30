@@ -11,7 +11,7 @@ export const copyZhCN = {
   paidRewards: "已支付奖励",
   manualApproval: "人工审核",
   nonCustodial: "非托管",
-  openOnPolymarket: "前往 Polymarket",
+  openOnPolymarket: "Polymarket 来源页",
   tradeViaPolymarket: "通过 Polymarket 交易",
   userSignedOrder: "用户自行签署订单",
   safety: "平台不会为用户交易或下注，不托管用户的 Polymarket 资金；用户需要自行签署订单。奖励只根据已确认的 Builder 费用收入计算，支付需要管理员人工审核。没有确定收益，也没有多层或递归奖励。",

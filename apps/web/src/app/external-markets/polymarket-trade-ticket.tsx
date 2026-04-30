@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { polygon } from "thirdweb/chains";
+import { ConnectButton } from "thirdweb/react";
 
 import {
   getPolymarketGeoblockStatusLabel,
@@ -30,6 +32,7 @@ interface Props {
   betaUserAllowlisted?: boolean;
   submitModeEnabled?: boolean;
   walletConnected: boolean;
+  walletFundsSufficient?: boolean;
   geoblockAllowed?: boolean;
   hasCredentials: boolean;
   userSigningAvailable?: boolean;
@@ -47,14 +50,15 @@ const formatNum = (value: number | null): string => (value === null ? "—" : va
 
 const statusTone = (status: PolymarketReadinessChecklistStatus): "success" | "warning" | "danger" | "neutral" => {
   if (status === "complete") return "success";
-  if (status === "blocked") return "danger";
+  if (status === "unavailable" || status === "disabled") return "warning";
   if (status === "checking") return "warning";
   return "neutral";
 };
 
 const statusLabel = (status: PolymarketReadinessChecklistStatus): string => {
   if (status === "complete") return "完成";
-  if (status === "blocked") return "受阻";
+  if (status === "unavailable") return "只供瀏覽";
+  if (status === "disabled") return "已停用";
   if (status === "checking") return "檢查中";
   return "待處理";
 };
@@ -64,14 +68,25 @@ const getTradeTicketActionLabel = (
   readiness: ReturnType<typeof getPolymarketRoutingReadiness>,
 ): string => {
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
-  if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false) return "增值錢包";
-  if (!input.featureEnabled) return "交易功能尚未啟用";
+  if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
   if (!input.hasCredentials) return "設定 Polymarket 憑證";
-  if (!input.hasBuilderCode) return "Builder Code 未設定";
-  if (!input.marketTradable || input.orderValid === false) return "市場只供瀏覽";
-  if (input.submitModeEnabled === false || !input.submitterAvailable) return "實盤提交已停用";
+  if (!input.marketTradable) return "市場只供瀏覽";
+  if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false) return "實盤提交已停用";
+  if (!input.featureEnabled) return "交易功能尚未啟用";
+  if (input.orderValid === false) return "請輸入有效價格及數量";
   if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
   return "透過 Polymarket 交易";
+};
+
+type PolymarketL2Credentials = { key: string; secret: string; passphrase: string };
+type SignedPolymarketOrder = Record<string, unknown> & {
+  signer: string;
+  tokenId: string;
+  side: "BUY" | "SELL";
+  timestamp: string;
+  expiration: string;
+  builder: string;
+  signature: string;
 };
 
 export function PolymarketTradeTicket(props: Props) {
@@ -79,6 +94,10 @@ export function PolymarketTradeTicket(props: Props) {
   const thirdweb = useThirdwebWalletStatus();
   const walletConnected = thirdweb.configured ? thirdweb.connected : props.walletConnected;
   const walletAddressKnown = thirdweb.configured ? Boolean(thirdweb.address) : props.walletConnected;
+  const [l2Credentials, setL2Credentials] = useState<PolymarketL2Credentials | null>(null);
+  const [signedOrder, setSignedOrder] = useState<SignedPolymarketOrder | null>(null);
+  const [flowStatus, setFlowStatus] = useState<string | null>(null);
+  const [flowError, setFlowError] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState(props.tokenId ?? props.outcomes?.[0]?.tokenId ?? "");
   const [side, setSide] = useState<"buy" | "sell">(props.side);
   const [orderStyle, setOrderStyle] = useState<"limit" | "marketable_limit">("limit");
@@ -115,19 +134,23 @@ export function PolymarketTradeTicket(props: Props) {
     loggedIn: props.loggedIn,
     walletConnected,
     walletAddressKnown,
-    fundingAvailable: thirdweb.configured,
-    userSigningAvailable: props.userSigningAvailable,
+    fundingAvailable: thirdweb.configured ? true : undefined,
+    walletFundsSufficient: walletConnected ? props.walletFundsSufficient === true : props.walletFundsSufficient,
+    hasCredentials: props.hasCredentials || Boolean(l2Credentials),
+    userSigningAvailable: props.userSigningAvailable ?? Boolean(walletConnected && l2Credentials),
+    userSigned: props.userSigned || Boolean(signedOrder),
     orderValid,
   };
   const readiness = getPolymarketRoutingReadiness(readinessInput);
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
-  const disabled = readiness !== "ready_to_submit" || !finalConfirmation;
-  const tradeButtonLabel = disabled
-    ? readiness === "ready_to_submit"
-      ? "準備自行簽署訂單"
-      : getTradeTicketActionLabel(readinessInput, readiness)
-    : "透過 Polymarket 交易";
+  const tradeButtonLabel = getTradeTicketActionLabel(readinessInput, readiness);
+  const disabled =
+    tradeButtonLabel === "請輸入有效價格及數量" ||
+    tradeButtonLabel === "市場只供瀏覽" ||
+    tradeButtonLabel === "交易功能尚未啟用" ||
+    tradeButtonLabel === "實盤提交已停用" ||
+    (tradeButtonLabel === "透過 Polymarket 交易" && !finalConfirmation);
   const publicTradingReady = Boolean(
     props.featureEnabled &&
     props.hasBuilderCode &&
@@ -141,13 +164,41 @@ export function PolymarketTradeTicket(props: Props) {
   const tradingStatusLabel = publicTradingReady
     ? "實盤提交已啟用"
     : props.submitModeEnabled === false
-      ? "交易介面預覽 / 實盤提交已停用"
+      ? "交易介面預覽；實盤提交已停用"
       : props.marketTradable
         ? "交易介面預覽"
         : "市場只供瀏覽";
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
+  const setupCredentials = async () => {
+    setFlowError(null);
+    setFlowStatus("請先連接支援 Polymarket L2 憑證的錢包流程；憑證完成前不會標示為完成。");
+    trackFunnelEvent("l2_credentials_missing", { market: props.marketTitle, action: "setup_requested" });
+  };
+
+  const signOrder = async () => {
+    setFlowError(null);
+    setFlowStatus("訂單簽署只會在市場、憑證及提交器全部就緒後啟動；目前不會提交交易。");
+    trackFunnelEvent("user_order_signature_requested", { market: props.marketTitle, readiness });
+  };
+
+  const handlePrimaryAction = async () => {
+    try {
+      trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
+      if (tradeButtonLabel === "設定 Polymarket 憑證") {
+        await setupCredentials();
+      } else if (tradeButtonLabel === "連接錢包") {
+        setFlowStatus("請使用錢包連接元件連接你的錢包；不需要登入帳戶。");
+      } else if (tradeButtonLabel === "增值錢包") {
+        setFlowStatus("請使用上方增值錢包流程為你自己的錢包增值；平台不託管資金。");
+      } else if (tradeButtonLabel === "準備自行簽署訂單") {
+        await signOrder();
+      }
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : "Polymarket 流程未能完成。");
+    }
+  };
 
   useEffect(() => {
     trackFunnelEvent("trade_ticket_opened", {
@@ -204,13 +255,13 @@ export function PolymarketTradeTicket(props: Props) {
       <div className="ticket-header">
         <div>
           <strong>{copy.tradeViaPolymarket}</strong>
-          <div className="muted">{props.submitModeEnabled ? "交易介面預覽" : "交易介面預覽 / 實盤提交已停用"}</div>
+          <div className="muted">{props.submitModeEnabled ? "交易介面預覽" : "交易介面預覽；實盤提交已停用"}</div>
         </div>
         <span className="badge badge-warning">
           {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : props.submitModeEnabled ? "交易提交器未準備好" : "實盤提交已停用"}
         </span>
       </div>
-      <div className="badge badge-warning">Canary-only · 非公開實盤交易</div>
+      <div className="badge badge-warning">內部預覽；實盤提交已停用</div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
       <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={walletConnected} />
@@ -247,19 +298,16 @@ export function PolymarketTradeTicket(props: Props) {
       </section>
 
       <div className="readiness-grid compact-status-grid">
-        <div className="kv"><span className="kv-key">路由交易介面</span><span className="kv-value">已顯示</span></div>
+        <div className="kv"><span className="kv-key">交易介面</span><span className="kv-value">完成</span></div>
         <div className="kv"><span className="kv-key">實際訂單提交</span><span className="kv-value">{props.featureEnabled && props.submitModeEnabled && props.submitterAvailable ? "已啟用" : "已停用"}</span></div>
         <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{props.hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
-        <div className="kv"><span className="kv-key">錢包狀態</span><span className="kv-value">{walletConnected ? "已連接" : "尚未連接"}</span></div>
+        <div className="kv"><span className="kv-key">錢包</span><span className="kv-value">{walletConnected ? "已連接" : "待處理"}</span></div>
         <div className="kv"><span className="kv-key">錢包地址</span><span className="kv-value">{walletAddressKnown ? "已確認" : "未知"}</span></div>
-        <div className="kv"><span className="kv-key">增值功能</span><span className="kv-value">{thirdweb.configured ? "可用" : "未設定"}</span></div>
+        <div className="kv"><span className="kv-key">錢包資金</span><span className="kv-value">{walletConnected && thirdweb.configured ? "檢查中" : "待處理"}</span></div>
         <div className="kv"><span className="kv-key">Polymarket 憑證</span><span className="kv-value">{props.hasCredentials ? "已就緒" : "需要"}</span></div>
         <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "暫時不可交易"}</span></div>
         <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>
-        <div className="kv">
-          <span className="kv-key">{getPolymarketGeoblockStatusLabel("unknown")}</span>
-          <span className="kv-value">實際交易是否可提交，將由 Polymarket 的錢包、憑證、市場及合規檢查判斷。</span>
-        </div>
+        <div className="kv"><span className="kv-key">{getPolymarketGeoblockStatusLabel("unknown")}</span><span className="kv-value">實際交易是否可提交，將由 Polymarket 的錢包、憑證、市場及合規檢查判斷。</span></div>
         <div className="kv">
           <span className="kv-key">非託管交易</span>
           <span className="kv-value">本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</span>
@@ -331,12 +379,12 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">{copy.outcome}</span><span className="kv-value">{selectedOutcome?.title ?? props.outcome}</span></div>
         <div className="kv"><span className="kv-key">{copy.side}</span><span className="kv-value">{copy.sides[side] ?? side}</span></div>
         <div className="kv"><span className="kv-key">{copy.price}</span><span className="kv-value">{formatNum(Number.isFinite(parsedPrice) ? parsedPrice : null)}</span></div>
-        <div className="kv"><span className="kv-key">Worst acceptable price</span><span className="kv-value">{formatNum(worstAcceptablePrice)}</span></div>
+        <div className="kv"><span className="kv-key">可接受最差價格</span><span className="kv-value">{formatNum(worstAcceptablePrice)}</span></div>
         <div className="kv"><span className="kv-key">{copy.size}</span><span className="kv-value">{formatNum(Number.isFinite(parsedSize) ? parsedSize : null)}</span></div>
         <div className="kv"><span className="kv-key">{copy.estimatedCostProceeds}</span><span className="kv-value">{formatNum(estimated)}</span></div>
         <div className="kv"><span className="kv-key">{copy.estimatedMaxFees}</span><span className="kv-value">{formatNum(estimatedMaxFees)}</span></div>
-        <div className="kv"><span className="kv-key">Builder maker/taker fee</span><span className="kv-value">0.5% / 1%</span></div>
-        <div className="kv"><span className="kv-key">Polymarket/platform fee</span><span className="kv-value">以市場回傳資料為準</span></div>
+        <div className="kv"><span className="kv-key">Builder Maker / Taker 費用</span><span className="kv-value">0.5% / 1%</span></div>
+        <div className="kv"><span className="kv-key">Polymarket 平台費用</span><span className="kv-value">以市場回傳資料為準</span></div>
       </section>
 
       <div className="muted">{copy.builderAttributionNotice}</div>
@@ -355,19 +403,31 @@ export function PolymarketTradeTicket(props: Props) {
           {readinessLabel}
         </div>
       ) : null}
-      <button
-        type="button"
-        className="primary-cta"
-        disabled={disabled}
-        title={tradeButtonLabel}
-        onClick={() => {
-          trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
-          trackFunnelEvent("routed_trade_attempted", { market: props.marketTitle, readiness });
-          trackFunnelEvent("user_order_signature_requested", { market: props.marketTitle, readiness });
-        }}
-      >
-        {tradeButtonLabel}
-      </button>
+      {!props.loggedIn ? <a className="secondary-cta" href="/login">登入以保存推薦獎勵</a> : null}
+      {flowStatus ? <div className="badge badge-success">{flowStatus}</div> : null}
+      {flowError ? <div className="ticket-disabled-reason">{flowError}</div> : null}
+      {tradeButtonLabel === "連接錢包" && thirdweb.client ? (
+        <ConnectButton
+          client={thirdweb.client}
+          chain={polygon}
+          connectButton={{ label: "連接錢包" }}
+          connectModal={{ title: "連接你的錢包", size: "compact" }}
+          theme="dark"
+          onConnect={(wallet) => {
+            trackFunnelEvent("wallet_connected", { surface: "trade_ticket_primary", provider: "thirdweb", walletId: wallet.id });
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="primary-cta"
+          disabled={disabled}
+          title={tradeButtonLabel}
+          onClick={handlePrimaryAction}
+        >
+          {tradeButtonLabel}
+        </button>
+      )}
     </div>
   );
 }

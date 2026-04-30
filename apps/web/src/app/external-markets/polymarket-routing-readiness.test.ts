@@ -20,7 +20,9 @@ const readyInput = (): PolymarketRoutingReadinessInput => ({
   userSigningAvailable: true,
   marketTradable: true,
   orderValid: true,
+  submitModeEnabled: true,
   submitterAvailable: true,
+  submitterEndpointAvailable: true,
   userSigned: true,
 });
 
@@ -72,30 +74,32 @@ test("wallet trade intent is the top public launch blocker while other checklist
     userSigned: false,
   };
 
-  assert.equal(getPolymarketRoutingReadiness(input), "feature_disabled");
+  assert.equal(getPolymarketRoutingReadiness(input), "wallet_not_connected");
   assert.equal(getPolymarketTopBlockingReason(input), "wallet_not_connected");
   assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
-    "feature_disabled",
     "wallet_not_connected",
     "credentials_missing",
+    "feature_disabled",
     "signature_required",
   ]);
 
   const checklist = getPolymarketReadinessChecklist(input);
   assert.deepEqual(checklist.map((item) => item.label), [
-    "錢包資金 / 增值",
+    "錢包",
+    "錢包資金",
     "Polymarket 憑證",
     "用戶自行簽署",
     "Builder Code",
-    "交易功能",
+    "交易介面",
     "市場狀態",
     "價格及數量",
     "提交器",
   ]);
+  assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "funding")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
-  assert.equal(checklist.find((item) => item.id === "trading_feature")?.status, "blocked");
+  assert.equal(checklist.find((item) => item.id === "trading_feature")?.status, "complete");
 });
 
 test("region support is informational only and never disables trade intent", () => {

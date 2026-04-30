@@ -11,7 +11,7 @@ export const copyEn = {
   paidRewards: "Paid rewards",
   manualApproval: "Manual approval",
   nonCustodial: "Non-custodial",
-  openOnPolymarket: "Open on Polymarket",
+  openOnPolymarket: "Polymarket source page",
   tradeViaPolymarket: "Trade via Polymarket",
   userSignedOrder: "User-signed order",
   safety: "The platform does not trade or bet for users, does not custody user Polymarket funds, and users sign their own orders. Rewards are based only on confirmed Builder-fee revenue. Payouts require manual/admin approval. No assured returns. No multi-level or recursive rewards.",

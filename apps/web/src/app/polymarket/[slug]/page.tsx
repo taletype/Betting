@@ -16,6 +16,7 @@ import { getCurrentWebUser } from "../../auth-session";
 import {
   getPolymarketRoutingDisabledReasons,
   getPolymarketTopBlockingReason,
+  type PolymarketRoutingReadiness,
   type PolymarketRoutingReadinessInput,
 } from "../../external-markets/polymarket-routing-readiness";
 import { PolymarketTradeTicket } from "../../external-markets/polymarket-trade-ticket";
@@ -379,10 +380,20 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
   const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
   const disabledReasons = getPolymarketRoutingDisabledReasons(routingInput);
+  const tradeActionLabel = (reason: PolymarketRoutingReadiness | null): string => {
+    if (reason === "wallet_not_connected") return "連接錢包";
+    if (reason === "wallet_funds_insufficient") return "增值錢包";
+    if (reason === "credentials_missing") return "設定 Polymarket 憑證";
+    if (reason === "market_not_tradable" || reason === "invalid_order") return "市場只供瀏覽";
+    if (reason === "submit_mode_disabled" || reason === "submitter_unavailable") return "實盤提交已停用";
+    if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
+    if (reason === "feature_disabled") return "交易功能尚未啟用";
+    return copy.tradeViaPolymarket;
+  };
   const publicSubmitEnabled = globallyRoutedTradingEnabled &&
     hasBuilderCode &&
     submitterAvailable;
-  const publicTradingStatusLabel = publicSubmitEnabled ? "實盤提交已啟用" : "交易介面預覽 / 實盤提交已停用";
+  const publicTradingStatusLabel = publicSubmitEnabled ? "實盤提交已啟用" : "交易介面預覽；實盤提交已停用";
   const baseDetailPath = getLocaleHref(locale, `/polymarket/${encodeURIComponent(slug)}`);
   const baseMarketShareUrl = `${getSiteUrl()}${baseDetailPath}`;
   const referralMarketShareUrl = refCode ? `${getSiteUrl()}${baseDetailPath}?ref=${encodeURIComponent(refCode)}` : baseMarketShareUrl;
@@ -455,7 +466,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
-          <button type="button" className="button-link primary-cta" disabled>{copy.tradeViaPolymarket}</button>
+          <button type="button" className="button-link primary-cta" disabled>{tradeActionLabel(topBlockingReason)}</button>
           <TrackedCopyButton
             value={baseMarketShareUrl}
             label="複製市場連結"
@@ -486,7 +497,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       {!marketTradable ? (
         <section className="panel disclosure-card stack">
           <strong>{restricted ? "只供瀏覽 / 市場受限制" : "市場暫時不可交易"}</strong>
-          <p className="muted">已結束、已結算、已取消、受限制、資料過期或缺少有效價格資料的市場只供瀏覽，不會開放 Polymarket 路由交易。</p>
+          <p className="muted">此市場目前只供瀏覽。實際交易是否可提交，將由 Polymarket 的市場、錢包、憑證及合規檢查判斷。</p>
         </section>
       ) : null}
       {externalDataUnavailable ? (

@@ -326,6 +326,7 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
     hasBuilderCode: true,
     featureEnabled: true,
     walletConnected: true,
+    walletFundsSufficient: true,
     geoblockAllowed: true,
     hasCredentials: true,
     userSigningAvailable: true,

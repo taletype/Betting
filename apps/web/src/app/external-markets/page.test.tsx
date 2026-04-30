@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import HomePage from "../page";
 import PolymarketPage from "../polymarket/page";
 import AdminPolymarketPage from "../admin/polymarket/page";
+import { PolymarketTradeTicket } from "./polymarket-trade-ticket";
 import {
   getPolymarketReadinessChecklist,
   getPolymarketRoutingDisabledReasons,
@@ -580,7 +582,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /連接錢包/);
     assert.match(markup, /交易介面預覽/);
-    assert.match(markup, /title="連接錢包"/);
+    assert.match(markup, /透過 Polymarket 交易/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
@@ -1859,17 +1861,18 @@ test("Polymarket readiness prioritizes user blockers while preserving launch che
     userSigned: false,
   };
 
-  assert.equal(getPolymarketRoutingReadiness(input), "feature_disabled");
+  assert.equal(getPolymarketRoutingReadiness(input), "wallet_not_connected");
   assert.equal(getPolymarketTopBlockingReason(input), "wallet_not_connected");
   assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
-    "feature_disabled",
     "wallet_not_connected",
     "credentials_missing",
+    "feature_disabled",
     "signature_required",
   ]);
 
   const checklist = getPolymarketReadinessChecklist(input);
   assert.deepEqual(checklist.map((item) => item.id), [
+    "wallet",
     "funding",
     "credentials",
     "signature",
@@ -1879,9 +1882,52 @@ test("Polymarket readiness prioritizes user blockers while preserving launch che
     "order_values",
     "submitter",
   ]);
+  assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "funding")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
+});
+
+test("Polymarket trade ticket renders action-first non-login states", () => {
+  const baseProps = {
+    locale: "zh-HK" as const,
+    marketTitle: "Will Senegal win the 2026 FIFA World Cup?",
+    outcomes: [{ tokenId: "yes", title: "Yes", bestAsk: 0.12 }],
+    tokenId: "yes",
+    outcome: "Yes",
+    side: "buy" as const,
+    price: 0.12,
+    size: 10,
+    loggedIn: false,
+    hasBuilderCode: true,
+    featureEnabled: true,
+    betaUserAllowlisted: true,
+    submitModeEnabled: true,
+    walletConnected: false,
+    walletFundsSufficient: true,
+    hasCredentials: false,
+    userSigningAvailable: false,
+    marketTradable: true,
+    orderValid: true,
+    submitterAvailable: true,
+    userSigned: false,
+  };
+
+  const noWallet = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} />);
+  assert.match(noWallet, /連接錢包/);
+  assert.match(noWallet, /登入以保存推薦獎勵/);
+  assert.doesNotMatch(noWallet, /前往 Polymarket|受阻/);
+
+  const missingCredentials = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials={false} />);
+  assert.match(missingCredentials, /設定 Polymarket 憑證/);
+
+  const restrictedMarket = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials marketTradable={false} />);
+  assert.match(restrictedMarket, /市場只供瀏覽/);
+  assert.match(restrictedMarket, /此市場目前只供瀏覽。實際交易是否可提交/);
+
+  const disabledSubmitter = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials submitModeEnabled={false} />);
+  assert.match(disabledSubmitter, /實盤提交已停用/);
+  assert.match(disabledSubmitter, /Builder Code[\s\S]*完成/);
 });
 
 test("Polymarket page keeps routed trade CTA disabled when submitter is unavailable", async (t) => {

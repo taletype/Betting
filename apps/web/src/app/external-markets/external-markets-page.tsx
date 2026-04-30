@@ -518,7 +518,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       </td>
                       <td>
                         <div className="table-actions">
-                          <button type="button" className="primary-cta" disabled title={marketActionLabel}>{marketActionLabel}</button>
+                          <Link className="button-link primary-cta" href={detailPath}>{copy.tradeViaPolymarket}</Link>
                           <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
                           <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                         </div>
@@ -599,8 +599,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
-                <button type="button" disabled title={marketActionLabel}>{marketActionLabel}</button>
+                <Link className="button-link primary-cta" href={detailPath}>{copy.tradeViaPolymarket}</Link>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
                 <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                 <TrackedCopyButton
