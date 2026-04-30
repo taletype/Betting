@@ -686,20 +686,53 @@ test("Polymarket referral code survives navigation into market detail", async (t
   assert.match(markup, /href="\/polymarket\/polyref-1\?ref=HKREF001"/);
 });
 
-test("Polymarket page renders load error when configured API base is unavailable", async (t) => {
+test("Polymarket page uses same-site route when configured API base is unavailable", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
   const calls: string[] = [];
 
   process.env.API_BASE_URL = "https://api.example.com";
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
 
   globalThis.fetch = (async (input) => {
     const url = String(input);
     calls.push(url);
 
-    throw new Error("connect ECONNREFUSED api.example.com:443");
+    if (url === "https://api.example.com/external/markets") {
+      throw new Error("connect ECONNREFUSED api.example.com:443");
+    }
+
+    return new Response(
+      JSON.stringify([
+        {
+          id: "fallback-1",
+          source: "polymarket",
+          externalId: "POLY-FALLBACK-1",
+          slug: "poly-fallback-1",
+          title: "Fallback Polymarket",
+          description: "Same-site fallback row",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-fallback-1",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.41,
+          bestAsk: 0.44,
+          lastTradePrice: 0.43,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [],
+          recentTrades: [],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
   }) as typeof globalThis.fetch;
 
   t.after(() => {
@@ -714,13 +747,20 @@ test("Polymarket page renders load error when configured API base is unavailable
     } else {
       process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
     }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /市場資料暫時未能更新/);
-  assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
+  assert.doesNotMatch(markup, /市場資料暫時未能更新/);
+  assert.doesNotMatch(markup, /已設定的 API 或同站 API route 無法連線/);
+  assert.match(markup, /Fallback Polymarket/);
   assert.equal(calls[0], "https://api.example.com/external/markets");
-  assert.equal(calls.length, 1);
+  assert.equal(calls[1], "https://bet.example.vercel.app/api/external/markets");
+  assert.equal(calls.length, 2);
 });
 
 test("Polymarket page renders operator-visible diagnostics when production API base is missing and fallback fails", async (t) => {

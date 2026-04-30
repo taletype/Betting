@@ -272,18 +272,26 @@ test("listExternalMarkets uses standalone API route when API base is configured"
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
 });
 
-test("listExternalMarkets surfaces network error when configured API base is unreachable", async (t) => {
+test("listExternalMarkets falls back to same-site route when configured API base is unreachable", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
   const calls: FetchCall[] = [];
 
   process.env.API_BASE_URL = "https://api.example.com";
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
 
   globalThis.fetch = (async (...args: FetchCall) => {
     calls.push(args);
-    throw new Error("connect ECONNREFUSED api.example.com:443");
+    if (String(args[0]) === "https://api.example.com/external/markets") {
+      throw new Error("connect ECONNREFUSED api.example.com:443");
+    }
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }) as typeof globalThis.fetch;
 
   t.after(() => {
@@ -298,11 +306,19 @@ test("listExternalMarkets surfaces network error when configured API base is unr
     } else {
       process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
     }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
   });
 
-  await assert.rejects(() => listExternalMarkets(), /ECONNREFUSED/);
-  assert.equal(calls.length, 1);
+  const markets = await listExternalMarkets();
+
+  assert.deepEqual(markets, []);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0]?.[0], "https://api.example.com/external/markets");
+  assert.equal(calls[1]?.[0], "https://bet.example.vercel.app/api/external/markets");
 });
 
 test("listExternalMarkets uses same-site Next API route in production when API_BASE_URL is not configured", async (t) => {

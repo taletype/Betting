@@ -234,6 +234,36 @@ const executeApiRequest = async <T>(
   return (await response.json()) as T;
 };
 
+const shouldRetryViaLocalRoute = (error: unknown): boolean => {
+  if (error instanceof ApiResponseError) {
+    return error.status >= 500;
+  }
+
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || /ECONNREFUSED|ENOTFOUND|fetch failed|network|aborted/i.test(error.message))
+  );
+};
+
+const executePublicRouteRequest = async <T>(
+  path: string,
+  init?: RequestInit & { allowNotFound?: boolean },
+): Promise<T | null> => {
+  const primaryUrl = getPublicRouteUrl(path);
+
+  try {
+    return await executeApiRequest<T>(primaryUrl, init);
+  } catch (error) {
+    const fallbackUrl = getLocalApiUrl(path);
+    if (!getConfiguredApiBaseUrl() || fallbackUrl === primaryUrl || !shouldRetryViaLocalRoute(error)) {
+      throw error;
+    }
+
+    console.warn(`public API fallback for ${path}: retrying via same-site Next API route`, error);
+    return executeApiRequest<T>(fallbackUrl, init);
+  }
+};
+
 export const apiRequest = async <T>(
   path: string,
   init?: RequestInit & {
@@ -250,7 +280,7 @@ export const apiRequest = async <T>(
     const configuredBase = getConfiguredApiBaseUrl();
     const fallbackUrl = getLocalApiUrl(path);
 
-    if (!init?.fallbackToLocal || !configuredBase || fallbackUrl === url || error instanceof ApiResponseError) {
+    if (!init?.fallbackToLocal || !configuredBase || fallbackUrl === url || !shouldRetryViaLocalRoute(error)) {
       throw error;
     }
 
@@ -587,7 +617,7 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
   }
 
   try {
-    const payload = await executeApiRequest<unknown>(getPublicRouteUrl("/external/markets"));
+    const payload = await executePublicRouteRequest<unknown>("/external/markets");
     return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
   } catch (error) {
     if (error instanceof ApiResponseError) {
@@ -622,8 +652,8 @@ export const getExternalMarket = async (
   source: string,
   externalId: string,
 ): Promise<ExternalMarketApiRecord | null> => {
-  const payload = await executeApiRequest<{ market: ExternalMarketApiRecord | null }>(
-    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`),
+  const payload = await executePublicRouteRequest<{ market: ExternalMarketApiRecord | null }>(
+    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`,
     { allowNotFound: true },
   );
 
@@ -634,8 +664,8 @@ export const getExternalMarketOrderbook = async (
   source: string,
   externalId: string,
 ): Promise<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth: ExternalMarketApiDepthPoint[] }> => {
-  const payload = await executeApiRequest<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth?: ExternalMarketApiDepthPoint[] }>(
-    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/orderbook`),
+  const payload = await executePublicRouteRequest<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth?: ExternalMarketApiDepthPoint[] }>(
+    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/orderbook`,
     { allowNotFound: true },
   );
 
@@ -646,8 +676,8 @@ export const getExternalMarketTrades = async (
   source: string,
   externalId: string,
 ): Promise<ExternalMarketApiTrade[]> => {
-  const payload = await executeApiRequest<{ trades: ExternalMarketApiTrade[] }>(
-    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/trades`),
+  const payload = await executePublicRouteRequest<{ trades: ExternalMarketApiTrade[] }>(
+    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/trades`,
     { allowNotFound: true },
   );
 
@@ -658,8 +688,8 @@ export const getExternalMarketHistory = async (
   source: string,
   externalId: string,
 ): Promise<ExternalMarketApiHistoryPoint[]> => {
-  const payload = await executeApiRequest<{ history: ExternalMarketApiHistoryPoint[] }>(
-    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/history`),
+  const payload = await executePublicRouteRequest<{ history: ExternalMarketApiHistoryPoint[] }>(
+    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/history`,
     { allowNotFound: true },
   );
 
@@ -670,7 +700,7 @@ export const getExternalMarketStats = async (
   source: string,
   externalId: string,
 ): Promise<ExternalMarketApiStats | null> =>
-  executeApiRequest<ExternalMarketApiStats>(
-    getPublicRouteUrl(`/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/stats`),
+  executePublicRouteRequest<ExternalMarketApiStats>(
+    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/stats`,
     { allowNotFound: true },
   );
