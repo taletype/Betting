@@ -165,13 +165,15 @@ class ApiResponseError extends Error {
   readonly status: number;
   readonly url: string;
   readonly code: string | null;
+  readonly source: string | null;
 
-  constructor(input: { message: string; status: number; url: string; code?: string | null }) {
+  constructor(input: { message: string; status: number; url: string; code?: string | null; source?: string | null }) {
     super(input.message);
     this.name = "ApiResponseError";
     this.status = input.status;
     this.url = input.url;
     this.code = input.code ?? null;
+    this.source = input.source ?? null;
   }
 }
 
@@ -181,16 +183,19 @@ export type ExternalMarketsLoadErrorCode =
   | "api_unreachable"
   | "backend_500"
   | "external_markets_not_implemented"
+  | "market_source_unavailable"
   | "supabase_env_missing"
   | "unknown";
 
 export class ExternalMarketsLoadError extends Error {
   readonly diagnostics: ExternalMarketsLoadErrorCode[];
+  readonly sources: string[];
 
-  constructor(message: string, diagnostics: ExternalMarketsLoadErrorCode[]) {
+  constructor(message: string, diagnostics: ExternalMarketsLoadErrorCode[], sources: string[] = []) {
     super(message);
     this.name = "ExternalMarketsLoadError";
     this.diagnostics = [...new Set(diagnostics)];
+    this.sources = [...new Set(sources.map((source) => source.trim()).filter(Boolean))];
   }
 }
 
@@ -222,12 +227,13 @@ const executeApiRequest = async <T>(
   }
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { code?: string; error?: string };
+    const payload = (await response.json().catch(() => ({}))) as { code?: string; error?: string; message?: string; source?: string };
     throw new ApiResponseError({
-      message: payload.error ?? `API request failed for ${url}: ${response.status}`,
+      message: payload.message ?? payload.error ?? `API request failed for ${url}: ${response.status}`,
       status: response.status,
       url,
-      code: payload.code ?? null,
+      code: payload.code ?? payload.error ?? null,
+      source: payload.source ?? null,
     });
   }
 
@@ -606,6 +612,7 @@ export interface ExternalMarketApiRecord {
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
+  let failedSources: string[] = [];
   if (!getConfiguredApiBaseUrl()) {
     diagnostics.push("missing_api_base_url");
   }
@@ -621,6 +628,10 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
     return Array.isArray(payload) ? (payload as ExternalMarketApiRecord[]) : [];
   } catch (error) {
     if (error instanceof ApiResponseError) {
+      if (error.code === "MARKET_SOURCE_UNAVAILABLE") {
+        diagnostics.push("market_source_unavailable");
+        failedSources = error.source?.split(",").map((source) => source.trim()).filter(Boolean) ?? [];
+      }
       if (error.status === 404) {
         diagnostics.push("external_markets_not_implemented");
       } else if (error.status >= 500) {
@@ -644,6 +655,7 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
     throw new ExternalMarketsLoadError(
       error instanceof Error ? error.message : "Unable to load external markets",
       diagnostics,
+      failedSources,
     );
   }
 };

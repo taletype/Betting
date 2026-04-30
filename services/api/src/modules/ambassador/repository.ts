@@ -9,6 +9,20 @@ export type BuilderTradeAttributionStatus = "pending" | "confirmed" | "void";
 export type AmbassadorRewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
 export type AmbassadorPayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
 export type AmbassadorPayoutDestinationType = "wallet" | "manual";
+export type AmbassadorRiskSeverity = "low" | "medium" | "high";
+export type AmbassadorRiskStatus = "open" | "reviewed" | "dismissed";
+
+export const ambassadorPayoutRiskReviewRequiredCode = "AMBASSADOR_PAYOUT_RISK_REVIEW_REQUIRED";
+export const ambassadorPayoutRiskReviewRequiredMessage = "high-severity risk review is required before payout approval";
+
+export class AmbassadorPayoutRiskReviewRequiredError extends Error {
+  readonly code = ambassadorPayoutRiskReviewRequiredCode;
+
+  constructor() {
+    super(ambassadorPayoutRiskReviewRequiredMessage);
+    this.name = "AmbassadorPayoutRiskReviewRequiredError";
+  }
+}
 
 export const ambassadorRewardTypes = [
   "platform_revenue",
@@ -97,6 +111,22 @@ export interface AmbassadorRewardPayoutRecord {
   createdAt: string;
 }
 
+export interface AmbassadorRiskFlagRecord {
+  id: string;
+  userId: string | null;
+  referralAttributionId: string | null;
+  tradeAttributionId: string | null;
+  payoutId: string | null;
+  severity: AmbassadorRiskSeverity;
+  reasonCode: string;
+  details: Record<string, unknown>;
+  status: AmbassadorRiskStatus;
+  createdAt: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+}
+
 export interface AmbassadorRewardSummary {
   pendingRewards: bigint;
   payableRewards: bigint;
@@ -122,6 +152,7 @@ export interface AdminAmbassadorOverview {
   tradeAttributions: BuilderTradeAttributionRecord[];
   rewardLedger: AmbassadorRewardLedgerRecord[];
   payouts: AmbassadorRewardPayoutRecord[];
+  riskFlags: AmbassadorRiskFlagRecord[];
   suspiciousAttributions: ReferralAttributionRecord[];
 }
 
@@ -235,6 +266,22 @@ interface PayoutWalletRow {
   asset_preference: "pUSD";
 }
 
+interface RiskFlagRow {
+  id: string;
+  user_id: string | null;
+  referral_attribution_id: string | null;
+  trade_attribution_id: string | null;
+  payout_id: string | null;
+  severity: AmbassadorRiskSeverity;
+  reason_code: string;
+  details: Record<string, unknown> | string;
+  status: AmbassadorRiskStatus;
+  created_at: Date | string;
+  reviewed_by: string | null;
+  reviewed_at: Date | string | null;
+  review_notes: string | null;
+}
+
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
 const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
@@ -318,6 +365,22 @@ const mapPayout = (row: PayoutRow): AmbassadorRewardPayoutRecord => ({
   txHash: row.tx_hash,
   notes: row.notes,
   createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+});
+
+const mapRiskFlag = (row: RiskFlagRow): AmbassadorRiskFlagRecord => ({
+  id: row.id,
+  userId: row.user_id,
+  referralAttributionId: row.referral_attribution_id,
+  tradeAttributionId: row.trade_attribution_id,
+  payoutId: row.payout_id,
+  severity: row.severity,
+  reasonCode: row.reason_code,
+  details: {},
+  status: row.status,
+  createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+  reviewedBy: row.reviewed_by,
+  reviewedAt: toIso(row.reviewed_at),
+  reviewNotes: row.review_notes,
 });
 
 const parseBooleanEnv = (name: string, defaultValue: boolean): boolean => {
@@ -1362,10 +1425,87 @@ export const requestRewardPayout = async (
   });
 };
 
+export const hasOpenHighSeverityRiskForPayoutApproval = async (
+  transaction: DatabaseTransaction,
+  payoutId: string,
+): Promise<boolean> => {
+  const [row] = await transaction.query<{ id: string }>(
+    `
+      with payout as (
+        select id, recipient_user_id
+        from public.ambassador_reward_payouts
+        where id = $1::uuid
+        limit 1
+      ),
+      related_trade_attributions as (
+        select distinct ledger.source_trade_attribution_id as id
+        from public.ambassador_reward_ledger ledger
+        join payout on payout.recipient_user_id = ledger.recipient_user_id
+        where ledger.status = 'payable'
+      ),
+      related_referral_attributions as (
+        select attribution.id
+        from public.referral_attributions attribution
+        join payout on attribution.referred_user_id = payout.recipient_user_id
+          or attribution.referrer_user_id = payout.recipient_user_id
+
+        union
+
+        select attribution.id
+        from related_trade_attributions related_trade
+        join public.builder_trade_attributions trade_attribution
+          on trade_attribution.id = related_trade.id
+        join public.referral_attributions attribution
+          on attribution.referred_user_id = trade_attribution.user_id
+          or attribution.referrer_user_id = trade_attribution.direct_referrer_user_id
+      )
+      select flag.id
+      from public.ambassador_risk_flags flag
+      join payout on true
+      where flag.status = 'open'
+        and flag.severity = 'high'
+        and (
+          flag.user_id = payout.recipient_user_id
+          or flag.payout_id = payout.id
+          or flag.referral_attribution_id in (select id from related_referral_attributions)
+          or flag.trade_attribution_id in (select id from related_trade_attributions)
+        )
+      limit 1
+    `,
+    [payoutId],
+  );
+
+  return Boolean(row);
+};
+
+export const assertPayoutApprovalRiskClear = async (
+  transaction: DatabaseTransaction,
+  payoutId: string,
+): Promise<void> => {
+  if (await hasOpenHighSeverityRiskForPayoutApproval(transaction, payoutId)) {
+    throw new AmbassadorPayoutRiskReviewRequiredError();
+  }
+};
+
 export const approveRewardPayout = async (
   transaction: DatabaseTransaction,
   input: { payoutId: string; reviewedBy: string; notes?: string | null },
 ): Promise<AmbassadorRewardPayoutRecord> => {
+  const [existing] = await transaction.query<{ recipient_user_id: string; status: string }>(
+    `
+      select recipient_user_id, status
+        from public.ambassador_reward_payouts
+       where id = $1::uuid
+       limit 1
+    `,
+    [input.payoutId],
+  );
+  if (!existing || existing.status !== "requested") {
+    throw new Error("payout must be requested before approval");
+  }
+
+  await assertPayoutApprovalRiskClear(transaction, input.payoutId);
+
   const [row] = await transaction.query<PayoutRow>(
     `
       update public.ambassador_reward_payouts
@@ -1531,7 +1671,7 @@ export const updateRewardPayoutFailureState = async (
 export const listAdminAmbassadorOverview = async (
   executor: DatabaseExecutor,
 ): Promise<AdminAmbassadorOverview> => {
-  const [codeRows, attributionRows, tradeRows, rewardRows, payoutRows, suspiciousRows] = await Promise.all([
+  const [codeRows, attributionRows, tradeRows, rewardRows, payoutRows, riskFlagRows, suspiciousRows] = await Promise.all([
     executor.query<AmbassadorCodeRow>(
       `select id, code, owner_user_id, status, created_at, disabled_at from public.ambassador_codes order by created_at desc limit 100`,
     ),
@@ -1569,6 +1709,27 @@ export const listAdminAmbassadorOverview = async (
         limit 100
       `,
     ),
+    executor.query<RiskFlagRow>(
+      `
+        select
+          id,
+          user_id,
+          referral_attribution_id,
+          trade_attribution_id,
+          payout_id,
+          severity,
+          reason_code,
+          details,
+          status,
+          created_at,
+          reviewed_by,
+          reviewed_at,
+          review_notes
+        from public.ambassador_risk_flags
+        order by created_at desc
+        limit 100
+      `,
+    ),
     executor.query<ReferralAttributionRow>(
       `
         select attribution.id, attribution.referred_user_id, attribution.referrer_user_id, attribution.ambassador_code, attribution.attributed_at, attribution.qualification_status, attribution.rejection_reason
@@ -1588,6 +1749,7 @@ export const listAdminAmbassadorOverview = async (
     tradeAttributions: tradeRows.map(mapTradeAttribution),
     rewardLedger: rewardRows.map(mapRewardLedger),
     payouts: payoutRows.map(mapPayout),
+    riskFlags: riskFlagRows.map(mapRiskFlag),
     suspiciousAttributions: suspiciousRows.map(mapAttribution),
   };
 };

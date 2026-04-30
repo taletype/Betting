@@ -18,6 +18,8 @@ import {
 } from "../_shared/wallet-link-challenge";
 import {
   approveRewardPayoutDb,
+  ambassadorPayoutRiskReviewRequiredCode,
+  ambassadorPayoutRiskReviewRequiredMessage,
   captureAmbassadorReferralDb,
   cancelRewardPayoutDb,
   createAdminAmbassadorCodeDb,
@@ -106,7 +108,9 @@ async function handleRequest(
     if (apiPath === "external/markets" && request.method === "GET") {
       let backendError: unknown = null;
       try {
-        return NextResponse.json(await readExternalMarkets(adminSupabase()));
+        return NextResponse.json(await readExternalMarkets(adminSupabase()), {
+          headers: { "x-market-source": "external_markets" },
+        });
       } catch (error) {
         backendError = error;
         console.warn("catch-all public external markets backend source failed; trying Polymarket Gamma fallback", {
@@ -114,7 +118,12 @@ async function handleRequest(
           message: safeErrorMessage(error),
         });
         try {
-          return NextResponse.json(await readPolymarketGammaFallbackMarkets());
+          return NextResponse.json(await readPolymarketGammaFallbackMarkets(), {
+            headers: {
+              "x-market-source": "gamma-api.polymarket.com/events",
+              "x-market-backend-fallback": "external_markets",
+            },
+          });
         } catch (fallbackError) {
           console.warn("catch-all public external markets Gamma fallback failed", {
             source: "gamma-api.polymarket.com/events",
@@ -613,6 +622,21 @@ async function handleRequest(
   } catch (error) {
     console.error(`Error handling /${apiPath}:`, error);
     const message = error instanceof Error ? error.message : "Failed to fetch data";
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === ambassadorPayoutRiskReviewRequiredCode
+    ) {
+      // Safe operator-facing copy: high-severity risk review is required before payout approval.
+      return NextResponse.json(
+        {
+          error: ambassadorPayoutRiskReviewRequiredMessage,
+          code: ambassadorPayoutRiskReviewRequiredCode,
+          message: ambassadorPayoutRiskReviewRequiredMessage,
+        },
+        { status: 409 },
+      );
+    }
     if (/SUPABASE_/.test(message)) {
       return NextResponse.json(
         { error: "Supabase environment variables are missing or invalid", code: "SUPABASE_ENV_MISSING" },

@@ -15,6 +15,8 @@ export const ApiExternalSourceSchema = z.enum(["polymarket", "kalshi"]);
 
 export const ApiErrorResponseSchema = z.object({
   error: z.string().min(1),
+  code: z.string().min(1).optional(),
+  message: z.string().min(1).optional(),
 });
 
 export const ApiHealthResponseSchema = z.object({

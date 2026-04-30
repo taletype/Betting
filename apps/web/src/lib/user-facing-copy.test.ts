@@ -24,15 +24,31 @@ const forbiddenChineseTerms = [
   "managed betting",
 ];
 
+const approvedReferralSafetyCopy = "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。";
+
+const stripApprovedCopy = (value: string): string =>
+  value.replaceAll(approvedReferralSafetyCopy, "");
+
 test("key zh-HK ambassador copy avoids forbidden terms", () => {
-  const ambassadorCopy = JSON.stringify({
+  const ambassadorCopy = stripApprovedCopy(JSON.stringify({
     ambassador: getLocaleCopy("zh-HK").ambassador,
     rewards: getLocaleCopy("zh-HK").rewards,
     research: getLocaleCopy("zh-HK").research,
-  });
+  }));
   for (const term of forbiddenChineseTerms) {
     assert.doesNotMatch(ambassadorCopy, new RegExp(term));
   }
+});
+
+test("approved zh-HK referral safety copy is exact", () => {
+  const ambassador = getLocaleCopy("zh-HK").ambassador;
+
+  assert.equal(
+    ambassador.subtitle,
+    "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。",
+  );
+  assert.equal(ambassador.approvalNotice, "獎勵計算可自動記錄，但實際支付需要管理員審批。");
+  assert.equal(ambassador.safeNotice, approvedReferralSafetyCopy);
 });
 
 test("zh-HK rewards copy explains auto request and manual Polygon pUSD payout", () => {

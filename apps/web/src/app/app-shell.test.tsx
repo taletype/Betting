@@ -21,6 +21,9 @@ test("app shell points the public nav at the Polymarket funnel", () => {
   assert.match(markup, /href="\/ambassador"/);
   assert.match(markup, /href="\/rewards"/);
   assert.match(markup, /href="\/account"/);
+  assert.match(markup, /href="\/login"/);
+  assert.match(markup, /非託管/);
+  assert.match(markup, /支付需人手審批/);
   assert.doesNotMatch(markup, /href="\/admin"/);
   assert.doesNotMatch(markup, /href="\/markets"/);
   assert.doesNotMatch(markup, /href="\/portfolio"/);
@@ -37,4 +40,15 @@ test("app shell shows admin only when allowed", () => {
 
   assert.match(markup, /href="\/admin"/);
   assert.match(markup, /管理/);
+});
+
+test("app shell auth state button points to account after login", () => {
+  const markup = renderToStaticMarkup(
+    <AppShell locale="zh-HK" authenticated>
+      <main>content</main>
+    </AppShell>,
+  );
+
+  assert.match(markup, /class="auth-state-button" href="\/account"/);
+  assert.doesNotMatch(markup, /class="auth-state-button" href="\/login"/);
 });

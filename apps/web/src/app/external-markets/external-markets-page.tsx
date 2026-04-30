@@ -132,11 +132,18 @@ const buildFeedHref = (params: MarketFeedSearchParams | undefined, next: MarketF
   return query ? `/polymarket?${query}` : "/polymarket";
 };
 
+const sanitizeSourceName = (source: string): string | null => {
+  const trimmed = source.trim();
+  if (!trimmed || /[?#@=]/.test(trimmed)) return null;
+  return /^[a-z0-9._:/-]+$/i.test(trimmed) ? trimmed : null;
+};
+
 export async function renderExternalMarketsPage(locale: AppLocale, params?: MarketFeedSearchParams) {
   const copy = getLocaleCopy(locale).research;
   let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
   let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
+  let failedSources: string[] = [];
   const hasBuilderCode = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" ? "enabled" : "disabled";
@@ -149,7 +156,12 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
   } catch (error) {
     loadFailed = true;
-    loadDiagnostics = error instanceof ExternalMarketsLoadError ? error.diagnostics : ["unknown"];
+    if (error instanceof ExternalMarketsLoadError) {
+      loadDiagnostics = error.diagnostics;
+      failedSources = error.sources.map(sanitizeSourceName).filter((source): source is string => source !== null);
+    } else {
+      loadDiagnostics = ["unknown"];
+    }
     console.error("failed to load external markets", error);
   }
   const visibleMarkets = filterAndSortMarkets(markets, params);
@@ -262,13 +274,23 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         {loadFailed ? (
           <div className="panel empty-state">
             <p>{copy.loadError}</p>
-            {loadDiagnostics.length > 0 ? (
-              <ul>
-                {loadDiagnostics.map((diagnostic) => (
-                  <li key={diagnostic}>{copy.loadErrorDetails[diagnostic] ?? diagnostic}</li>
-                ))}
-              </ul>
-            ) : null}
+            {loadDiagnostics.includes("market_source_unavailable") ? (
+              <>
+                <p>{copy.sourceUnavailable}</p>
+                <p>{copy.sourceUnavailableRetry}</p>
+                {failedSources.length > 0 ? (
+                  <div className="muted">{copy.failedSources}: {failedSources.join(", ")}</div>
+                ) : null}
+              </>
+            ) : (
+              loadDiagnostics.length > 0 ? (
+                <ul>
+                  {loadDiagnostics.map((diagnostic) => (
+                    <li key={diagnostic}>{copy.loadErrorDetails[diagnostic] ?? diagnostic}</li>
+                  ))}
+                </ul>
+              ) : null
+            )}
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">

@@ -1,0 +1,242 @@
+import { createSupabaseAdminClient } from "@bet/supabase";
+
+import { readPolymarketGammaFallbackMarkets } from "../../api/_shared/polymarket-gamma-fallback";
+import { getSafeLaunchStatus } from "../../api/_shared/launch-status";
+import type { getAdminAmbassadorOverview } from "../../../lib/api";
+
+export type PreflightStatus = "blocked" | "ready_for_staging" | "ready_for_live";
+
+export interface RedactedDashboardError {
+  code: string;
+  source: string;
+}
+
+export interface PolymarketOperationsDashboard {
+  marketDataHealth: {
+    backendReachable: boolean;
+    backendMarketCount: number | null;
+    gammaFallbackReachable: boolean;
+    gammaFallbackMarketCount: number | null;
+    lastCheckedAt: string;
+    lastError: RedactedDashboardError | null;
+  };
+  publicPages: {
+    polymarketStatus: number | "unreachable";
+    externalMarketsStatus: number | "unreachable";
+    latestMarketCount: number | null;
+    diagnosis: "ok" | "safe_empty" | "unavailable";
+  };
+  readiness: {
+    builderCodeConfigured: boolean;
+    routedTradingEnabled: boolean;
+    clobSubmitterMode: "disabled" | "real";
+    signatureVerifierImplemented: boolean;
+    l2CredentialLookupImplemented: boolean;
+    serverGeoblockVerifierImplemented: boolean;
+    preflightStatus: PreflightStatus;
+  };
+  rewards: {
+    ambassadorCodesCount: number | null;
+    directReferralAttributionCount: number | null;
+    pendingRewards: number | null;
+    payableRewards: number | null;
+    payoutRequests: number | null;
+    openHighRiskFlags: number | null;
+    autoPayoutEnabled: boolean;
+  };
+}
+
+type AmbassadorOverview = Awaited<ReturnType<typeof getAdminAmbassadorOverview>>;
+
+interface DashboardDependencies {
+  now?: Date;
+  countBackendMarkets?: () => Promise<number>;
+  readGammaFallbackMarkets?: () => Promise<unknown[]>;
+  fetchPublicPath?: (path: string) => Promise<{ status: number; json: unknown }>;
+  readAmbassadorOverview?: () => Promise<AmbassadorOverview | null>;
+}
+
+interface SupabaseExternalMarketCounter {
+  from: (table: "external_markets") => {
+    select: (
+      columns: string,
+      options: { count: "exact"; head: true },
+    ) => {
+      eq: (
+        column: "source",
+        value: "polymarket",
+      ) => Promise<{ count: number | null; error: { code?: string; message?: string } | null }>;
+    };
+  };
+}
+
+const readBoolean = (name: string, defaultValue = false): boolean => {
+  const value = process.env[name]?.trim().toLowerCase();
+  if (!value) return defaultValue;
+  return ["1", "true", "yes", "on"].includes(value);
+};
+
+const getLocalWebBaseUrl = (): string => {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (siteUrl?.trim()) {
+    return siteUrl.startsWith("http") ? siteUrl.replace(/\/+$/, "") : `https://${siteUrl.replace(/\/+$/, "")}`;
+  }
+
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl?.trim()) {
+    return `https://${vercelUrl.replace(/\/+$/, "")}`;
+  }
+
+  return `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
+};
+
+const defaultFetchPublicPath = async (path: string): Promise<{ status: number; json: unknown }> => {
+  const response = await fetch(`${getLocalWebBaseUrl()}${path}`, { cache: "no-store" });
+  const contentType = response.headers.get("content-type") ?? "";
+  const json = contentType.includes("application/json") ? await response.json().catch(() => null) : null;
+  return { status: response.status, json };
+};
+
+const countBackendPolymarketRows = async (): Promise<number> => {
+  const supabase = createSupabaseAdminClient() as unknown as SupabaseExternalMarketCounter;
+  const { count, error } = await supabase
+    .from("external_markets")
+    .select("id", { count: "exact", head: true })
+    .eq("source", "polymarket");
+
+  if (error) {
+    const failure = new Error(error.code ?? "external_markets_count_failed");
+    failure.name = "EXTERNAL_MARKETS_COUNT_FAILED";
+    throw failure;
+  }
+
+  return count ?? 0;
+};
+
+const errorCode = (error: unknown): string => {
+  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+    return error.code.slice(0, 80);
+  }
+
+  if (error instanceof Error && error.name && error.name !== "Error") {
+    return error.name.slice(0, 80);
+  }
+
+  return "ERROR";
+};
+
+const redactedError = (error: unknown, source: string): RedactedDashboardError => ({
+  code: errorCode(error).replace(/[^A-Z0-9_:-]/gi, "_"),
+  source,
+});
+
+const getPublicPages = async (
+  fetchPublicPath: NonNullable<DashboardDependencies["fetchPublicPath"]>,
+): Promise<PolymarketOperationsDashboard["publicPages"]> => {
+  const [polymarket, externalMarkets] = await Promise.allSettled([
+    fetchPublicPath("/polymarket"),
+    fetchPublicPath("/api/external/markets"),
+  ]);
+
+  const polymarketStatus = polymarket.status === "fulfilled" ? polymarket.value.status : "unreachable";
+  const externalMarketsStatus = externalMarkets.status === "fulfilled" ? externalMarkets.value.status : "unreachable";
+  const payload = externalMarkets.status === "fulfilled" ? externalMarkets.value.json : null;
+  const latestMarketCount = Array.isArray(payload) ? payload.length : null;
+  const diagnosis = externalMarketsStatus === 200
+    ? latestMarketCount === 0
+      ? "safe_empty"
+      : "ok"
+    : "unavailable";
+
+  return {
+    polymarketStatus,
+    externalMarketsStatus,
+    latestMarketCount,
+    diagnosis,
+  };
+};
+
+const getReadiness = (): PolymarketOperationsDashboard["readiness"] => {
+  const launchStatus = getSafeLaunchStatus();
+  const clobSubmitterMode = launchStatus.clobSubmitterMode === "real" ? "real" : "disabled";
+  const signatureVerifierImplemented = readBoolean("POLYMARKET_USER_SIGNATURE_VERIFIER_IMPLEMENTED", false);
+  const l2CredentialLookupImplemented = readBoolean("POLYMARKET_L2_CREDENTIAL_LOOKUP_IMPLEMENTED", false);
+  const serverGeoblockVerifierImplemented = readBoolean("POLYMARKET_GEOBLOCK_PROOF_VERIFIER_IMPLEMENTED", false);
+  const runtime = process.env.DEPLOY_ENV ?? process.env.APP_ENV ?? process.env.NODE_ENV ?? "development";
+  const ready =
+    launchStatus.builderCodeConfigured &&
+    launchStatus.routedTradingEnabled &&
+    clobSubmitterMode === "real" &&
+    signatureVerifierImplemented &&
+    l2CredentialLookupImplemented &&
+    serverGeoblockVerifierImplemented;
+
+  return {
+    builderCodeConfigured: launchStatus.builderCodeConfigured,
+    routedTradingEnabled: launchStatus.routedTradingEnabled,
+    clobSubmitterMode,
+    signatureVerifierImplemented,
+    l2CredentialLookupImplemented,
+    serverGeoblockVerifierImplemented,
+    preflightStatus: ready ? (runtime === "staging" ? "ready_for_staging" : "ready_for_live") : "blocked",
+  };
+};
+
+const getRewards = (
+  overview: AmbassadorOverview | null,
+): PolymarketOperationsDashboard["rewards"] => ({
+  ambassadorCodesCount: overview?.codes.length ?? null,
+  directReferralAttributionCount: overview?.attributions.length ?? null,
+  pendingRewards: overview?.rewardLedger.filter((reward) => reward.status === "pending").length ?? null,
+  payableRewards: overview?.rewardLedger.filter((reward) => reward.status === "payable").length ?? null,
+  payoutRequests: overview?.payouts.filter((payout) => payout.status === "requested" || payout.status === "approved").length ?? null,
+  openHighRiskFlags: overview?.riskFlags.filter((flag) => flag.status === "open" && flag.severity === "high").length ?? null,
+  autoPayoutEnabled: getSafeLaunchStatus().autoPayoutEnabled,
+});
+
+export const getPolymarketOperationsDashboard = async (
+  dependencies: DashboardDependencies = {},
+): Promise<PolymarketOperationsDashboard> => {
+  const now = dependencies.now ?? new Date();
+  const countMarkets = dependencies.countBackendMarkets ?? countBackendPolymarketRows;
+  const readGamma = dependencies.readGammaFallbackMarkets ?? readPolymarketGammaFallbackMarkets;
+  const fetchPublicPath = dependencies.fetchPublicPath ?? defaultFetchPublicPath;
+  const readOverview = dependencies.readAmbassadorOverview ?? (async () => null);
+  let lastError: RedactedDashboardError | null = null;
+
+  const [backendResult, gammaResult, publicPages, overviewResult] = await Promise.allSettled([
+    countMarkets(),
+    readGamma(),
+    getPublicPages(fetchPublicPath),
+    readOverview(),
+  ]);
+
+  if (backendResult.status === "rejected") {
+    lastError = redactedError(backendResult.reason, "external_markets");
+  }
+
+  if (gammaResult.status === "rejected") {
+    lastError = redactedError(gammaResult.reason, "gamma-api.polymarket.com/events");
+  }
+
+  return {
+    marketDataHealth: {
+      backendReachable: backendResult.status === "fulfilled",
+      backendMarketCount: backendResult.status === "fulfilled" ? backendResult.value : null,
+      gammaFallbackReachable: gammaResult.status === "fulfilled",
+      gammaFallbackMarketCount: gammaResult.status === "fulfilled" ? gammaResult.value.length : null,
+      lastCheckedAt: now.toISOString(),
+      lastError,
+    },
+    publicPages: publicPages.status === "fulfilled"
+      ? publicPages.value
+      : {
+          polymarketStatus: "unreachable",
+          externalMarketsStatus: "unreachable",
+          latestMarketCount: null,
+          diagnosis: "unavailable",
+        },
+    readiness: getReadiness(),
+    rewards: getRewards(overviewResult.status === "fulfilled" ? overviewResult.value : null),
+  };
+};

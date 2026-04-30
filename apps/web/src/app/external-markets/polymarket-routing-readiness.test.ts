@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getPolymarketRoutingReadiness } from "./polymarket-routing-readiness";
+import {
+  getPolymarketReadinessChecklist,
+  getPolymarketRoutingDisabledReasons,
+  getPolymarketRoutingReadiness,
+  getPolymarketTopBlockingReason,
+  type PolymarketRoutingReadinessInput,
+} from "./polymarket-routing-readiness";
+
+const readyInput = (): PolymarketRoutingReadinessInput => ({
+  loggedIn: true,
+  hasBuilderCode: true,
+  featureEnabled: true,
+  walletConnected: true,
+  geoblockAllowed: true,
+  hasCredentials: true,
+  userSigningAvailable: true,
+  marketTradable: true,
+  orderValid: true,
+  submitterAvailable: true,
+  userSigned: true,
+});
 
 test("readiness model enumerates disabled states", () => {
   assert.equal(getPolymarketRoutingReadiness({ loggedIn: false, hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "auth_required");
@@ -20,4 +40,30 @@ test("readiness model enumerates disabled states", () => {
 test("readiness returns ready when all conditions are met", () => {
   assert.equal(getPolymarketRoutingReadiness({ loggedIn: true, hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true, userSigned: true }), "ready_to_submit");
   assert.equal(getPolymarketRoutingReadiness({ loggedIn: true, hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true, userSigned: true, submitted: true }), "submitted");
+});
+
+test("feature disabled is the top public launch blocker while other checklist items remain visible", () => {
+  const input = {
+    ...readyInput(),
+    featureEnabled: false,
+    walletConnected: false,
+    hasCredentials: false,
+    userSigningAvailable: false,
+    userSigned: false,
+  };
+
+  assert.equal(getPolymarketRoutingReadiness(input), "feature_disabled");
+  assert.equal(getPolymarketTopBlockingReason(input), "feature_disabled");
+  assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
+    "feature_disabled",
+    "wallet_not_connected",
+    "credentials_missing",
+    "signature_required",
+  ]);
+
+  const checklist = getPolymarketReadinessChecklist(input);
+  assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "trading_feature")?.status, "blocked");
 });

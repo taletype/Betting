@@ -49,6 +49,10 @@ import {
   voidAdminBuilderTradeAttribution,
 } from "./modules/ambassador/handlers";
 import {
+  ambassadorPayoutRiskReviewRequiredCode,
+  ambassadorPayoutRiskReviewRequiredMessage,
+} from "./modules/ambassador/repository";
+import {
   claimMarket,
   getClaimableStateForMarket,
   getClaims,
@@ -78,6 +82,12 @@ import { toJson } from "./presenters/json";
 import { validateApiEnvironment } from "./env";
 
 const port = Number(process.env.PORT ?? 4000);
+
+let captureAmbassadorReferralHandler = captureAmbassadorReferral;
+
+const setAmbassadorCaptureHandlerForTests = (handler: typeof captureAmbassadorReferral | null): void => {
+  captureAmbassadorReferralHandler = handler ?? captureAmbassadorReferral;
+};
 
 class ApiRequestBodyError extends Error {
   readonly status = 400;
@@ -129,9 +139,20 @@ const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | nul
 
 const isProductionRuntime = (): boolean => process.env.NODE_ENV === "production";
 
-const safeErrorPayload = (error: unknown): ApiErrorResponse & { code?: string } => {
+const safeErrorPayload = (error: unknown): ApiErrorResponse & { code?: string; message?: string } => {
   if (error instanceof ApiRequestBodyError) {
     return { error: "Invalid JSON body", code: error.code };
+  }
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === ambassadorPayoutRiskReviewRequiredCode
+  ) {
+    return {
+      error: ambassadorPayoutRiskReviewRequiredMessage,
+      code: ambassadorPayoutRiskReviewRequiredCode,
+      message: ambassadorPayoutRiskReviewRequiredMessage,
+    };
   }
   if (!isProductionRuntime()) {
     return { error: error instanceof Error ? error.message : "Unknown error", code: "API_REQUEST_FAILED" };
@@ -539,7 +560,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       }
 
       const body = await parseBody(request);
-      const payload = await captureAmbassadorReferral({
+      const payload = await captureAmbassadorReferralHandler({
         userId: requestUserId,
         code: String(body.code ?? body.ref ?? ""),
       });
@@ -994,7 +1015,11 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
     const message = error instanceof Error ? error.message : "Unknown error";
     logger.error("api request failed", { error: message });
-    const status = error instanceof ApiRequestBodyError ? 400 : 400;
+    const status = (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === ambassadorPayoutRiskReviewRequiredCode
+    ) ? 409 : error instanceof ApiRequestBodyError ? 400 : 400;
     return Response.json(safeErrorPayload(error), { status });
   }
 };
@@ -1023,4 +1048,4 @@ if (process.env.NODE_ENV !== "test") {
   });
 }
 
-export { handleRequest, setApiAuthVerifierForTests };
+export { handleRequest, setAmbassadorCaptureHandlerForTests, setApiAuthVerifierForTests };

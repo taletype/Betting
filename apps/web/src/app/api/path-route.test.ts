@@ -265,6 +265,23 @@ test("public API routes do not import command modules that mutate balances or le
   assert.doesNotMatch(publicFiles, /rpc_place_order|ledger|withdrawal|ambassador_reward_payouts|createOrder|requestWithdrawal/);
 });
 
+test("admin payout approval exposes safe risk review error and UI risk summary", () => {
+  const route = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
+  const sharedAmbassador = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
+  const payoutPage = readFileSync(resolve(process.cwd(), "src/app/admin/payouts/page.tsx"), "utf8");
+
+  assert.match(sharedAmbassador, /AMBASSADOR_PAYOUT_RISK_REVIEW_REQUIRED/);
+  assert.match(sharedAmbassador, /flag\.payout_id = payout\.id/);
+  assert.match(sharedAmbassador, /flag\.referral_attribution_id in \(select id from related_referral_attributions\)/);
+  assert.match(sharedAmbassador, /flag\.trade_attribution_id in \(select id from related_trade_attributions\)/);
+  assert.match(route, /ambassadorPayoutRiskReviewRequiredMessage/);
+  assert.match(sharedAmbassador, /high-severity risk review is required before payout approval/);
+  assert.match(payoutPage, /flag\.severity/);
+  assert.match(payoutPage, /flag\.status/);
+  assert.match(payoutPage, /flag\.reasonCode/);
+  assert.doesNotMatch(payoutPage, /flag\.details/);
+});
+
 test("production catch-all errors are sanitized", async () => {
   setSupabaseAdminClientFactoryForTests(() => {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY super secret exploded");

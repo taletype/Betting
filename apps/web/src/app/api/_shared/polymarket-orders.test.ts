@@ -125,7 +125,28 @@ test("preview returns exact disabled reasons for missing wallet, credentials, ge
       preview.disabledReasons.filter((reason) =>
         ["尚未連接錢包", "你目前所在地區暫不支援 Polymarket 下單", "需要 Polymarket 憑證", "Builder Code 未設定", "交易功能尚未啟用"].includes(reason),
       ),
-      ["尚未連接錢包", "你目前所在地區暫不支援 Polymarket 下單", "需要 Polymarket 憑證", "Builder Code 未設定", "交易功能尚未啟用"],
+      ["交易功能尚未啟用", "尚未連接錢包", "你目前所在地區暫不支援 Polymarket 下單", "需要 Polymarket 憑證", "Builder Code 未設定"],
     );
+  });
+});
+
+test("preview cannot become live-submittable by default", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ tick_size: "0.01", min_order_size: "5", bids: [], asks: [] }))) as typeof globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: undefined }, async () => {
+    const preview = await previewPolymarketOrder(
+      baseInput(),
+      [market],
+      new Date("2026-05-01T00:00:00.000Z"),
+    );
+
+    assert.equal(preview.ok, false);
+    assert.equal(preview.routedTradingEnabled, false);
+    assert.equal(preview.disabledReasonCodes[0], "feature_disabled");
+    assert.match(preview.disabledReasons[0] ?? "", /交易功能尚未啟用/);
   });
 });

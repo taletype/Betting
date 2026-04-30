@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
-    "test": "pnpm exec node --import tsx --test src/lib/market-realtime.test.ts src/app/api/_shared/market-serializers.test.ts src/app/api/_shared/market-read.test.ts src/app/api/_shared/api-serialization.test.ts src/app/api/_shared/polymarket-orders.test.ts src/app/api/path-route.test.ts src/app/external/markets/route.test.ts src/app/funnel-analytics.test.ts src/app/charts/market-charts.test.tsx src/lib/api.test.ts src/lib/locale.test.ts src/lib/referral-capture.test.ts src/lib/user-facing-copy.test.ts src/lib/launch-safety.test.ts src/lib/supabase/middleware.test.ts src/app/auth-pages.test.tsx src/app/app-shell.test.tsx src/app/guides/guides.test.tsx src/app/external-markets/page.test.tsx"
+    "test": "pnpm exec node --import tsx --test src/lib/market-realtime.test.ts src/app/api/_shared/market-serializers.test.ts src/app/api/_shared/market-read.test.ts src/app/api/_shared/api-serialization.test.ts src/app/api/_shared/polymarket-orders.test.ts src/app/admin/polymarket/dashboard.test.ts src/app/api/path-route.test.ts src/app/external/markets/route.test.ts src/app/funnel-analytics.test.ts src/app/charts/market-charts.test.tsx src/lib/api.test.ts src/lib/locale.test.ts src/lib/referral-capture.test.ts src/lib/user-facing-copy.test.ts src/lib/launch-safety.test.ts src/lib/supabase/middleware.test.ts src/app/auth-pages.test.tsx src/app/app-shell.test.tsx src/app/guides/guides.test.tsx src/app/external-markets/page.test.tsx"
   },
   "dependencies": {
     "@bet/contracts": "workspace:*",

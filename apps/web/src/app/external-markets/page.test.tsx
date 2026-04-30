@@ -6,6 +6,13 @@ import HomePage from "../page";
 import ExternalMarketsPage from "./page";
 import PolymarketPage from "../polymarket/page";
 import AdminPolymarketPage from "../admin/polymarket/page";
+import {
+  getPolymarketReadinessChecklist,
+  getPolymarketRoutingDisabledReasons,
+  getPolymarketRoutingReadiness,
+  getPolymarketTopBlockingReason,
+  type PolymarketRoutingReadinessInput,
+} from "./polymarket-routing-readiness";
 
 const VALID_BUILDER_CODE = "0x1b9fbf91c927df5bfd14abf1b4c3d2ee000e5badee3f3ae170a36ebe5bd0d3ca";
 
@@ -76,6 +83,7 @@ test("home page renders Chinese-first Polymarket landing page", async (t) => {
   assert.match(markup, /用一個頁面追蹤熱門 Polymarket 市場/);
   assert.match(markup, /瀏覽市場、比較價格/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
   assert.match(markup, /查看熱門市場/);
   assert.match(markup, /複製邀請連結/);
   assert.match(markup, /本平台不會代用戶下注或交易/);
@@ -235,8 +243,10 @@ test("Polymarket page browsing works without builder code and shows disabled tra
   });
 
   await withBuilderCode(null, async () => {
-    const markup = renderToStaticMarkup(await PolymarketPage());
+    const markup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ ref: "friend001" }) }));
     assert.match(markup, /Will Polymarket routing be scaffolded/);
+    assert.match(markup, /你正在使用推薦碼：FRIEND001/);
+    assert.match(markup, /href="\/polymarket\/poly-1\?ref=FRIEND001"/);
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /Builder Code 未設定/);
     assert.match(markup, /disabled=""/);
@@ -246,7 +256,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /交易功能尚未啟用/);
-    assert.match(markup, /尚未登入/);
+    assert.match(markup, /title="交易功能尚未啟用"/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
@@ -301,8 +311,9 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /Orderbook snapshot/);
   assert.match(markup, /透過 Polymarket 交易/);
   assert.match(markup, /mobile-trade-sheet/);
-  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
+  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>交易功能尚未啟用<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
+  assert.match(markup, /透過 Polymarket 交易 · 交易功能尚未啟用/);
   assert.match(markup, /複製市場推薦連結/);
 });
 
@@ -522,7 +533,7 @@ test("Polymarket detail browsing works without POLY_BUILDER_CODE", async (t) => 
   });
 });
 
-test("admin Polymarket chart page renders without crashing on safe empty market data", async (t) => {
+test("admin Polymarket page requires an admin session", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () =>
@@ -535,11 +546,7 @@ test("admin Polymarket chart page renders without crashing on safe empty market 
     globalThis.fetch = originalFetch;
   });
 
-  const markup = renderToStaticMarkup(await AdminPolymarketPage());
-  assert.match(markup, /Polymarket 管理/);
-  assert.match(markup, /Builder Code \/ routed trading \/ submitter debug/);
-  assert.match(markup, /獎勵狀態/);
-  assert.match(markup, /支付狀態/);
+  await assertRedirectsTo(() => AdminPolymarketPage(), "/login");
 });
 
 test("Polymarket page renders load error when market fetch fails", async (t) => {
@@ -557,6 +564,33 @@ test("Polymarket page renders load error when market fetch fails", async (t) => 
   assert.match(markup, /市場資料暫時未能更新/);
   assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.doesNotMatch(markup, /後端尚未提供 \/external\/markets/);
+  assert.doesNotMatch(markup, /暫時未有市場資料/);
+});
+
+test("Polymarket page separates source failure from safe empty state", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        ok: false,
+        error: "MARKET_SOURCE_UNAVAILABLE",
+        source: "external_markets,gamma-api.polymarket.com/events",
+        message: "internal details must not render",
+      }),
+      { status: 503, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /市場資料暫時未能更新/);
+  assert.match(markup, /已設定的市場資料來源暫時無法連線。/);
+  assert.match(markup, /請稍後再試；瀏覽市場不需要登入或連接錢包。/);
+  assert.match(markup, /external_markets, gamma-api\.polymarket\.com\/events/);
+  assert.doesNotMatch(markup, /internal details must not render/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
 });
 
@@ -880,6 +914,48 @@ test("Polymarket page defaults routed trading disabled", async () => {
     globalThis.fetch = originalFetch;
     if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
   }
+});
+
+test("Polymarket readiness keeps feature disabled as top launch reason while checklist stays complete", () => {
+  const input: PolymarketRoutingReadinessInput = {
+    loggedIn: true,
+    hasBuilderCode: true,
+    featureEnabled: false,
+    walletConnected: false,
+    geoblockAllowed: true,
+    hasCredentials: false,
+    userSigningAvailable: false,
+    marketTradable: true,
+    orderValid: true,
+    submitterAvailable: true,
+    userSigned: false,
+  };
+
+  assert.equal(getPolymarketRoutingReadiness(input), "feature_disabled");
+  assert.equal(getPolymarketTopBlockingReason(input), "feature_disabled");
+  assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
+    "feature_disabled",
+    "wallet_not_connected",
+    "credentials_missing",
+    "signature_required",
+  ]);
+
+  const checklist = getPolymarketReadinessChecklist(input);
+  assert.deepEqual(checklist.map((item) => item.id), [
+    "login",
+    "wallet",
+    "region",
+    "credentials",
+    "signature",
+    "builder_code",
+    "trading_feature",
+    "market_status",
+    "order_values",
+    "submitter",
+  ]);
+  assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
 });
 
 test("Polymarket page keeps routed trade CTA disabled when submitter is unavailable", async (t) => {

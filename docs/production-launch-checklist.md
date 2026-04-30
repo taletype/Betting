@@ -38,5 +38,5 @@ This checklist is for the public zh-HK Polymarket referral portal only. It does 
 ## Smoke Test
 
 ```sh
-BASE_URL=https://your-deployment.example pnpm smoke:polymarket-public
+BASE_URL=https://betting-web-ten.vercel.app pnpm smoke:polymarket-public
 ```

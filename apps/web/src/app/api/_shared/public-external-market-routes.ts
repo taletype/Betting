@@ -23,7 +23,9 @@ export async function externalMarketsResponse() {
   let backendError: unknown = null;
 
   try {
-    return NextResponse.json(await readExternalMarkets(getAdminSupabase()));
+    return NextResponse.json(await readExternalMarkets(getAdminSupabase()), {
+      headers: { "x-market-source": "external_markets" },
+    });
   } catch (error) {
     backendError = error;
     console.warn("public external markets backend source failed; trying Polymarket Gamma fallback", {
@@ -31,7 +33,12 @@ export async function externalMarketsResponse() {
       message: safeMessage(error),
     });
     try {
-      return NextResponse.json(await readPolymarketGammaFallbackMarkets());
+      return NextResponse.json(await readPolymarketGammaFallbackMarkets(), {
+        headers: {
+          "x-market-source": "gamma-api.polymarket.com/events",
+          "x-market-backend-fallback": "external_markets",
+        },
+      });
     } catch (fallbackError) {
       console.warn("public external markets Gamma fallback failed", {
         source: "gamma-api.polymarket.com/events",

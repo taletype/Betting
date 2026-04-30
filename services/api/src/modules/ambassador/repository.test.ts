@@ -5,6 +5,9 @@ import test from "node:test";
 
 import {
   ambassadorRewardTypes,
+  ambassadorPayoutRiskReviewRequiredCode,
+  ambassadorPayoutRiskReviewRequiredMessage,
+  assertPayoutApprovalRiskClear,
   calculateRewardLedgerDrafts,
   assertValidPayoutTxHash,
   buildPolygonTxUrl,
@@ -19,6 +22,7 @@ import {
   type AmbassadorRewardsConfig,
   type ReferralAttributionRecord,
 } from "./repository";
+import type { DatabaseTransaction } from "@bet/db";
 
 const enabledConfig: AmbassadorRewardsConfig = {
   enabled: true,
@@ -166,6 +170,42 @@ test("payout workflow enforces threshold and admin approval before paid", () => 
   assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
   assert.match(source, /recipient already has an open reward payout request/);
   assert.match(source, /payout requires admin approval before it can be marked paid/);
+});
+
+test("open high-risk flag blocks payout approval with safe error", async () => {
+  const transaction = {
+    query: async <T>() => [{ id: "99999999-9999-4999-8999-999999999999" } as T],
+  } satisfies DatabaseTransaction;
+
+  await assert.rejects(
+    () => assertPayoutApprovalRiskClear(transaction, "55555555-5555-4555-8555-555555555555"),
+    (error: unknown) => {
+      assert.equal(error instanceof Error ? error.message : "", ambassadorPayoutRiskReviewRequiredMessage);
+      assert.equal((error as { code?: string }).code, ambassadorPayoutRiskReviewRequiredCode);
+      return true;
+    },
+  );
+});
+
+test("reviewed and dismissed high-risk flags do not block payout approval", async () => {
+  const transaction = {
+    query: async (statement: string) => {
+      assert.match(statement, /flag\.status = 'open'/);
+      assert.match(statement, /flag\.severity = 'high'/);
+      return [];
+    },
+  } satisfies DatabaseTransaction;
+
+  await assert.doesNotReject(() => assertPayoutApprovalRiskClear(transaction, "55555555-5555-4555-8555-555555555555"));
+});
+
+test("payout risk guard checks recipient, payout, referral, and trade links", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+
+  assert.match(source, /flag\.user_id = payout\.recipient_user_id/);
+  assert.match(source, /flag\.payout_id = payout\.id/);
+  assert.match(source, /flag\.referral_attribution_id in \(select id from related_referral_attributions\)/);
+  assert.match(source, /flag\.trade_attribution_id in \(select id from related_trade_attributions\)/);
 });
 
 test("reward automation has no crypto transfer broadcast path", () => {

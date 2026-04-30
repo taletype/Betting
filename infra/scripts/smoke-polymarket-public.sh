@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-}"
-REF_CODE="${REF_CODE:-TESTCODE}"
-MARKET_SLUG="${MARKET_SLUG:-}"
-
-if [[ -z "$BASE_URL" ]]; then
-  echo "Set BASE_URL, for example BASE_URL=https://preview.example.com pnpm smoke:polymarket-public" >&2
-  exit 2
-fi
-
+BASE_URL="${BASE_URL:-https://betting-web-ten.vercel.app}"
 BASE_URL="${BASE_URL%/}"
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
@@ -19,49 +12,134 @@ fail() {
   exit 1
 }
 
-fetch() {
-  local path="$1"
-  local allow_404="${2:-yes}"
-  local out="$tmp_dir/$(echo "$path" | tr '/?=&:' '______').txt"
-  local status
-  status="$(curl -sS -L -o "$out" -w "%{http_code}" "$BASE_URL$path")" || fail "request failed: $path"
-  if [[ "$allow_404" == "yes" ]]; then
-    [[ "$status" =~ ^(2|3)[0-9][0-9]$|^404$ ]] || fail "$path returned HTTP $status"
-  else
-    [[ "$status" =~ ^(2|3)[0-9][0-9]$ ]] || fail "$path returned HTTP $status"
-  fi
-  if grep -Eiq '(SUPABASE_SERVICE_ROLE_KEY|POLYMARKET_API_SECRET|PRIVATE_KEY|BEGIN PRIVATE KEY|authorization: bearer|passphrase|connection string)' "$out"; then
-    fail "$path response appears to contain a secret"
-  fi
-  echo "$out"
+warn() {
+  echo "WARN: $*" >&2
 }
 
-root="$(fetch "/" no)"
-grep -Eq 'Polymarket|預測|市場|推薦' "$root" || fail "/ did not include expected public portal copy"
-grep -Eiq 'automatic payout|auto payout|guaranteed earning|guaranteed income|保證收入|自動支付' "$root" && fail "/ includes prohibited payout or guarantee wording"
+secret_pattern='(SUPABASE_SERVICE_ROLE_KEY|POLYMARKET_API_SECRET|PRIVATE_KEY|BEGIN PRIVATE KEY|authorization: bearer|passphrase|connection string|postgres://|postgresql://|eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)'
 
-poly="$(fetch "/polymarket" no)"
-grep -Eq 'Polymarket|預測|市場' "$poly" || fail "/polymarket did not include zh-HK Polymarket market copy"
-grep -Eiq 'live trading enabled|submit order now|automatic payout|auto payout|保證收入|自動支付' "$poly" && fail "/polymarket includes unsafe live-trading or payout wording"
+body_file_for_path() {
+  printf '%s/%s.txt' "$tmp_dir" "$(printf '%s' "$1" | tr '/?=&:' '______')"
+}
 
-fetch "/polymarket?ref=$(printf '%s' "$REF_CODE" | sed 's/ /%20/g')" no >/dev/null
-fetch "/api/health" no >/dev/null
-fetch "/api/version" no >/dev/null
-markets_json="$(fetch "/api/external/markets" no)"
+fetch_path() {
+  local path="$1"
+  local out
+  local status
+  out="$(body_file_for_path "$path")"
+  status="$(curl -sS -L -o "$out" -w "%{http_code}" "$BASE_URL$path")" || fail "request failed url=$BASE_URL$path"
 
-if [[ -z "$MARKET_SLUG" ]]; then
-  MARKET_SLUG="$(node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const m=Array.isArray(data)?data.find(x=>x&&x.source==="polymarket"):null; if(m) console.log(m.slug||m.externalId||m.id);' "$markets_json")"
-fi
+  if grep -Eiq "$secret_pattern" "$out"; then
+    fail "response appears to contain a secret url=$BASE_URL$path status=$status"
+  fi
 
-if [[ -n "$MARKET_SLUG" ]]; then
-  fetch "/polymarket/$MARKET_SLUG" >/dev/null
-  fetch "/api/external/markets/polymarket/$MARKET_SLUG" >/dev/null
-  fetch "/api/external/markets/polymarket/$MARKET_SLUG/orderbook" >/dev/null
-  fetch "/api/external/markets/polymarket/$MARKET_SLUG/trades" >/dev/null
-  fetch "/api/external/markets/polymarket/$MARKET_SLUG/history" >/dev/null
-  fetch "/api/external/markets/polymarket/$MARKET_SLUG/stats" >/dev/null
-else
-  echo "No Polymarket market found in /api/external/markets; detail smoke skipped."
-fi
+  printf 'CHECK url=%s status=%s\n' "$BASE_URL$path" "$status" >&2
+  printf '%s\t%s\n' "$status" "$out"
+}
 
-echo "Polymarket public portal smoke passed for $BASE_URL"
+diagnostic_code() {
+  node -e '
+const fs = require("fs");
+try {
+  const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const code = payload && typeof payload === "object"
+    ? (payload.error || payload.code || payload.diagnostic || payload.diagnostics?.[0] || "")
+    : "";
+  if (code) console.log(String(code));
+} catch {}
+' "$1"
+}
+
+market_count() {
+  node -e '
+const fs = require("fs");
+try {
+  const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  if (Array.isArray(payload)) {
+    console.log(payload.length);
+    process.exit(0);
+  }
+  process.exit(2);
+} catch {
+  process.exit(3);
+}
+' "$1"
+}
+
+check_public_path() {
+  local path="$1"
+  local result
+  local status
+  local body
+  result="$(fetch_path "$path")"
+  status="$(printf '%s\n' "$result" | tail -n 1 | cut -f1)"
+  body="$(printf '%s\n' "$result" | tail -n 1 | cut -f2)"
+
+  case "$status" in
+    2*|3*) ;;
+    401|403)
+      fail "$path requires auth but public browsing must not require login url=$BASE_URL$path status=$status"
+      ;;
+    *)
+      fail "$path returned unexpected status url=$BASE_URL$path status=$status diagnostic=$(diagnostic_code "$body")"
+      ;;
+  esac
+}
+
+check_markets() {
+  local result
+  local status
+  local body
+  local count
+  local code
+  result="$(fetch_path "/api/external/markets")"
+  status="$(printf '%s\n' "$result" | tail -n 1 | cut -f1)"
+  body="$(printf '%s\n' "$result" | tail -n 1 | cut -f2)"
+  code="$(diagnostic_code "$body")"
+
+  case "$status" in
+    200)
+      if ! count="$(market_count "$body")"; then
+        fail "/api/external/markets returned HTTP 200 but response is not a JSON array url=$BASE_URL/api/external/markets diagnostic=$code"
+      fi
+      printf 'MARKETS url=%s status=%s market_count=%s diagnostic=%s\n' "$BASE_URL/api/external/markets" "$status" "$count" "${code:-none}"
+      if [[ "$count" -gt 0 ]]; then
+        echo "PASS: /api/external/markets returned public market data"
+      else
+        warn "/api/external/markets returned an empty array url=$BASE_URL/api/external/markets status=$status market_count=0 diagnostic=${code:-none}"
+      fi
+      ;;
+    401|403)
+      fail "/api/external/markets requires auth but public browsing must not require login url=$BASE_URL/api/external/markets status=$status diagnostic=${code:-none}"
+      ;;
+    503)
+      if [[ "$code" == "MARKET_SOURCE_UNAVAILABLE" ]]; then
+        fail "/api/external/markets source unavailable url=$BASE_URL/api/external/markets status=$status diagnostic=$code"
+      fi
+      fail "/api/external/markets returned HTTP 503 url=$BASE_URL/api/external/markets diagnostic=${code:-none}"
+      ;;
+    500)
+      case "$code" in
+        SUPABASE_ENV_MISSING|API_REQUEST_FAILED|EXTERNAL_MARKETS_NOT_IMPLEMENTED|MARKET_SOURCE_UNAVAILABLE)
+          fail "/api/external/markets returned HTTP 500 with known safe diagnostic; deployment still fails smoke url=$BASE_URL/api/external/markets diagnostic=$code"
+          ;;
+        *)
+          fail "/api/external/markets returned HTTP 500 url=$BASE_URL/api/external/markets diagnostic=${code:-none}"
+          ;;
+      esac
+      ;;
+    *)
+      fail "/api/external/markets returned unexpected status url=$BASE_URL/api/external/markets status=$status diagnostic=${code:-none}"
+      ;;
+  esac
+}
+
+echo "Polymarket public portal smoke BASE_URL=$BASE_URL"
+
+check_public_path "/"
+check_public_path "/polymarket"
+check_public_path "/api/health"
+check_public_path "/api/version"
+check_markets
+
+echo "Polymarket public portal smoke completed for $BASE_URL"

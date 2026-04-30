@@ -22,7 +22,7 @@ export default async function RootLayout({
       <body>
         <ReferralCapture />
         <OptionalThirdwebProvider>
-          <AppShell locale={defaultLocale} showAdmin={showAdmin}>{children}</AppShell>
+          <AppShell locale={defaultLocale} showAdmin={showAdmin} authenticated={Boolean(user)}>{children}</AppShell>
         </OptionalThirdwebProvider>
       </body>
     </html>

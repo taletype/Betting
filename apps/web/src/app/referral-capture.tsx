@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import {
   pendingReferralCookieName,
   pendingReferralStorageKey,
+  appendReferralToInternalHref,
   normalizeReferralCode,
   readReferralCodeFromSearch,
   selectReferralCodeToPersist,
@@ -53,10 +54,7 @@ export function ReferralCapture() {
       const code = readPendingReferralCode();
       if (!anchor || !code) return;
 
-      const url = new URL(anchor.href, window.location.href);
-      if (url.origin !== window.location.origin || url.searchParams.has("ref")) return;
-      url.searchParams.set("ref", code);
-      anchor.href = `${url.pathname}${url.search}${url.hash}`;
+      anchor.href = appendReferralToInternalHref(anchor.href, window.location.href, code);
     };
 
     document.addEventListener("click", onClick, true);

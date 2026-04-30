@@ -13,6 +13,18 @@ type PayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
 type RiskSeverity = "low" | "medium" | "high";
 type RiskStatus = "open" | "reviewed" | "dismissed";
 
+export const ambassadorPayoutRiskReviewRequiredCode = "AMBASSADOR_PAYOUT_RISK_REVIEW_REQUIRED";
+export const ambassadorPayoutRiskReviewRequiredMessage = "high-severity risk review is required before payout approval";
+
+export class AmbassadorPayoutRiskReviewRequiredError extends Error {
+  readonly code = ambassadorPayoutRiskReviewRequiredCode;
+
+  constructor() {
+    super(ambassadorPayoutRiskReviewRequiredMessage);
+    this.name = "AmbassadorPayoutRiskReviewRequiredError";
+  }
+}
+
 const getDb = () => createDatabaseClient();
 
 const toIso = (value: Date | string | null): string | null =>
@@ -502,7 +514,7 @@ export const readAdminAmbassadorOverviewDb = async () => {
       payoutId: row.payout_id,
       severity: row.severity,
       reasonCode: row.reason_code,
-      details: row.details,
+      details: {},
       status: row.status,
       createdAt: toIso(row.created_at),
       reviewedBy: row.reviewed_by,
@@ -829,6 +841,59 @@ export const voidRewardsForTradeAttributionDb = async (tradeAttributionId: strin
   return { ok: true };
 };
 
+export const hasOpenHighSeverityRiskForPayoutApprovalDb = async (
+  executor: DatabaseExecutor,
+  payoutId: string,
+): Promise<boolean> => {
+  const [row] = await executor.query<{ id: string }>(
+    `
+      with payout as (
+        select id, recipient_user_id
+        from public.ambassador_reward_payouts
+        where id = $1::uuid
+        limit 1
+      ),
+      related_trade_attributions as (
+        select distinct ledger.source_trade_attribution_id as id
+        from public.ambassador_reward_ledger ledger
+        join payout on payout.recipient_user_id = ledger.recipient_user_id
+        where ledger.status = 'payable'
+      ),
+      related_referral_attributions as (
+        select attribution.id
+        from public.referral_attributions attribution
+        join payout on attribution.referred_user_id = payout.recipient_user_id
+          or attribution.referrer_user_id = payout.recipient_user_id
+
+        union
+
+        select attribution.id
+        from related_trade_attributions related_trade
+        join public.builder_trade_attributions trade_attribution
+          on trade_attribution.id = related_trade.id
+        join public.referral_attributions attribution
+          on attribution.referred_user_id = trade_attribution.user_id
+          or attribution.referrer_user_id = trade_attribution.direct_referrer_user_id
+      )
+      select flag.id
+      from public.ambassador_risk_flags flag
+      join payout on true
+      where flag.status = 'open'
+        and flag.severity = 'high'
+        and (
+          flag.user_id = payout.recipient_user_id
+          or flag.payout_id = payout.id
+          or flag.referral_attribution_id in (select id from related_referral_attributions)
+          or flag.trade_attribution_id in (select id from related_trade_attributions)
+        )
+      limit 1
+    `,
+    [payoutId],
+  );
+
+  return Boolean(row);
+};
+
 const updatePayoutStatusDb = async (input: {
   payoutId: string;
   reviewedBy: string;
@@ -850,17 +915,14 @@ const updatePayoutStatusDb = async (input: {
   }
 
   if (input.status === "approved") {
-    const [[risk], [payable]] = await Promise.all([
-      db.query<{ id: string }>(
-        `select id from public.ambassador_risk_flags where user_id = $1::uuid and status = 'open' and severity = 'high' limit 1`,
-        [row.recipient_user_id],
-      ).then((rows) => [rows[0]]),
+    const [hasBlockingRisk, [payable]] = await Promise.all([
+      hasOpenHighSeverityRiskForPayoutApprovalDb(db, input.payoutId),
       db.query<{ amount: bigint }>(
         `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'payable'`,
         [row.recipient_user_id],
       ).then((rows) => [rows[0]]),
     ]);
-    if (risk) throw new Error("recipient has open high-severity risk flag");
+    if (hasBlockingRisk) throw new AmbassadorPayoutRiskReviewRequiredError();
     if ((payable?.amount ?? 0n) < row.amount_usdc_atoms) throw new Error("payout amount exceeds payable rewards");
     await db.query(
       `update public.ambassador_reward_payouts

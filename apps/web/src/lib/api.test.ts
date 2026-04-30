@@ -449,6 +449,49 @@ test("listExternalMarkets classifies backend 500 and Supabase env errors", async
   );
 });
 
+test("listExternalMarkets classifies market source unavailable with sanitized sources", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  process.env.API_BASE_URL = "https://api.example.com";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        ok: false,
+        error: "MARKET_SOURCE_UNAVAILABLE",
+        source: "external_markets,gamma-api.polymarket.com/events",
+        message: "Backend source failed: hidden stack; Gamma fallback failed: hidden stack",
+      }),
+      { status: 503, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await assert.rejects(
+    () => listExternalMarkets(),
+    (error: unknown) =>
+      error instanceof ExternalMarketsLoadError &&
+      error.diagnostics.includes("market_source_unavailable") &&
+      error.diagnostics.includes("backend_500") &&
+      error.sources.join(",") === "external_markets,gamma-api.polymarket.com/events",
+  );
+});
+
 test("listExternalMarkets classifies missing /external/markets route", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;

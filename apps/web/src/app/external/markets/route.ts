@@ -13,7 +13,9 @@ export async function GET() {
   let backendError: unknown = null;
 
   try {
-    return NextResponse.json(await readExternalMarkets(createSupabaseAdminClient()));
+    return NextResponse.json(await readExternalMarkets(createSupabaseAdminClient()), {
+      headers: { "x-market-source": "external_markets" },
+    });
   } catch (error) {
     backendError = error;
     console.warn("legacy /external/markets backend source failed; trying Polymarket Gamma fallback", {
@@ -21,7 +23,12 @@ export async function GET() {
       message: safeMessage(error),
     });
     try {
-      return NextResponse.json(await readPolymarketGammaFallbackMarkets());
+      return NextResponse.json(await readPolymarketGammaFallbackMarkets(), {
+        headers: {
+          "x-market-source": "gamma-api.polymarket.com/events",
+          "x-market-backend-fallback": "external_markets",
+        },
+      });
     } catch (fallbackError) {
       console.warn("legacy /external/markets Gamma fallback failed", {
         source: "gamma-api.polymarket.com/events",

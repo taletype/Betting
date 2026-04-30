@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeReferralCode, readReferralCodeFromSearch, selectReferralCodeToPersist } from "./referral-capture";
+import {
+  appendReferralToInternalHref,
+  normalizeReferralCode,
+  readReferralCodeFromSearch,
+  selectReferralCodeToPersist,
+} from "./referral-capture";
 
 test("referral code is captured from query string before login", () => {
   assert.equal(readReferralCodeFromSearch("?ref=hkref001"), "HKREF001");
@@ -17,4 +22,19 @@ test("first valid pending referral wins before login", () => {
   assert.equal(selectReferralCodeToPersist(null, "friend001"), "FRIEND001");
   assert.equal(selectReferralCodeToPersist("FRIEND001", "other002"), null);
   assert.equal(selectReferralCodeToPersist(null, "x"), null);
+});
+
+test("pending referral survives internal navigation and existing refs win", () => {
+  assert.equal(
+    appendReferralToInternalHref("/polymarket/poly-1#ticket", "http://127.0.0.1:3000/?ref=friend001", "friend001"),
+    "/polymarket/poly-1?ref=FRIEND001#ticket",
+  );
+  assert.equal(
+    appendReferralToInternalHref("/polymarket?ref=FIRST001", "http://127.0.0.1:3000/", "other002"),
+    "/polymarket?ref=FIRST001",
+  );
+  assert.equal(
+    appendReferralToInternalHref("https://polymarket.com/event/abc", "http://127.0.0.1:3000/", "friend001"),
+    "https://polymarket.com/event/abc",
+  );
 });

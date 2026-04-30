@@ -267,6 +267,9 @@ export interface LocaleCopy {
       externalSyncNotRun: string;
     };
     loadError: string;
+    sourceUnavailable: string;
+    sourceUnavailableRetry: string;
+    failedSources: string;
     loadErrorDetails: Record<string, string>;
     externalId: string;
     bestBid: string;
@@ -639,12 +642,16 @@ const en: LocaleCopy = {
       externalSyncNotRun: "The external sync has not run yet, or it has not ingested Polymarket markets.",
     },
     loadError: "Unable to load Polymarket market data.",
+    sourceUnavailable: "Configured market data sources are temporarily unreachable.",
+    sourceUnavailableRetry: "Please try again later; browsing markets does not require login or wallet connection.",
+    failedSources: "Failed sources",
     loadErrorDetails: {
       missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL is not configured; the page tried the same-site /api/external/markets fallback.",
       configured_api_base_unreachable: "Production API_BASE_URL / NEXT_PUBLIC_API_BASE_URL points to an unreachable address. Check Vercel environment variables.",
       api_unreachable: "The configured API or same-site API route was unreachable.",
       backend_500: "The backend returned 500 for /external/markets.",
       external_markets_not_implemented: "The backend does not implement /external/markets.",
+      market_source_unavailable: "Configured market data sources are temporarily unreachable.",
       supabase_env_missing: "Supabase environment variables are missing or invalid.",
       unknown: "The API failed for an unknown reason. Check server logs for /external/markets.",
     },
@@ -966,9 +973,9 @@ const zhHK: DeepPartial<LocaleCopy> = {
   },
   ambassador: {
     title: "大使推薦獎勵",
-    subtitle: "推薦交易者。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。",
-    safeNotice: "本平台不收取參與費用，不設多層推薦獎勵，不保證盈利，亦不會替用戶下注或交易。",
-    approvalNotice: "獎勵需要經確認及審批後才可支付。",
+    subtitle: "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。",
+    safeNotice: "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。",
+    approvalNotice: "獎勵計算可自動記錄，但實際支付需要管理員審批。",
     code: "推薦碼",
     link: "推薦連結",
     copy: "複製",
@@ -1038,12 +1045,16 @@ const zhHK: DeepPartial<LocaleCopy> = {
       externalSyncNotRun: "外部同步尚未執行，或尚未匯入 Polymarket 市場。",
     },
     loadError: "市場資料暫時未能更新",
+    sourceUnavailable: "已設定的市場資料來源暫時無法連線。",
+    sourceUnavailableRetry: "請稍後再試；瀏覽市場不需要登入或連接錢包。",
+    failedSources: "未能連線的來源",
     loadErrorDetails: {
       missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 未設定；頁面已嘗試同站 /api/external/markets fallback。",
       configured_api_base_unreachable: "正式環境的 API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 指向不可連線地址。請檢查 Vercel 環境變數。",
       api_unreachable: "已設定的 API 或同站 API route 無法連線。",
       backend_500: "後端 /external/markets 返回 500。",
       external_markets_not_implemented: "市場資料暫時未能更新。",
+      market_source_unavailable: "已設定的市場資料來源暫時無法連線。",
       supabase_env_missing: "Supabase 環境變數缺失或無效。",
       unknown: "API 因未知原因失敗。請查看 /external/markets 的伺服器 log。",
     },

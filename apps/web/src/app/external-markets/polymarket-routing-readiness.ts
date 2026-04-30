@@ -76,6 +76,7 @@ const getGeoblockReadiness = (
 export const getPolymarketRoutingReadiness = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness => {
+  if (!input.featureEnabled) return "feature_disabled";
   if (input.loggedIn === false) return "auth_required";
   if (!input.walletConnected) return "wallet_not_connected";
   const geoblockReadiness = getGeoblockReadiness(input);
@@ -83,7 +84,6 @@ export const getPolymarketRoutingReadiness = (
   if (!input.hasCredentials) return "credentials_missing";
   if (input.userSigningAvailable === false) return "signature_required";
   if (!input.hasBuilderCode) return "builder_code_missing";
-  if (!input.featureEnabled) return "feature_disabled";
   if (!input.marketTradable) return "market_not_tradable";
   if (input.orderValid === false) return "invalid_order";
   if (input.submitModeEnabled === false) return "submit_mode_disabled";
@@ -99,13 +99,13 @@ export const getPolymarketRoutingDisabledReasons = (
   const reasons: PolymarketRoutingReadiness[] = [];
   const geoblockReadiness = getGeoblockReadiness(input);
 
+  if (!input.featureEnabled) reasons.push("feature_disabled");
   if (input.loggedIn === false) reasons.push("auth_required");
   if (!input.walletConnected) reasons.push("wallet_not_connected");
   if (geoblockReadiness) reasons.push(geoblockReadiness);
   if (!input.hasCredentials) reasons.push("credentials_missing");
   if (input.userSigningAvailable === false) reasons.push("signature_required");
   if (!input.hasBuilderCode) reasons.push("builder_code_missing");
-  if (!input.featureEnabled) reasons.push("feature_disabled");
   if (!input.marketTradable) reasons.push("market_not_tradable");
   if (input.orderValid === false) reasons.push("invalid_order");
   if (input.submitModeEnabled === false) reasons.push("submit_mode_disabled");
@@ -120,6 +120,10 @@ export const isPolymarketRoutingFullyEnabled = (input: PolymarketRoutingReadines
 export const getPolymarketTopBlockingReason = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness | null => {
+  if (!input.featureEnabled) {
+    return "feature_disabled";
+  }
+
   const readiness = getPolymarketRoutingReadiness(input);
   return readiness === "ready_to_submit" || readiness === "submitted" ? null : readiness;
 };

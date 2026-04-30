@@ -4,7 +4,7 @@ import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { applyReferralCodeAction, logoutAction } from "../auth-actions";
 import { getCurrentWebUser } from "../auth-session";
 import { FunnelEventTracker } from "../funnel-analytics";
-import { PendingReferralNotice } from "../pending-referral-notice";
+import { PendingReferralNotice, ReferralAttributionResultNotice } from "../pending-referral-notice";
 import { PendingReferralApplier } from "../pending-referral-applier";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
@@ -22,6 +22,7 @@ export default async function AccountPage() {
       <section className="hero">
         <h1>{copy.accountTitle}</h1>
         <p>{copy.accountSubtitle}</p>
+        <ReferralAttributionResultNotice />
         <PendingReferralNotice />
       </section>
 

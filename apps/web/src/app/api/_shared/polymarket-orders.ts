@@ -181,13 +181,13 @@ export const previewPolymarketOrder = async (
   const notional = price !== null && baseSize !== null ? price * baseSize : null;
   const disabledReasonCodes: PolymarketPreviewDisabledCode[] = [];
 
+  if (!routedTradingEnabled) disabledReasonCodes.push("feature_disabled");
   if (!input.loggedIn) disabledReasonCodes.push("auth_required");
   if (!input.walletConnected) disabledReasonCodes.push("wallet_not_connected");
   if (input.geoblockAllowed !== true) disabledReasonCodes.push("geoblocked");
   if (!input.l2CredentialsPresent) disabledReasonCodes.push("credentials_missing");
   if (!input.userSigningAvailable) disabledReasonCodes.push("signature_required");
   if (!builderCodeConfigured) disabledReasonCodes.push("builder_code_missing");
-  if (!routedTradingEnabled) disabledReasonCodes.push("feature_disabled");
   if (!tradable) disabledReasonCodes.push("market_not_tradable");
   if (!orderValid) disabledReasonCodes.push("invalid_order");
   if (!input.submitterAvailable) disabledReasonCodes.push("submitter_unavailable");

@@ -41,6 +41,37 @@ const toCsv = (rows: Awaited<ReturnType<typeof getAdminAmbassadorOverview>>["pay
   return [header, ...body].join("\n");
 };
 
+const getRiskFlagsForPayout = (
+  overview: NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>,
+  payout: NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>["payouts"][number],
+) => {
+  const relatedTradeIds = new Set(
+    overview.rewardLedger
+      .filter((reward) => reward.recipientUserId === payout.recipientUserId)
+      .map((reward) => reward.sourceTradeAttributionId),
+  );
+  const relatedTrades = overview.tradeAttributions.filter((trade) => relatedTradeIds.has(trade.id));
+  const relatedReferralIds = new Set(
+    overview.attributions
+      .filter((attribution) => (
+        attribution.referredUserId === payout.recipientUserId ||
+        attribution.referrerUserId === payout.recipientUserId ||
+        relatedTrades.some((trade) => (
+          attribution.referredUserId === trade.userId ||
+          attribution.referrerUserId === trade.directReferrerUserId
+        ))
+      ))
+      .map((attribution) => attribution.id),
+  );
+
+  return overview.riskFlags.filter((flag) => (
+    flag.payoutId === payout.id ||
+    flag.userId === payout.recipientUserId ||
+    (flag.tradeAttributionId !== null && relatedTradeIds.has(flag.tradeAttributionId)) ||
+    (flag.referralAttributionId !== null && relatedReferralIds.has(flag.referralAttributionId))
+  ));
+};
+
 export default async function AdminPayoutsPage() {
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).admin;
@@ -90,6 +121,7 @@ export default async function AdminPayoutsPage() {
                 <th>{copy.payoutRail}</th>
                 <th>{copy.asset}</th>
                 <th>{rewardCopy.status}</th>
+                <th>Risk</th>
                 <th>{rewardCopy.payoutDestination}</th>
                 <th>{copy.txHash}</th>
                 <th>{copy.approve}</th>
@@ -98,53 +130,71 @@ export default async function AdminPayoutsPage() {
               </tr>
             </thead>
             <tbody>
-              {overview.payouts.map((payout) => (
-                <tr key={payout.id}>
-                  <td className="mono">{payout.id.slice(0, 8)}</td>
-                  <td className="mono">{payout.recipientUserId}</td>
-                  <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
-                  <td>{payout.payoutChain} #{payout.payoutChainId}</td>
-                  <td>{payout.payoutAsset}</td>
-                  <td>{rewardCopy.payoutStatuses[payout.status] ?? payout.status}</td>
-                  <td>{payout.destinationValue}</td>
-                  <td>
-                    {payout.txHash ? (
-                      <a href={`${explorerBaseUrl}/tx/${payout.txHash}`} target="_blank" rel="noreferrer">
-                        {copy.polygonscan}
-                      </a>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td>
-                    <form action={approveRewardPayoutAction} className="stack">
-                      <input type="hidden" name="payoutId" value={payout.id} />
-                      <input name="notes" placeholder={copy.notes} />
-                      <button type="submit" disabled={payout.status !== "requested"}>{copy.approve}</button>
-                    </form>
-                  </td>
-                  <td>
-                    <form action={markRewardPayoutPaidAction} className="stack">
-                      <input type="hidden" name="payoutId" value={payout.id} />
-                      <input name="txHash" placeholder={copy.txHash} required />
-                      <input name="notes" placeholder={copy.notes} />
-                      <button type="submit" disabled={payout.status !== "approved"}>{copy.markPaid}</button>
-                    </form>
-                  </td>
-                  <td>
-                    <form action={failRewardPayoutAction} className="stack">
-                      <input type="hidden" name="payoutId" value={payout.id} />
-                      <input name="notes" placeholder={copy.notes} required />
-                      <button type="submit" disabled={payout.status === "paid"}>{copy.markFailed}</button>
-                    </form>
-                    <form action={cancelRewardPayoutAction} className="stack">
-                      <input type="hidden" name="payoutId" value={payout.id} />
-                      <input name="notes" placeholder={copy.notes} required />
-                      <button type="submit" disabled={payout.status === "paid"}>{copy.cancel}</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
+              {overview.payouts.map((payout) => {
+                const riskFlags = getRiskFlagsForPayout(overview, payout);
+                const hasBlockingRisk = riskFlags.some((flag) => flag.severity === "high" && flag.status === "open");
+
+                return (
+                  <tr key={payout.id}>
+                    <td className="mono">{payout.id.slice(0, 8)}</td>
+                    <td className="mono">{payout.recipientUserId}</td>
+                    <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
+                    <td>{payout.payoutChain} #{payout.payoutChainId}</td>
+                    <td>{payout.payoutAsset}</td>
+                    <td>{rewardCopy.payoutStatuses[payout.status] ?? payout.status}</td>
+                    <td>
+                      {riskFlags.length === 0 ? (
+                        "-"
+                      ) : (
+                        <div className="stack">
+                          {riskFlags.map((flag) => (
+                            <div key={flag.id} className={flag.severity === "high" && flag.status === "open" ? "status-bad" : "muted"}>
+                              {flag.severity} / {flag.status} / {flag.reasonCode}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td>{payout.destinationValue}</td>
+                    <td>
+                      {payout.txHash ? (
+                        <a href={`${explorerBaseUrl}/tx/${payout.txHash}`} target="_blank" rel="noreferrer">
+                          {copy.polygonscan}
+                        </a>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>
+                      <form action={approveRewardPayoutAction} className="stack">
+                        <input type="hidden" name="payoutId" value={payout.id} />
+                        <input name="notes" placeholder={copy.notes} />
+                        <button type="submit" disabled={payout.status !== "requested" || hasBlockingRisk}>{copy.approve}</button>
+                      </form>
+                    </td>
+                    <td>
+                      <form action={markRewardPayoutPaidAction} className="stack">
+                        <input type="hidden" name="payoutId" value={payout.id} />
+                        <input name="txHash" placeholder={copy.txHash} required />
+                        <input name="notes" placeholder={copy.notes} />
+                        <button type="submit" disabled={payout.status !== "approved"}>{copy.markPaid}</button>
+                      </form>
+                    </td>
+                    <td>
+                      <form action={failRewardPayoutAction} className="stack">
+                        <input type="hidden" name="payoutId" value={payout.id} />
+                        <input name="notes" placeholder={copy.notes} required />
+                        <button type="submit" disabled={payout.status === "paid"}>{copy.markFailed}</button>
+                      </form>
+                      <form action={cancelRewardPayoutAction} className="stack">
+                        <input type="hidden" name="payoutId" value={payout.id} />
+                        <input name="notes" placeholder={copy.notes} required />
+                        <button type="submit" disabled={payout.status === "paid"}>{copy.cancel}</button>
+                      </form>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <div className="muted">Updated {formatDateTime(locale, new Date().toISOString())}</div>
