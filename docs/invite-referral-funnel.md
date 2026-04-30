@@ -13,11 +13,12 @@ Behavior:
 - Persist it in browser storage and cookie so it survives navigation.
 - Referral-aware navigation preserves the pending code across first-party links before login.
 - Show pending referral state before login.
+- Browsing and trade intent keep working even if referral application later fails.
 - Apply the first valid referral after signup or login.
 - Apply attribution server-side only after Supabase Auth validates the user session.
 - First valid attribution wins.
 - Reject self-referral when identity is known.
-- Disabled codes cannot be used.
+- Disabled and malformed codes cannot be used.
 
 Reward attribution:
 
@@ -36,6 +37,7 @@ Safety:
 - No automatic treasury transfer.
 - Payout remains manual and admin-approved through Polygon pUSD.
 - No automatic payout, treasury transfer, MLM/downline/recursive rewards, or indirect referral logic is part of this funnel.
+- Login is not required before the user opens the market feed, market detail, or trade ticket.
 
 ## Funnel Events
 

@@ -4,18 +4,23 @@ The product is Chinese-first, with zh-HK Traditional Chinese as the default user
 
 Canonical public flow:
 
-1. Friend shares a referral link.
-2. User lands on `/`.
-3. User browses public Polymarket market data on `/polymarket`.
-4. User signs up or connects a wallet.
-5. Routed trading remains disabled until user-owned signing, L2 credential handling, submitter health, and operations review are production-safe.
-6. When enabled, the user signs their own order and the app attaches `POLY_BUILDER_CODE`.
-7. Confirmed Builder-fee revenue creates direct-referral reward accounting.
-8. Polygon pUSD payout remains manual and admin-approved.
+1. Friend opens `/ambassador` and copies an invite link.
+2. New user lands on `/?ref=CODE` or `/polymarket?ref=CODE`.
+3. The pending referral banner shows `你正在使用推薦碼：CODE`.
+4. User browses public Polymarket market data on `/polymarket`.
+5. User opens `/polymarket/[slug]`.
+6. User clicks the internal `透過 Polymarket 交易` CTA.
+7. The trade ticket resolves in this order: `連接錢包`, `增值錢包`, `設定 Polymarket 憑證`, `市場只供瀏覽`, `實盤提交已停用`, `準備自行簽署訂單`.
+8. Login remains secondary and is used only to save referral/reward state.
+9. Routed trading remains disabled until user-owned signing, L2 credential handling, submitter health, and operations review are production-safe.
+10. When enabled, the user signs their own order and the app attaches `POLY_BUILDER_CODE`.
+11. Confirmed Builder-fee revenue creates direct-referral reward accounting.
+12. Polygon pUSD payout remains manual and admin-approved.
 
 UI guardrails:
 
 - Public market browsing must work without login and without `POLY_BUILDER_CODE`.
+- Public user CTAs must not say `前往 Polymarket` or `Open on Polymarket`; source/provenance may say `來源：Polymarket` or `資料來源：Polymarket API`.
 - Use official/public Polymarket APIs or existing external market tables only. Do not scrape Polymarket.
 - `/external/markets` should return real persisted Polymarket rows when present, otherwise public Gamma fallback data. Orderbook and trades panels must not break the page when unavailable.
 - The app does not custody Polymarket user funds, place trades for users, pool funds, or mutate internal balances from external Polymarket activity.

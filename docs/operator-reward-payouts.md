@@ -18,3 +18,8 @@ Admin actions:
 - Add notes and preserve audit trail with actor admin user id, target id, action, timestamp, and status change.
 
 Open high-severity fraud flags block approval until reviewed.
+
+Admin security:
+- Admin pages must use authenticated admin authorization and must not trust spoofable `x-admin` headers.
+- Frontend code must not import service-role clients or expose service-role keys.
+- Every payout state change writes an audit-log entry before the operator treats the action as complete.

@@ -8,6 +8,8 @@ Ambassadors refer traders with an ambassador code. Referred traders create their
 
 Rewards are tied only to confirmed Builder-fee revenue observed from eligible routed trading activity.
 
+The public explanation should remain: `分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。`
+
 ## Prohibited Structures
 
 The implementation does not include multi-level compensation, recursive referral payouts, generation-level commissions, binary or matrix placement, spillover logic, package purchases, pay-to-join requirements, or recruitment-only bonuses.
@@ -63,6 +65,8 @@ Legal review is required before launch in Hong Kong, before enabling live Polyma
 ## Auth Boundary
 
 Users can view only their own private reward records after Supabase login. Payout requests require verified user identity and wallet destination validation. Admin approval, paid, failed, cancelled, void, and manual adjustment actions require a verified Supabase admin and remain manual/auditable; no automatic treasury transfer is enabled.
+
+The user rewards page must describe rewards as accounting records, not trading balance, and must remind users to confirm the destination address supports Polygon.
 
 ## Abuse Controls
 
