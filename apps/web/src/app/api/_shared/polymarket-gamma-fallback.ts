@@ -1,4 +1,4 @@
-import { fetchPolymarketGammaMarketBySlugOrId, fetchPolymarketGammaMarkets } from "@bet/integrations";
+import { fetchPolymarketGammaEventMarkets, fetchPolymarketGammaMarketBySlugOrId, fetchPolymarketGammaMarkets } from "@bet/integrations";
 
 type NormalizedGammaMarket = Awaited<ReturnType<typeof fetchPolymarketGammaMarkets>>[number]["market"];
 type GammaProvenance = Awaited<ReturnType<typeof fetchPolymarketGammaMarkets>>[number]["provenance"];
@@ -113,7 +113,7 @@ const mapGammaMarket = (
 };
 
 export const readPolymarketGammaFallbackMarkets = async (): Promise<PublicExternalMarketRecord[]> =>
-  (await fetchPolymarketGammaMarkets()).map((record) => mapGammaMarket(record.market, record.provenance));
+  (await fetchPolymarketGammaEventMarkets({ limit: 50 })).map((record) => mapGammaMarket(record.market, record.provenance));
 
 export const readPolymarketGammaFallbackMarketBySlugOrId = async (
   slugOrId: string,

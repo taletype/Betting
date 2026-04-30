@@ -12,21 +12,28 @@ test("GET /external/markets works without login using public Polymarket Gamma fa
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   globalThis.fetch = (async (input) => {
-    assert.equal(String(input), "https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=200");
+    assert.equal(String(input), "https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume_24hr&ascending=false&limit=50");
     return new Response(
       JSON.stringify([
         {
-          id: "gamma-1",
-          slug: "will-public-gamma-load",
-          question: "Will public Gamma data load?",
+          id: "event-1",
+          slug: "public-gamma-event",
+          title: "Public Gamma event",
           active: true,
           closed: false,
-          outcomes: JSON.stringify(["Yes", "No"]),
-          outcomePrices: JSON.stringify(["0.61", "0.39"]),
-          clobTokenIds: JSON.stringify(["yes-token", "no-token"]),
           volume: "1234",
           volume24hr: "56",
           endDate: "2026-06-01T00:00:00.000Z",
+          markets: [
+            {
+              id: "gamma-1",
+              slug: "will-public-gamma-load",
+              question: "Will public Gamma data load?",
+              outcomes: JSON.stringify(["Yes", "No"]),
+              outcomePrices: JSON.stringify(["0.61", "0.39"]),
+              clobTokenIds: JSON.stringify(["yes-token", "no-token"]),
+            },
+          ],
         },
       ]),
       { status: 200, headers: { "content-type": "application/json" } },
@@ -57,4 +64,47 @@ test("GET /external/markets works without login using public Polymarket Gamma fa
   assert.equal(payload[0]?.outcomes[0]?.title, "Yes");
   assert.equal(payload[0]?.outcomes[0]?.lastPrice, 0.61);
   assert.equal(payload[0]?.sourceProvenance.upstream, "gamma-api.polymarket.com");
+});
+
+test("GET /external/markets returns clear JSON error when backend and Gamma fail", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  delete process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "upstream down" }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalServiceRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRole;
+  });
+
+  const response = await GET();
+  const payload = (await response.json()) as {
+    ok: boolean;
+    error: string;
+    source: string;
+    message: string;
+  };
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(
+    { ok: payload.ok, error: payload.error, source: payload.source },
+    {
+      ok: false,
+      error: "MARKET_SOURCE_UNAVAILABLE",
+      source: "external_markets,gamma-api.polymarket.com/events",
+    },
+  );
+  assert.match(payload.message, /Backend source failed:/);
+  assert.match(payload.message, /Gamma fallback failed:/);
 });

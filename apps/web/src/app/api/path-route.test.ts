@@ -147,7 +147,72 @@ test("GET /api/external/markets serves synced external market data", async (t) =
   assert.equal(payload[0]?.recentTrades[0]?.externalTradeId, "trade-1");
 });
 
-test("public health, version, and external markets survive missing Supabase config", async () => {
+test("GET /api/external/markets falls back to public Gamma events when backend fails", async (t) => {
+  const originalFetch = globalThis.fetch;
+  setSupabaseAdminClientFactoryForTests(() => {
+    throw new Error("SUPABASE_URL is required");
+  });
+
+  globalThis.fetch = (async (input) => {
+    assert.equal(String(input), "https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume_24hr&ascending=false&limit=50");
+    return new Response(
+      JSON.stringify([
+        {
+          id: "event-route-1",
+          slug: "route-fallback-event",
+          title: "Route fallback event",
+          active: true,
+          closed: false,
+          markets: [
+            {
+              id: "gamma-route-1",
+              slug: "gamma-route-fallback",
+              question: "Will the API route fall back to Gamma?",
+              outcomes: JSON.stringify(["Yes", "No"]),
+              outcomePrices: JSON.stringify(["0.7", "0.3"]),
+              clobTokenIds: JSON.stringify(["yes-route", "no-route"]),
+            },
+          ],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    setSupabaseAdminClientFactoryForTests(null);
+  });
+
+  const response = await GET(new NextRequest("http://localhost/api/external/markets"), {
+    params: Promise.resolve({ path: ["external", "markets"] }),
+  });
+  const payload = (await response.json()) as Array<{
+    externalId: string;
+    source: string;
+    title: string;
+    outcomes: Array<{ title: string; lastPrice: number | null }>;
+  }>;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload[0]?.source, "polymarket");
+  assert.equal(payload[0]?.externalId, "gamma-route-1");
+  assert.equal(payload[0]?.title, "Will the API route fall back to Gamma?");
+  assert.equal(payload[0]?.outcomes[0]?.lastPrice, 0.7);
+});
+
+test("public health, version, and external markets survive missing Supabase config", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   await withEnv({ SUPABASE_URL: undefined, SUPABASE_SERVICE_ROLE_KEY: undefined, NEXT_PUBLIC_SUPABASE_URL: undefined, NEXT_PUBLIC_SUPABASE_ANON_KEY: undefined }, async () => {
     assert.equal((await healthGET()).status, 200);
     assert.equal(versionGET().status, 200);

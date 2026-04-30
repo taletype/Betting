@@ -9,16 +9,41 @@ import {
 
 const getAdminSupabase = () => createSupabaseAdminClient();
 
+const unavailablePayload = (source: string, message: string) => ({
+  ok: false,
+  error: "MARKET_SOURCE_UNAVAILABLE",
+  source,
+  message,
+});
+
+const safeMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : "Market source unavailable";
+
 export async function externalMarketsResponse() {
+  let backendError: unknown = null;
+
   try {
     return NextResponse.json(await readExternalMarkets(getAdminSupabase()));
   } catch (error) {
-    console.warn("public external markets unavailable; serving fallback or empty state", error);
+    backendError = error;
+    console.warn("public external markets backend source failed; trying Polymarket Gamma fallback", {
+      source: "external_markets",
+      message: safeMessage(error),
+    });
     try {
       return NextResponse.json(await readPolymarketGammaFallbackMarkets());
     } catch (fallbackError) {
-      console.warn("public external markets fallback unavailable", fallbackError);
-      return NextResponse.json([]);
+      console.warn("public external markets Gamma fallback failed", {
+        source: "gamma-api.polymarket.com/events",
+        message: safeMessage(fallbackError),
+      });
+      return NextResponse.json(
+        unavailablePayload(
+          "external_markets,gamma-api.polymarket.com/events",
+          `Backend source failed: ${safeMessage(backendError)}; Gamma fallback failed: ${safeMessage(fallbackError)}`,
+        ),
+        { status: 503 },
+      );
     }
   }
 }

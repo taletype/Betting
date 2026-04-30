@@ -2,8 +2,17 @@ export interface PolymarketEvent {
   id?: string | number;
   slug?: string;
   title?: string;
+  question?: string;
+  description?: string;
   active?: boolean;
   closed?: boolean;
+  endDate?: string;
+  end_date_iso?: string;
+  closedTime?: string;
+  resolved_at?: string;
+  volume?: number | string;
+  volume24hr?: number | string;
+  markets?: PolymarketMarket[];
 }
 
 export interface PolymarketToken {

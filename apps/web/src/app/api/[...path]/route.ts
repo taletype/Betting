@@ -5,6 +5,7 @@ import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_share
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "../_shared/external-market-read";
+import { readPolymarketGammaFallbackMarkets } from "../_shared/polymarket-gamma-fallback";
 import { previewPolymarketOrder } from "../_shared/polymarket-orders";
 import type { ExternalMarketApiRecord } from "../../../lib/api";
 import {
@@ -103,11 +104,32 @@ async function handleRequest(
     }
 
     if (apiPath === "external/markets" && request.method === "GET") {
+      let backendError: unknown = null;
       try {
         return NextResponse.json(await readExternalMarkets(adminSupabase()));
       } catch (error) {
-        console.warn("catch-all public external markets unavailable; serving safe empty state", error);
-        return NextResponse.json([]);
+        backendError = error;
+        console.warn("catch-all public external markets backend source failed; trying Polymarket Gamma fallback", {
+          source: "external_markets",
+          message: safeErrorMessage(error),
+        });
+        try {
+          return NextResponse.json(await readPolymarketGammaFallbackMarkets());
+        } catch (fallbackError) {
+          console.warn("catch-all public external markets Gamma fallback failed", {
+            source: "gamma-api.polymarket.com/events",
+            message: safeErrorMessage(fallbackError),
+          });
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "MARKET_SOURCE_UNAVAILABLE",
+              source: "external_markets,gamma-api.polymarket.com/events",
+              message: `Backend source failed: ${safeErrorMessage(backendError)}; Gamma fallback failed: ${safeErrorMessage(fallbackError)}`,
+            },
+            { status: 503 },
+          );
+        }
       }
     }
 
