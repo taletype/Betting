@@ -61,3 +61,9 @@ Before enabling live submit:
 7. Confirm audit rows contain no secrets and no full signatures.
 8. Confirm payouts remain manual and admin-approved.
 9. Confirm `POLYMARKET_ROUTED_TRADING_ENABLED=false` remains the default in examples and deployment templates.
+
+## Server-Side Geoblock Boundary
+
+Browser geoblock checks are UX-only. A live routed order must be blocked unless a fresh server-side geoblock proof verifier confirms the user is not restricted. Missing, stale, browser-only, or unverifiable geoblock payloads fail closed.
+
+The Polymarket preflight audit documents this boundary for operators and keeps live trading disabled when signature, credential, geoblock, submitter, or audit gates are missing.

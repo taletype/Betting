@@ -114,6 +114,7 @@ export interface ExternalPolymarketOrderRouteDependencies {
     expectedSigner: string;
     builderCode: string;
   }) => Promise<boolean>;
+  geoblockProofVerifier?: (proof: ExternalPolymarketGeoblockProof) => Promise<boolean>;
   auditRecorder?: (payload: ExternalPolymarketOrderRoutePayload, upstream: PolymarketOrderSubmitterResponse) => Promise<void>;
   now?: () => Date;
   allowNonProductionSubmissionForTests?: boolean;
@@ -146,6 +147,8 @@ const defaultLinkedWalletLookup = async (userId: string) =>
 const defaultL2CredentialLookup = async (): Promise<L2CredentialLookupResult> => ({
   status: "missing",
 });
+
+const defaultGeoblockProofVerifier = async (): Promise<boolean> => false;
 
 const normalizeAddress = (value: string): string => value.trim().toLowerCase();
 
@@ -443,6 +446,10 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   assertRecentOrderTimestamp(signedOrder.timestamp, now);
   assertRecentIso(confirmation.confirmedAt, "userConfirmation.confirmedAt", MAX_CONFIRMATION_AGE_MS, now);
   assertRecentIso(geoblock.checkedAt, "geoblock.checkedAt", MAX_CONFIRMATION_AGE_MS, now);
+  const geoblockVerified = await (dependencies.geoblockProofVerifier ?? defaultGeoblockProofVerifier)(geoblock);
+  if (geoblockVerified !== true) {
+    throw new ExternalPolymarketRoutingError(403, "POLYMARKET_GEOBLOCK_UNVERIFIED", "server-side Polymarket geoblock proof could not be verified");
+  }
   assertOrderMatchesConfirmation({ orderInput, signedOrder, confirmation, orderType, builderCode });
 
   const linkedWallet = await (dependencies.linkedWalletLookup ?? defaultLinkedWalletLookup)(userId);

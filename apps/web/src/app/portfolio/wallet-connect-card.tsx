@@ -178,8 +178,25 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
     setNotice(null);
 
     try {
-      const nonce = crypto.randomUUID();
-      const signedMessage = `Bet wallet link\nuser:self\nnonce:${nonce}`;
+      const challengeResponse = await fetch("/api/wallets/link/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ walletAddress, chain: "base" }),
+      });
+      if (!challengeResponse.ok) {
+        const payload = (await challengeResponse.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Failed to create wallet challenge (${challengeResponse.status})`);
+      }
+      const challengePayload = (await challengeResponse.json()) as {
+        challenge?: { id?: string };
+        signedMessage?: string;
+      };
+      const signedMessage = challengePayload.signedMessage ?? "";
+      const challengeId = challengePayload.challenge?.id;
+      if (!signedMessage || !challengeId) {
+        throw new Error(copy.invalidSignature);
+      }
+      trackFunnelEvent("wallet_link_challenge_created", { surface: "portfolio" });
       const signatureRaw = await provider.request({ method: "personal_sign", params: [signedMessage, walletAddress] });
 
       if (typeof signatureRaw !== "string") {
@@ -196,6 +213,8 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           walletAddress,
+          chain: "base",
+          challengeId,
           signedMessage,
           signature: signatureRaw,
         }),
@@ -207,9 +226,10 @@ export function WalletConnectCard({ linkedWalletAddress, locale }: WalletConnect
       }
 
       setNotice(copy.walletLinkedNotice);
-      trackFunnelEvent("wallet_link_verified", { surface: "portfolio" });
+      trackFunnelEvent("wallet_link_completed", { surface: "portfolio" });
       router.refresh();
     } catch (linkError) {
+      trackFunnelEvent("wallet_link_failed", { surface: "portfolio" });
       setError(linkError instanceof Error ? linkError.message : copy.failedToLinkWallet);
     } finally {
       setBusy(false);

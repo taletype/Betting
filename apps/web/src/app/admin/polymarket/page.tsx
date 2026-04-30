@@ -6,6 +6,7 @@ import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
 import { PayoutStatusChart, RewardSplitChart } from "../../charts/market-charts";
 import { listExternalMarkets } from "../../../lib/api";
 import { defaultLocale, getLocaleCopy } from "../../../lib/locale";
+import { getSafeLaunchStatus } from "../../api/_shared/launch-status";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function AdminPolymarketPage() {
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER ?? "disabled";
   const submitterAvailable = process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" || submitterMode !== "disabled";
+  const launchStatus = getSafeLaunchStatus();
   const markets = await listExternalMarkets().catch(() => []);
   const polymarketMarkets = markets.filter((market) => market.source === "polymarket");
   const staleCount = polymarketMarkets.filter((market) => {
@@ -36,6 +38,7 @@ export default async function AdminPolymarketPage() {
       <section className="hero">
         <h1>Polymarket 管理</h1>
         <p>{copy.subtitle}</p>
+        <div className="badge badge-warning">Live trading is disabled</div>
       </section>
 
       <BuilderFeeDisclosureCard
@@ -51,6 +54,14 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">{research.submitterAvailable}</span><span className="kv-value">{submitterAvailable ? research.yes : research.no}</span></div>
         <div className="kv"><span className="kv-key">{research.orderSubmitterMode}</span><span className="kv-value">{submitterMode}</span></div>
         <p className="muted">Live routed trading remains disabled unless user-owned signing, Polymarket credential handling, and submitter readiness are production-safe.</p>
+      </section>
+
+      <section className="panel stack">
+        <h2 className="section-title">Launch status</h2>
+        <div className="kv"><span className="kv-key">Public market data</span><span className="kv-value">{launchStatus.externalMarketData.status}</span></div>
+        <div className="kv"><span className="kv-key">Supabase configured</span><span className="kv-value">{launchStatus.supabaseConfigured ? research.yes : research.no}</span></div>
+        <div className="kv"><span className="kv-key">Rewards enabled</span><span className="kv-value">{launchStatus.rewardsEnabled ? research.yes : research.no}</span></div>
+        <div className="kv"><span className="kv-key">Automatic payouts</span><span className="kv-value">{launchStatus.autoPayoutEnabled ? "must be disabled" : "disabled"}</span></div>
       </section>
 
       <section className="grid">

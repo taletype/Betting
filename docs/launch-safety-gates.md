@@ -54,3 +54,13 @@ Live Polymarket routed trading is disabled by default. Market browsing, referral
 Before launch, verify the architecture in `docs/supabase-auth.md` and the RLS posture in `docs/auth-rls-checklist.md`.
 
 Command, write, admin, money, and trading routes must reject unauthenticated requests with `401` and authenticated non-admin admin requests with `403`. Service-role credentials may run server-side jobs and reads but must never become the browser user's identity.
+
+## API, Wallet, Preflight, And Abuse Controls
+
+- Public read-only routes live as dedicated Next route handlers under `/api/health`, `/api/version`, `/api/markets`, and `/api/external/markets/*`.
+- Public market routes do not require auth and return safe empty states when privileged Supabase/admin configuration is unavailable.
+- Authenticated command routes use verified Supabase sessions only; admin routes require a verified admin role.
+- Wallet linking uses `public.wallet_link_challenges` with hashed nonces, short expiry, exact canonical signed messages, and replay protection. `user:self` and loose substring validation are rejected.
+- `/admin/polymarket/preflight` explains why live trading is blocked. Missing production signature verification, user L2 credential lookup, server geoblock proof verification, submitter readiness, or audit recording keeps live trading disabled.
+- Ambassador risk flags support manual review for self-referrals, disabled/invalid codes, high Builder-fee records missing external ids, and risky payout approval. No IP/device fingerprinting is added for this launch.
+- Funnel analytics are lightweight and redact auth tokens, signatures, private keys, API credentials, passphrases, and full headers.

@@ -75,3 +75,9 @@ References:
 - [Polymarket order creation](https://docs.polymarket.com/developers/CLOB/orders/create-order)
 - [Polymarket geographic restrictions](https://docs.polymarket.com/api-reference/geoblock)
 - [Polymarket Builder order attribution](https://docs.polymarket.com/developers/builders/order-attribution)
+
+## Preflight Audit
+
+Live trading remains disabled until the admin preflight shows every blocking gate as passing. Required gates include production user-owned order signature verification, user-scoped L2 credential lookup, server-side geoblock proof verification, Builder code attached before user signing, submitter health, and routed-order audit recording.
+
+The preflight is explanatory only. It does not enable `POLYMARKET_ROUTED_TRADING_ENABLED`, does not submit orders, and must not use platform-owned credentials for user trades.

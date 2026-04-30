@@ -54,18 +54,22 @@ export const evaluateAdminAccess = (user: AuthenticatedUser | null): AdminAccess
 };
 
 export const getAuthenticatedUser = async (request: NextRequest): Promise<AuthenticatedUser | null> => {
-  const supabase = createSupabaseServerClient({
-    get: (name) => request.cookies.get(name)?.value,
-  });
+  try {
+    const supabase = createSupabaseServerClient({
+      get: (name) => request.cookies.get(name)?.value,
+    });
 
-  const { data, error } = await supabase.auth.getUser();
-  if (error) {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      return null;
+    }
+
+    return resolveAuthenticatedUser({
+      sessionUser: mapSupabaseUser(data.user),
+    });
+  } catch {
     return null;
   }
-
-  return resolveAuthenticatedUser({
-    sessionUser: mapSupabaseUser(data.user),
-  });
 };
 
 export const getOptionalSupabaseUser = getAuthenticatedUser;

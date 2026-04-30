@@ -4,7 +4,6 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     service: "api",
-    timestamp: new Date().toISOString(),
-    env: process.env.DATABASE_URL ? "DATABASE_URL set" : "DATABASE_URL missing",
+    checkedAt: new Date().toISOString(),
   });
 }

@@ -154,6 +154,7 @@ const liveDeps = (submitter: PolymarketOrderSubmitter) => ({
   linkedWalletLookup: async () => ({ walletAddress: USER_WALLET }),
   l2CredentialLookup: async () => ({ status: "present" as const, credentials: { key: "user-key", secret: "dXNlci1zZWNyZXQ=", passphrase: "user-passphrase" } }),
   signatureVerifier: async () => true,
+  geoblockProofVerifier: async () => true,
   auditRecorder: async () => {},
   now: () => NOW,
   allowNonProductionSubmissionForTests: true,
@@ -237,6 +238,29 @@ test("geoblock proof is required before routed submission", async () => {
       await assert.rejects(
         () => routeExternalPolymarketOrder(baseInput({ geoblock: { blocked: true, checkedAt: NOW.toISOString(), country: "US" } }), liveDeps(mockSubmitter())),
         /current region/,
+      );
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput({ geoblock: { blocked: false, checkedAt: new Date(NOW.getTime() - 120_000).toISOString(), country: "HK" } }), liveDeps(mockSubmitter())),
+        /stale/,
+      );
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), geoblockProofVerifier: undefined }),
+        /geoblock proof could not be verified/,
+      );
+    });
+  });
+});
+
+test("user signature verifier must exist and return true", async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), signatureVerifier: undefined }),
+        /order signature could not be verified/,
+      );
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), signatureVerifier: async () => false }),
+        /order signature could not be verified/,
       );
     });
   });

@@ -5,7 +5,7 @@ export async function GET() {
   try {
     return await getMarketsResponse();
   } catch (error) {
-    console.error("Error fetching markets:", error);
-    return NextResponse.json({ error: "Failed to fetch market data" }, { status: 500 });
+    console.warn("public market list unavailable; serving safe empty state", error);
+    return NextResponse.json([]);
   }
 }

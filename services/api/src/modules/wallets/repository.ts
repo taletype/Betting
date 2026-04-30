@@ -1,5 +1,7 @@
 import type { DatabaseExecutor, DatabaseTransaction } from "@bet/db";
 
+import type { WalletLinkChallengeRecord, WalletLinkChallengeStore } from "./challenge";
+
 export interface LinkedWallet {
   id: string;
   userId: string;
@@ -125,3 +127,68 @@ export const upsertLinkedWallet = async (
 
   return mapLinkedWallet(row);
 };
+
+export const createDatabaseWalletLinkChallengeStore = (
+  executor: DatabaseExecutor | DatabaseTransaction,
+): WalletLinkChallengeStore => ({
+  async insertChallenge(record) {
+    const [row] = await executor.query<{ id: string }>(
+      `
+        insert into public.wallet_link_challenges (
+          user_id, wallet_address, chain, nonce_hash, domain, issued_at, expires_at, consumed_at, created_at
+        ) values ($1::uuid, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, null, now())
+        returning id
+      `,
+      [
+        record.userId,
+        record.walletAddress,
+        record.chain,
+        record.nonceHash,
+        record.domain,
+        record.issuedAt,
+        record.expiresAt,
+      ],
+    );
+    if (!row) throw new Error("failed to create wallet link challenge");
+    return row;
+  },
+  async consumeChallenge(input) {
+    const [row] = await executor.query<{
+      user_id: string;
+      wallet_address: string;
+      chain: "base";
+      domain: string;
+      nonce_hash: string;
+      issued_at: Date | string;
+      expires_at: Date | string;
+      consumed_at: Date | string | null;
+    }>(
+      `
+        update public.wallet_link_challenges
+           set consumed_at = $6::timestamptz
+         where ($7::uuid is null or id = $7::uuid)
+           and user_id = $1::uuid
+           and wallet_address = $2
+           and chain = $3
+           and domain = $4
+           and nonce_hash = $5
+           and consumed_at is null
+           and expires_at > $6::timestamptz
+        returning user_id, wallet_address, chain, domain, nonce_hash, issued_at, expires_at, consumed_at
+      `,
+      [input.userId, input.walletAddress, input.chain, input.domain, input.nonceHash, input.now, input.challengeId ?? null],
+    );
+
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      walletAddress: row.wallet_address,
+      chain: row.chain,
+      domain: row.domain,
+      nonceHash: row.nonce_hash,
+      issuedAt: toIso(row.issued_at),
+      expiresAt: toIso(row.expires_at),
+      consumedAt: row.consumed_at ? toIso(row.consumed_at) : null,
+    } satisfies WalletLinkChallengeRecord;
+  },
+});

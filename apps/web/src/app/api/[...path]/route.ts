@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMessage } from "ethers";
+import { createDatabaseClient } from "@bet/db";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
 import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
 import { normalizeApiPayload } from "../_shared/api-serialization";
@@ -7,6 +7,14 @@ import { getMarketsResponse } from "../_shared/market-route-response";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "../_shared/external-market-read";
 import { previewPolymarketOrder } from "../_shared/polymarket-orders";
 import type { ExternalMarketApiRecord } from "../../../lib/api";
+import {
+  assertWalletLinkSignature,
+  buildWalletLinkChallenge,
+  getWalletLinkDomain,
+  hashWalletLinkNonce,
+  normalizeWalletAddress,
+  walletLinkChain,
+} from "../_shared/wallet-link-challenge";
 import {
   approveRewardPayoutDb,
   captureAmbassadorReferralDb,
@@ -37,8 +45,6 @@ export const setSupabaseAdminClientFactoryForTests = (
   supabaseAdminClientFactory = factory ?? createSupabaseAdminClient;
 };
 
-const normalizeAddress = (value: string): string => value.trim().toLowerCase();
-
 const getVersionPayload = () => ({
   gitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
   gitCommitRef: process.env.VERCEL_GIT_COMMIT_REF ?? null,
@@ -46,15 +52,8 @@ const getVersionPayload = () => ({
   checkedAt: new Date().toISOString(),
 });
 
-const assertWalletLinkMessage = (message: string, userId: string): void => {
-  if (!message.includes("Bet wallet link")) {
-    throw new Error("invalid signed message prefix");
-  }
-
-  if (!message.includes(`user:${userId}`) && !message.includes("user:self")) {
-    throw new Error("signed message user mismatch");
-  }
-};
+const safeErrorMessage = (error: unknown): string =>
+  process.env.NODE_ENV === "production" ? "Request failed" : error instanceof Error ? error.message : "Failed to fetch data";
 
 async function handleRequest(
   request: NextRequest,
@@ -72,16 +71,21 @@ async function handleRequest(
       return NextResponse.json(getVersionPayload());
     }
 
-    const adminSupabase = supabaseAdminClientFactory();
-
     if (apiPath === "markets" && request.method === "GET") {
-      return await getMarketsResponse();
+      try {
+        return await getMarketsResponse(supabaseAdminClientFactory());
+      } catch (error) {
+        console.warn("catch-all public market list unavailable; serving safe empty state", error);
+        return NextResponse.json([]);
+      }
     }
+
+    const adminSupabase = () => supabaseAdminClientFactory();
 
     if (apiPath.match(/^markets\/[^/]+$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
 
-      const market = await readMarketById(adminSupabase, marketId);
+      const market = await readMarketById(adminSupabase(), marketId);
       if (!market) {
         return NextResponse.json({ market: null }, { status: 404 });
       }
@@ -90,33 +94,38 @@ async function handleRequest(
 
     if (apiPath.match(/^markets\/[^/]+\/orderbook$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
-      return NextResponse.json(await readMarketOrderBook(adminSupabase, marketId));
+      return NextResponse.json(await readMarketOrderBook(adminSupabase(), marketId));
     }
 
     if (apiPath.match(/^markets\/[^/]+\/trades$/) && request.method === "GET") {
       const marketId = apiPath.split("/")[1] ?? "";
-      return NextResponse.json(await readMarketTrades(adminSupabase, marketId));
+      return NextResponse.json(await readMarketTrades(adminSupabase(), marketId));
     }
 
     if (apiPath === "external/markets" && request.method === "GET") {
-      return NextResponse.json(await readExternalMarkets(adminSupabase));
+      try {
+        return NextResponse.json(await readExternalMarkets(adminSupabase()));
+      } catch (error) {
+        console.warn("catch-all public external markets unavailable; serving safe empty state", error);
+        return NextResponse.json([]);
+      }
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/orderbook$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
       return NextResponse.json({ orderbook: market?.latestOrderbook ?? [], depth: [] });
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/trades$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
       return NextResponse.json({ source, externalId, trades: market?.recentTrades ?? [] });
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/history$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
       const history = (market?.recentTrades ?? []).map((trade) => ({
         timestamp: trade.tradedAt,
         outcome: trade.externalOutcomeId,
@@ -131,7 +140,7 @@ async function handleRequest(
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/stats$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
       const lastUpdatedAt = market?.lastUpdatedAt ?? market?.lastSyncedAt ?? null;
       return NextResponse.json({
         source,
@@ -149,7 +158,7 @@ async function handleRequest(
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase, source ?? "", externalId ?? "");
+      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
       return NextResponse.json({ market }, { status: market ? 200 : 404 });
     }
 
@@ -158,7 +167,7 @@ async function handleRequest(
 
     if (apiPath === "polymarket/orders/preview" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-      const markets = ((await readExternalMarkets(adminSupabase)) as ExternalMarketApiRecord[])
+      const markets = ((await readExternalMarkets(adminSupabase())) as ExternalMarketApiRecord[])
         .filter((market) => market.source === "polymarket");
       const preview = await previewPolymarketOrder(
         {
@@ -184,7 +193,7 @@ async function handleRequest(
     });
 
     if (apiPath === "wallets/linked" && request.method === "GET") {
-      const { data, error } = await adminSupabase
+      const { data, error } = await adminSupabase()
         .from("linked_wallets")
         .select("id, chain, wallet_address, verified_at")
         .eq("user_id", userId)
@@ -204,42 +213,96 @@ async function handleRequest(
       });
     }
 
+    if (apiPath === "wallets/link/challenge" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { walletAddress?: string; chain?: string };
+      const { challenge, signedMessage, nonceHash } = buildWalletLinkChallenge({
+        userId,
+        walletAddress: body.walletAddress ?? "",
+        chain: body.chain ?? walletLinkChain,
+        domain: getWalletLinkDomain(request.headers.get("host")),
+      });
+      const [row] = await createDatabaseClient().query<{ id: string }>(
+        `
+          insert into public.wallet_link_challenges (
+            user_id, wallet_address, chain, nonce_hash, domain, issued_at, expires_at, consumed_at, created_at
+          ) values ($1::uuid, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, null, now())
+          returning id
+        `,
+        [userId, challenge.walletAddress, challenge.chain, nonceHash, challenge.domain, challenge.issuedAt, challenge.expiresAt],
+      );
+      if (!row) throw new Error("failed to create wallet link challenge");
+      return NextResponse.json({ challenge: { ...challenge, id: row.id }, signedMessage }, { status: 201 });
+    }
+
     if (apiPath === "wallets/link" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as {
         walletAddress?: string;
+        chain?: string;
+        challengeId?: string;
         signedMessage?: string;
         signature?: string;
       };
 
-      const walletAddress = normalizeAddress(body.walletAddress ?? "");
+      const walletAddress = normalizeWalletAddress(body.walletAddress ?? "");
       const signedMessage = String(body.signedMessage ?? "");
       const signature = String(body.signature ?? "");
+      const challenge = assertWalletLinkSignature({
+        userId,
+        walletAddress,
+        chain: body.chain ?? walletLinkChain,
+        domain: getWalletLinkDomain(request.headers.get("host")),
+        signedMessage,
+        signature,
+      });
 
-      assertWalletLinkMessage(signedMessage, userId);
-
-      const recoveredAddress = normalizeAddress(verifyMessage(signedMessage, signature));
-      if (recoveredAddress !== walletAddress) {
-        return NextResponse.json({ error: "signature does not match wallet address" }, { status: 400 });
-      }
-
-      const { data, error } = await adminSupabase
-        .from("linked_wallets")
-        .upsert(
-          {
-            user_id: userId,
-            chain: "base",
-            wallet_address: walletAddress,
-            signature,
-            signed_message: signedMessage,
-            verified_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        )
-        .select("id, chain, wallet_address, verified_at")
-        .single();
-      if (error) {
-        throw error;
-      }
+      const data = await createDatabaseClient().transaction(async (transaction) => {
+        const [consumed] = await transaction.query<{ id: string }>(
+          `
+            update public.wallet_link_challenges
+               set consumed_at = now()
+             where id = $1::uuid
+               and user_id = $2::uuid
+               and wallet_address = $3
+               and chain = $4
+               and domain = $5
+               and nonce_hash = $6
+               and consumed_at is null
+               and expires_at > now()
+            returning id
+          `,
+          [
+            body.challengeId ?? "",
+            userId,
+            walletAddress,
+            challenge.chain,
+            challenge.domain,
+            hashWalletLinkNonce(challenge.nonce),
+          ],
+        );
+        if (!consumed) throw new Error("wallet link challenge not found or already consumed");
+        const [linked] = await transaction.query<{
+          id: string;
+          chain: string;
+          wallet_address: string;
+          verified_at: Date | string;
+        }>(
+          `
+            insert into public.linked_wallets (
+              user_id, chain, wallet_address, signature, signed_message, verified_at, metadata, created_at, updated_at
+            ) values ($1::uuid, 'base', $2, $3, $4, now(), '{}'::jsonb, now(), now())
+            on conflict (user_id)
+            do update set wallet_address = excluded.wallet_address,
+                          signature = excluded.signature,
+                          signed_message = excluded.signed_message,
+                          verified_at = excluded.verified_at,
+                          updated_at = excluded.updated_at
+            returning id, chain, wallet_address, verified_at
+          `,
+          [userId, walletAddress, signature, signedMessage],
+        );
+        if (!linked) throw new Error("failed to link wallet");
+        return linked;
+      });
 
       return NextResponse.json(
         {
@@ -247,7 +310,7 @@ async function handleRequest(
             id: data.id,
             chain: data.chain,
             walletAddress: data.wallet_address,
-            verifiedAt: data.verified_at,
+              verifiedAt: data.verified_at instanceof Date ? data.verified_at.toISOString() : new Date(data.verified_at).toISOString(),
           },
         },
         { status: 201 },
@@ -372,7 +435,7 @@ async function handleRequest(
       const adminActorId = user!.id;
 
       if (apiPath === "admin/withdrawals" && request.method === "GET") {
-        const { data, error } = await adminSupabase.rpc("rpc_admin_list_requested_withdrawals");
+        const { data, error } = await adminSupabase().rpc("rpc_admin_list_requested_withdrawals");
         if (error) {
           throw error;
         }
@@ -484,7 +547,7 @@ async function handleRequest(
       if (apiPath.match(/^admin\/withdrawals\/[^/]+\/execute$/) && request.method === "POST") {
         const withdrawalId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { txHash?: string };
-        const { data, error } = await adminSupabase.rpc("rpc_admin_execute_withdrawal", {
+        const { data, error } = await adminSupabase().rpc("rpc_admin_execute_withdrawal", {
           p_admin_user_id: adminActorId,
           p_withdrawal_id: withdrawalId,
           p_tx_hash: body.txHash ?? "",
@@ -498,7 +561,7 @@ async function handleRequest(
       if (apiPath.match(/^admin\/withdrawals\/[^/]+\/fail$/) && request.method === "POST") {
         const withdrawalId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { reason?: string };
-        const { data, error } = await adminSupabase.rpc("rpc_admin_fail_withdrawal", {
+        const { data, error } = await adminSupabase().rpc("rpc_admin_fail_withdrawal", {
           p_admin_user_id: adminActorId,
           p_withdrawal_id: withdrawalId,
           p_reason: body.reason ?? "",
@@ -512,7 +575,7 @@ async function handleRequest(
       if (apiPath.match(/^admin\/markets\/[^/]+\/resolve$/) && request.method === "POST") {
         const marketId = apiPath.split("/")[2] ?? "";
         const body = await request.json().catch(() => ({}));
-        const { data, error } = await adminSupabase.rpc("rpc_admin_resolve_market", {
+        const { data, error } = await adminSupabase().rpc("rpc_admin_resolve_market", {
           p_admin_user_id: adminActorId,
           p_market_id: marketId,
           p_payload: body,
@@ -535,7 +598,7 @@ async function handleRequest(
       );
     }
 
-    return NextResponse.json({ error: message, code: "API_REQUEST_FAILED" }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(error), code: "API_REQUEST_FAILED" }, { status: 500 });
   }
 }
 

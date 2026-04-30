@@ -20,6 +20,7 @@ import {
   mapExternalPolymarketRoutingError,
   routeExternalPolymarketOrder,
 } from "./modules/external-polymarket-routing/handlers";
+import { evaluatePolymarketPreflight } from "./modules/external-polymarket-routing/preflight";
 import { getHealth } from "./modules/health/handlers";
 import {
   getMarketById,
@@ -59,7 +60,7 @@ import {
   getWithdrawalHistory,
   requestWithdrawal,
 } from "./modules/withdrawals/handlers";
-import { getLinkedWallet, linkBaseWallet } from "./modules/wallets/handlers";
+import { createLinkWalletChallenge, getLinkedWallet, getWalletLinkDomain, linkBaseWallet } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
 import {
   isDepositVerificationDisabled,
@@ -78,9 +79,19 @@ import { validateApiEnvironment } from "./env";
 
 const port = Number(process.env.PORT ?? 4000);
 
+class ApiRequestBodyError extends Error {
+  readonly status = 400;
+  readonly code = "INVALID_JSON";
+}
+
 const parseBody = async (request: Request): Promise<Record<string, unknown>> => {
   const body = await request.text();
-  return body ? (JSON.parse(body) as Record<string, unknown>) : {};
+  if (!body) return {};
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    throw new ApiRequestBodyError("invalid JSON body");
+  }
 };
 
 const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<string> => {
@@ -116,6 +127,18 @@ const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | nul
   return null;
 };
 
+const isProductionRuntime = (): boolean => process.env.NODE_ENV === "production";
+
+const safeErrorPayload = (error: unknown): ApiErrorResponse & { code?: string } => {
+  if (error instanceof ApiRequestBodyError) {
+    return { error: "Invalid JSON body", code: error.code };
+  }
+  if (!isProductionRuntime()) {
+    return { error: error instanceof Error ? error.message : "Unknown error", code: "API_REQUEST_FAILED" };
+  }
+  return { error: "Request failed", code: "API_REQUEST_FAILED" };
+};
+
 const handleRequest = async (request: Request): Promise<Response> => {
   try {
     const url = new URL(request.url);
@@ -147,6 +170,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
         headers: { "content-type": "application/json" },
         status: 202,
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/admin/polymarket/preflight") {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      return Response.json(evaluatePolymarketPreflight());
     }
 
     if (request.method === "GET" && url.pathname === "/external/markets") {
@@ -441,6 +470,22 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
+    if (request.method === "POST" && url.pathname === "/wallets/link/challenge") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseBody(request);
+      const payload = await createLinkWalletChallenge({
+        userId: requestUserId,
+        walletAddress: String(body.walletAddress ?? ""),
+        chain: String(body.chain ?? "base"),
+        domain: getWalletLinkDomain(request.headers.get("host")),
+      });
+      return Response.json(payload, { status: 201 });
+    }
+
     if (request.method === "POST" && url.pathname === "/wallets/link") {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
@@ -451,8 +496,11 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const linkedWallet = await linkBaseWallet({
         userId: requestUserId,
         walletAddress: String(body.walletAddress ?? ""),
+        chain: String(body.chain ?? "base"),
+        challengeId: body.challengeId ? String(body.challengeId) : undefined,
         signature: String(body.signature ?? ""),
         signedMessage: String(body.signedMessage ?? ""),
+        domain: getWalletLinkDomain(request.headers.get("host")),
       });
 
       return new Response(toJson({ wallet: linkedWallet }), {
@@ -946,8 +994,8 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
     const message = error instanceof Error ? error.message : "Unknown error";
     logger.error("api request failed", { error: message });
-    const payload: ApiErrorResponse = { error: message };
-    return Response.json(payload, { status: 400 });
+    const status = error instanceof ApiRequestBodyError ? 400 : 400;
+    return Response.json(safeErrorPayload(error), { status });
   }
 };
 

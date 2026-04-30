@@ -57,3 +57,11 @@ Builder disclosure:
 - Pending Taker Builder fee disclosure: 1%.
 - Disclosure values are not authoritative settlement values; settlement must come from confirmed Polymarket Builder revenue.
 - Builder Code attribution only applies to eligible, matched routed Polymarket orders. Browsing never creates Builder fees.
+
+## Public API Boundary
+
+Public market browsing is served by isolated read-only API route handlers: `/api/health`, `/api/version`, `/api/markets`, `/api/external/markets`, and `/api/external/markets/:source/:externalId/*`.
+
+These routes do not require login. If privileged Supabase/admin configuration is unavailable, list routes return safe empty arrays or fallback public market data, and detail routes return `{ market: null }` with 404. They must never expose service-role errors, SQL details, connection strings, stack traces, or environment values.
+
+Authenticated user and admin command routes stay separate and protected. Public external market routes do not mutate the internal ledger, balances, withdrawals, or reward payouts.

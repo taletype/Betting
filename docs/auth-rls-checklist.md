@@ -56,3 +56,7 @@ Manual TODO:
 - Verify admin policies use Supabase app metadata/admin claim or audited RPCs.
 - Verify public market tables expose only non-sensitive fields.
 - Confirm service-role use is limited to server code and jobs.
+
+## Wallet Link Challenges
+
+`public.wallet_link_challenges` stores wallet-link nonce hashes, not raw nonces. Challenges are API-only server records with RLS enabled. A valid link requires an authenticated Supabase session, exact canonical signed message, matching domain/user/wallet/chain, unexpired nonce, and unconsumed challenge id. `user:self` and loose substring validation are not accepted.

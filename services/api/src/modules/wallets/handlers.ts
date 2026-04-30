@@ -1,27 +1,31 @@
 import { createDatabaseClient } from "@bet/db";
-import { verifyMessage } from "ethers";
-
 import { insertAuditRecord } from "../shared/audit";
-import { getLinkedWalletForUser, upsertLinkedWallet } from "./repository";
+import {
+  createDatabaseWalletLinkChallengeStore,
+  getLinkedWalletForUser,
+  upsertLinkedWallet,
+} from "./repository";
+import {
+  WALLET_LINK_CHAIN,
+  createWalletLinkChallenge,
+  normalizeDomain,
+  normalizeWalletAddress,
+  parseWalletLinkMessage,
+  verifyAndConsumeWalletLinkChallenge,
+} from "./challenge";
 
 export interface LinkWalletInput {
   userId?: string;
   walletAddress: string;
+  chain?: string;
+  challengeId?: string;
   signature: string;
   signedMessage: string;
+  domain: string;
 }
 
-const normalizeAddress = (address: string): string => address.trim().toLowerCase();
-
-export const assertWalletLinkMessage = (message: string, userId: string): void => {
-  if (!message.includes("Bet wallet link")) {
-    throw new Error("invalid signed message prefix");
-  }
-
-  if (!message.includes(`user:${userId}`)) {
-    throw new Error("signed message user mismatch");
-  }
-};
+export const getWalletLinkDomain = (requestHost?: string | null): string =>
+  normalizeDomain(process.env.NEXT_PUBLIC_SITE_DOMAIN ?? process.env.SITE_DOMAIN ?? requestHost ?? "localhost");
 
 export const getLinkedWallet = async (userId?: string) => {
   if (!userId) {
@@ -38,19 +42,24 @@ export const linkBaseWallet = async (input: LinkWalletInput) => {
   }
 
   const userId = input.userId;
-  assertWalletLinkMessage(input.signedMessage, userId);
-
-  const recoveredAddress = verifyMessage(input.signedMessage, input.signature);
-
-  if (normalizeAddress(recoveredAddress) !== normalizeAddress(input.walletAddress)) {
-    throw new Error("signature does not match wallet address");
-  }
+  parseWalletLinkMessage(input.signedMessage);
 
   const db = createDatabaseClient();
   return db.transaction(async (transaction) => {
+    await verifyAndConsumeWalletLinkChallenge({
+      userId,
+      walletAddress: input.walletAddress,
+      chain: input.chain ?? WALLET_LINK_CHAIN,
+      domain: input.domain,
+      challengeId: input.challengeId,
+      signedMessage: input.signedMessage,
+      signature: input.signature,
+      store: createDatabaseWalletLinkChallengeStore(transaction),
+    });
+
     const linkedWallet = await upsertLinkedWallet(transaction, {
       userId,
-      walletAddress: normalizeAddress(input.walletAddress),
+      walletAddress: normalizeWalletAddress(input.walletAddress),
       signature: input.signature,
       signedMessage: input.signedMessage,
       verifiedAt: new Date().toISOString(),
@@ -68,5 +77,25 @@ export const linkBaseWallet = async (input: LinkWalletInput) => {
     });
 
     return linkedWallet;
+  });
+};
+
+export const createLinkWalletChallenge = async (input: {
+  userId?: string;
+  walletAddress: string;
+  chain?: string;
+  domain: string;
+}) => {
+  if (!input.userId) {
+    throw new Error("authentication required");
+  }
+
+  const db = createDatabaseClient();
+  return createWalletLinkChallenge({
+    userId: input.userId,
+    walletAddress: input.walletAddress,
+    chain: input.chain ?? WALLET_LINK_CHAIN,
+    domain: input.domain,
+    store: createDatabaseWalletLinkChallengeStore(db),
   });
 };

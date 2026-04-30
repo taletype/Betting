@@ -10,6 +10,8 @@ const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 type RewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
 type TradeStatus = "pending" | "confirmed" | "void";
 type PayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
+type RiskSeverity = "low" | "medium" | "high";
+type RiskStatus = "open" | "reviewed" | "dismissed";
 
 const getDb = () => createDatabaseClient();
 
@@ -101,6 +103,36 @@ const readCodeByCode = async (transaction: DatabaseExecutor, code: string) => {
     [code.trim()],
   );
   return row ?? null;
+};
+
+const insertRiskFlag = async (
+  executor: DatabaseExecutor,
+  input: {
+    userId?: string | null;
+    referralAttributionId?: string | null;
+    tradeAttributionId?: string | null;
+    payoutId?: string | null;
+    severity: RiskSeverity;
+    reasonCode: string;
+    details?: Record<string, unknown>;
+  },
+) => {
+  await executor.query(
+    `
+      insert into public.ambassador_risk_flags (
+        user_id, referral_attribution_id, trade_attribution_id, payout_id, severity, reason_code, details, status, created_at
+      ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::jsonb, 'open', now())
+    `,
+    [
+      input.userId ?? null,
+      input.referralAttributionId ?? null,
+      input.tradeAttributionId ?? null,
+      input.payoutId ?? null,
+      input.severity,
+      input.reasonCode,
+      JSON.stringify(input.details ?? {}),
+    ],
+  );
 };
 
 const mapCode = (row: {
@@ -321,9 +353,18 @@ export const captureAmbassadorReferralDb = async (userId: string, code: string) 
     if (existing) return;
 
     const codeRecord = await readCodeByCode(transaction, code);
-    if (!codeRecord) throw new Error("invalid ambassador code");
-    if (codeRecord.status !== "active") throw new Error("ambassador code is disabled");
-    if (codeRecord.owner_user_id === userId) throw new Error("self-referrals are not allowed");
+    if (!codeRecord) {
+      await insertRiskFlag(transaction, { userId, severity: "low", reasonCode: "invalid_referral_code", details: { code: code.trim().slice(0, 24) } });
+      throw new Error("invalid ambassador code");
+    }
+    if (codeRecord.status !== "active") {
+      await insertRiskFlag(transaction, { userId, severity: "medium", reasonCode: "disabled_referral_code", details: { codeId: codeRecord.id } });
+      throw new Error("ambassador code is disabled");
+    }
+    if (codeRecord.owner_user_id === userId) {
+      await insertRiskFlag(transaction, { userId, severity: "high", reasonCode: "self_referral_attempt", details: { codeId: codeRecord.id } });
+      throw new Error("self-referrals are not allowed");
+    }
 
     await transaction.query(
       `insert into public.referral_attributions (referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason) values ($1::uuid, $2::uuid, $3, now(), 'pending', null)`,
@@ -372,7 +413,7 @@ export const requestAmbassadorPayoutDb = async (userId: string, input: { destina
 
 export const readAdminAmbassadorOverviewDb = async () => {
   const db = getDb();
-  const [codes, attributions, trades, rewardLedger, payouts] = await Promise.all([
+  const [codes, attributions, trades, rewardLedger, payouts, riskFlags] = await Promise.all([
     db.query(`select id, code, owner_user_id, status, created_at, disabled_at from public.ambassador_codes order by created_at desc limit 100`),
     db.query(`select id, referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason from public.referral_attributions order by attributed_at desc limit 100`),
     db.query(`select id, user_id, direct_referrer_user_id, polymarket_order_id, polymarket_trade_id, condition_id, market_slug, notional_usdc_atoms, builder_fee_usdc_atoms, status, raw_json, observed_at, confirmed_at from public.builder_trade_attributions order by observed_at desc limit 100`),
@@ -385,6 +426,13 @@ export const readAdminAmbassadorOverviewDb = async () => {
       order by created_at desc
       limit 100
     `),
+    db.query(`
+      select id, user_id, referral_attribution_id, trade_attribution_id, payout_id,
+             severity, reason_code, details, status, created_at, reviewed_by, reviewed_at, review_notes
+        from public.ambassador_risk_flags
+       order by created_at desc
+       limit 100
+    `).catch(() => []),
   ]);
 
   return {
@@ -446,6 +494,21 @@ export const readAdminAmbassadorOverviewDb = async () => {
       notes: row.notes,
       createdAt: toIso(row.created_at),
     })),
+    riskFlags: riskFlags.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      referralAttributionId: row.referral_attribution_id,
+      tradeAttributionId: row.trade_attribution_id,
+      payoutId: row.payout_id,
+      severity: row.severity,
+      reasonCode: row.reason_code,
+      details: row.details,
+      status: row.status,
+      createdAt: toIso(row.created_at),
+      reviewedBy: row.reviewed_by,
+      reviewedAt: toIso(row.reviewed_at),
+      reviewNotes: row.review_notes,
+    })),
     suspiciousAttributions: [],
   };
 };
@@ -498,7 +561,7 @@ export const overrideAdminReferralAttributionDb = async (input: {
 }) => {
   const db = getDb();
   return db.transaction(async (transaction: DatabaseTransaction) => {
-    void input.reason;
+    if (!input.reason.trim()) throw new Error("admin override reason is required");
     const codeRecord = await readCodeByCode(transaction, input.ambassadorCode);
     if (!codeRecord) throw new Error("invalid ambassador code");
     if (codeRecord.status !== "active") throw new Error("ambassador code is disabled");
@@ -718,6 +781,15 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
       ],
     );
     if (!row) throw new Error("failed to record builder trade attribution");
+    if (input.builderFeeUsdcAtoms >= 100_000_000n && !input.polymarketOrderId && !input.polymarketTradeId) {
+      await insertRiskFlag(transaction, {
+        userId: input.userId,
+        tradeAttributionId: row.id,
+        severity: "high",
+        reasonCode: "high_builder_fee_missing_external_id",
+        details: { builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString() },
+      });
+    }
     if (input.status === "confirmed") {
       await createRewardLedgerEntriesForTrade(transaction, row.id);
       await transaction.query(
@@ -765,13 +837,31 @@ const updatePayoutStatusDb = async (input: {
   notes?: string | null;
 }) => {
   const db = getDb();
-  const [row] = await db.query<{ id: string; recipient_user_id: string }>(
-    `select id, recipient_user_id from public.ambassador_reward_payouts where id = $1::uuid limit 1`,
+  const [row] = await db.query<{ id: string; recipient_user_id: string; amount_usdc_atoms: bigint; status: PayoutStatus; destination_type: "wallet" | "manual"; destination_value: string }>(
+    `select id, recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value from public.ambassador_reward_payouts where id = $1::uuid limit 1`,
     [input.payoutId],
   );
   if (!row) throw new Error("payout not found");
+  if (["approved", "paid", "cancelled"].includes(row.status) && input.status === "approved") {
+    throw new Error("payout already reviewed");
+  }
+  if (input.status === "approved" && row.destination_type === "wallet") {
+    normalizePayoutWalletAddress(row.destination_value);
+  }
 
   if (input.status === "approved") {
+    const [[risk], [payable]] = await Promise.all([
+      db.query<{ id: string }>(
+        `select id from public.ambassador_risk_flags where user_id = $1::uuid and status = 'open' and severity = 'high' limit 1`,
+        [row.recipient_user_id],
+      ).then((rows) => [rows[0]]),
+      db.query<{ amount: bigint }>(
+        `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'payable'`,
+        [row.recipient_user_id],
+      ).then((rows) => [rows[0]]),
+    ]);
+    if (risk) throw new Error("recipient has open high-severity risk flag");
+    if ((payable?.amount ?? 0n) < row.amount_usdc_atoms) throw new Error("payout amount exceeds payable rewards");
     await db.query(
       `update public.ambassador_reward_payouts
           set status = 'approved',

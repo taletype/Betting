@@ -63,3 +63,9 @@ Legal review is required before launch in Hong Kong, before enabling live Polyma
 ## Auth Boundary
 
 Users can view only their own private reward records after Supabase login. Payout requests require verified user identity and wallet destination validation. Admin approval, paid, failed, cancelled, void, and manual adjustment actions require a verified Supabase admin and remain manual/auditable; no automatic treasury transfer is enabled.
+
+## Abuse Controls
+
+Risk flags help operators review suspicious referral or reward state without adding invasive tracking. Current flags cover self-referral attempts, disabled/invalid code attempts, high Builder-fee attributions missing external Polymarket ids, and payout approval blockers. IP/device fingerprint checks are documented as future work only; the app does not add invasive tracking for this launch.
+
+Open high-severity risk flags block manual payout approval until reviewed. This does not create automatic payout execution, indirect referral rewards, second-level rewards, or assured earning claims.

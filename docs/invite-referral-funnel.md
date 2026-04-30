@@ -37,3 +37,9 @@ Safety:
 - No automatic treasury transfer.
 - Payout remains manual and admin-approved through Polygon pUSD.
 - No automatic payout, treasury transfer, recursive reward, or indirect referral logic is part of this funnel.
+
+## Funnel Events
+
+Launch observability uses lightweight client events only: `landing_page_view`, `market_view`, `market_detail_view`, `referral_code_seen`, `referral_code_captured`, `invite_link_copied`, `market_share_link_copied`, `signup_started`, `signup_completed`, `wallet_link_challenge_created`, `wallet_link_completed`, `wallet_link_failed`, `wallet_connect_clicked`, `trade_ticket_opened`, `order_preview_requested`, `order_preview_failed`, `trade_cta_clicked`, `routed_trade_attempted`, `routed_trade_disabled_reason`, `builder_attribution_prepared`, `payout_requested`, `payout_approved`, `payout_marked_paid`, `payout_failed`, and `payout_cancelled`.
+
+Metadata must redact auth tokens, signatures, private keys, API credentials, passphrases, and full headers. Analytics must remain lightweight and non-invasive.

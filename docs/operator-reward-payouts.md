@@ -92,3 +92,9 @@ Voiding prevents suspicious rewards from becoming payable.
 - Do not describe the platform as trading for users.
 - Do not create multi-level, recursive, or passive reward claims.
 - Do not commit secrets.
+
+## Risk Review
+
+Before approving a payout, review open ambassador risk flags. Approval is blocked when the recipient has an open high-severity flag, the destination wallet is invalid, the requested payout exceeds payable rewards, or the payout has already moved out of `requested`.
+
+Marking a wallet payout as paid still requires a valid 32-byte Polygon transaction hash. The system records the hash after the operator completes a manual transfer; it does not auto-send funds.

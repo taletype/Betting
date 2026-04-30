@@ -13,7 +13,7 @@ import { claimMarket, getClaimableStateForMarket } from "../modules/claims/handl
 import { verifyDepositWithDependencies } from "../modules/deposits/handlers";
 import { DEMO_USER_ID, INTEGRATION_FLOW_USER_ID } from "../modules/shared/constants";
 import { executeWithdrawal, failWithdrawal, requestWithdrawal } from "../modules/withdrawals/handlers";
-import { getLinkedWallet, linkBaseWallet } from "../modules/wallets/handlers";
+import { createLinkWalletChallenge, getLinkedWallet, linkBaseWallet } from "../modules/wallets/handlers";
 
 const db = createDatabaseClient();
 
@@ -365,14 +365,23 @@ const main = async () => {
 
   const demoWallet = Wallet.createRandom();
   const walletAddress = demoWallet.address.toLowerCase();
-  const signedMessage = `Bet wallet link\nuser:${DEMO_USER_ID}\nnonce:${runId}`;
+  const challenge = await createLinkWalletChallenge({
+    userId: DEMO_USER_ID,
+    walletAddress,
+    chain: "base",
+    domain: "localhost",
+  });
+  const signedMessage = challenge.signedMessage;
   const signature = await demoWallet.signMessage(signedMessage);
 
   const linkedWallet = await linkBaseWallet({
     userId: DEMO_USER_ID,
     walletAddress,
+    chain: "base",
+    challengeId: challenge.challenge.id,
     signedMessage,
     signature,
+    domain: "localhost",
   });
   const fetchedWallet = await getLinkedWallet(DEMO_USER_ID);
 

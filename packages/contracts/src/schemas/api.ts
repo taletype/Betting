@@ -364,6 +364,21 @@ export const GetAdminAmbassadorOverviewResponseSchema = z.object({
   tradeAttributions: z.array(ApiBuilderTradeAttributionSchema),
   rewardLedger: z.array(ApiAmbassadorRewardLedgerSchema),
   payouts: z.array(ApiAmbassadorRewardPayoutSchema),
+  riskFlags: z.array(z.object({
+    id: UuidSchema,
+    userId: UuidSchema.nullable(),
+    referralAttributionId: UuidSchema.nullable(),
+    tradeAttributionId: UuidSchema.nullable(),
+    payoutId: UuidSchema.nullable(),
+    severity: z.enum(["low", "medium", "high"]),
+    reasonCode: z.string(),
+    details: z.unknown(),
+    status: z.enum(["open", "reviewed", "dismissed"]),
+    createdAt: TimestampSchema,
+    reviewedBy: UuidSchema.nullable(),
+    reviewedAt: TimestampSchema.nullable(),
+    reviewNotes: z.string().nullable(),
+  })).default([]),
   suspiciousAttributions: z.array(ApiReferralAttributionSchema),
 });
 

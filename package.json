@@ -21,6 +21,7 @@
     "drill:staging": "./infra/scripts/staging-launch-drill.sh",
     "sync:external": "pnpm --filter @bet/external-sync-worker run run",
     "smoke:launch-proof": "./infra/scripts/smoke-launch-proof.sh",
+    "smoke:polymarket-public": "./infra/scripts/smoke-polymarket-public.sh",
     "screenshots:pack": "./infra/scripts/screenshot-pack.sh"
   },
   "devDependencies": {

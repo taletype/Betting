@@ -4,16 +4,19 @@ import { useEffect } from "react";
 
 export type FunnelEventName =
   | "landing_page_view"
-  | "page_view"
   | "market_view"
+  | "market_detail_view"
   | "referral_code_seen"
   | "referral_code_captured"
   | "invite_link_copied"
   | "market_share_link_copied"
   | "signup_started"
   | "signup_completed"
-  | "wallet_connect_started"
+  | "wallet_link_challenge_created"
+  | "wallet_link_completed"
+  | "wallet_link_failed"
   | "wallet_connect_clicked"
+  | "wallet_connect_started"
   | "wallet_connected"
   | "wallet_funding_opened"
   | "wallet_funding_quoted"
@@ -44,7 +47,11 @@ export type FunnelEventName =
   | "routed_trade_disabled_reason"
   | "builder_attribution_prepared"
   | "builder_attribution_submitted"
-  | "payout_requested";
+  | "payout_requested"
+  | "payout_approved"
+  | "payout_marked_paid"
+  | "payout_failed"
+  | "payout_cancelled";
 
 const funnelEventsStorageKey = "bet_acquisition_funnel_events";
 
@@ -53,6 +60,23 @@ export interface FunnelEvent {
   metadata?: Record<string, string | number | boolean | null>;
   occurredAt: string;
 }
+
+const forbiddenMetadataPattern = /(auth|authorization|token|signature|private.?key|api.?key|secret|credential|passphrase|headers?)/i;
+
+export const sanitizeFunnelMetadata = (
+  metadata?: Record<string, string | number | boolean | null>,
+): Record<string, string | number | boolean | null> | undefined => {
+  if (!metadata) return undefined;
+  const sanitized: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (forbiddenMetadataPattern.test(key)) {
+      sanitized[key] = "[redacted]";
+      continue;
+    }
+    sanitized[key] = typeof value === "string" && forbiddenMetadataPattern.test(value) ? "[redacted]" : value;
+  }
+  return sanitized;
+};
 
 export const trackFunnelEvent = (
   name: FunnelEventName,
@@ -64,7 +88,7 @@ export const trackFunnelEvent = (
 
   const event: FunnelEvent = {
     name,
-    metadata,
+    metadata: sanitizeFunnelMetadata(metadata),
     occurredAt: new Date().toISOString(),
   };
 

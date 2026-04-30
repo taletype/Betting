@@ -127,16 +127,27 @@ export default async function AdminAmbassadorsPage() {
 
           <section className="panel stack">
             <h2 className="section-title">{copy.suspiciousReview}</h2>
-            {overview.suspiciousAttributions.length === 0 ? (
+            {(overview.riskFlags ?? []).length === 0 ? (
               <div className="empty-state">{copy.noRows}</div>
             ) : (
               <table className="table">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Reason</th>
+                    <th>Related user</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {overview.suspiciousAttributions.map((attribution) => (
-                    <tr key={attribution.id}>
-                      <td className="mono">{attribution.referredUserId}</td>
-                      <td className="mono">{attribution.referrerUserId}</td>
-                      <td>{attribution.ambassadorCode}</td>
+                  {(overview.riskFlags ?? []).map((flag) => (
+                    <tr key={flag.id}>
+                      <td>{flag.severity}</td>
+                      <td>{flag.status}</td>
+                      <td>{flag.reasonCode}</td>
+                      <td className="mono">{flag.userId ?? flag.referralAttributionId ?? flag.tradeAttributionId ?? flag.payoutId ?? "-"}</td>
+                      <td>{formatDateTime(locale, flag.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>

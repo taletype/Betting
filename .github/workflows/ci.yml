@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      POLYMARKET_ROUTED_TRADING_ENABLED: "false"
+      POLYMARKET_CLOB_SUBMITTER: "disabled"
+      AMBASSADOR_AUTO_PAYOUT_ENABLED: "false"
+      NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "local-anon-placeholder"
+      SUPABASE_URL: "http://127.0.0.1:54321"
+      SUPABASE_SERVICE_ROLE_KEY: "local-service-role-placeholder"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @bet/web build
+
+  preview-smoke:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && vars.PREVIEW_BASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - run: BASE_URL="${{ vars.PREVIEW_BASE_URL }}" pnpm smoke:polymarket-public
