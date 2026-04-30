@@ -14,6 +14,12 @@ test("referral code is captured from query string before login", () => {
   assert.equal(readReferralCodeFromSearch("ref=HK-001"), "HK-001");
 });
 
+test("TESTCODE referral survives public Polymarket navigation", () => {
+  assert.equal(readReferralCodeFromSearch("?ref=TESTCODE"), "TESTCODE");
+  assert.equal(appendReferralToInternalHref("/polymarket", "http://127.0.0.1:3000/?ref=TESTCODE", "TESTCODE"), "/polymarket?ref=TESTCODE");
+  assert.equal(appendReferralToInternalHref("/polymarket/demo-market", "http://127.0.0.1:3000/polymarket?ref=TESTCODE", "TESTCODE"), "/polymarket/demo-market?ref=TESTCODE");
+});
+
 test("invalid referral codes are ignored", () => {
   assert.equal(normalizeReferralCode("x"), null);
   assert.equal(readReferralCodeFromSearch("?ref=%E2%9C%93"), null);
@@ -23,6 +29,8 @@ test("first valid pending referral wins before login", () => {
   assert.equal(selectReferralCodeToPersist(null, "friend001"), "FRIEND001");
   assert.equal(selectReferralCodeToPersist("FRIEND001", "other002"), null);
   assert.equal(selectReferralCodeToPersist(null, "x"), null);
+  assert.equal(selectReferralCodeToPersist("TESTCODE", "%E2%9C%93"), null);
+  assert.equal(selectReferralCodeToPersist("TESTCODE", "OTHER002"), null);
 });
 
 test("pending referral survives internal navigation and existing refs win", () => {
