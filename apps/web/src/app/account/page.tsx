@@ -8,8 +8,7 @@ import { PendingReferralNotice, ReferralAttributionResultNotice } from "../pendi
 import { PendingReferralApplier } from "../pending-referral-applier";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
-
-const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
+import { getSiteUrl } from "../../lib/site-url";
 
 export default async function AccountPage() {
   const copy = getLocaleCopy(defaultLocale).auth;
@@ -60,7 +59,7 @@ export default async function AccountPage() {
                   metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
                 />
                 <TrackedCopyButton
-                  value={`${siteUrl()}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
+                  value={`${getSiteUrl()}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
                   label="複製市場推薦連結"
                   copiedLabel="已複製"
                   eventName="market_share_link_copied"

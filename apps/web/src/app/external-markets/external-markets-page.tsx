@@ -34,14 +34,13 @@ import {
 import { formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { siteCopy } from "../../lib/i18n";
 import { normalizeReferralCode } from "../../lib/referral-capture";
+import { getSiteUrl } from "../../lib/site-url";
 
 const toDisplay = (value: number | null, locale: AppLocale): string =>
   value === null ? "—" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const toPriceDisplay = (value: number | null, locale: AppLocale): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 const formatProvenance = (market: ExternalMarketApiRecord): string => {
   const provenance = market.sourceProvenance ?? market.provenance;
@@ -260,7 +259,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     submitterAvailable,
   };
   const disabledReasonLabel = (reason: PolymarketRoutingReadiness) => copy.readinessCopy[reason] ?? reason;
-  const shareUrl = refCode ? `${siteUrl()}/polymarket?ref=${encodeURIComponent(refCode)}` : `${siteUrl()}/polymarket`;
+  const shareUrl = refCode ? `${getSiteUrl()}/polymarket?ref=${encodeURIComponent(refCode)}` : `${getSiteUrl()}/polymarket`;
   const externalMarketsEndpointReachable = !loadFailed;
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
   const serviceApiReachable = dataReadiness.serviceApiSelected ? !loadFailed : dataReadiness.configuredApiBaseIsWebOrigin ? false : dataReadiness.apiBaseUrlConfigured;
@@ -476,7 +475,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
             });
             const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
-            const marketShareUrl = `${siteUrl()}${detailPath}`;
+            const marketShareUrl = `${getSiteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
             const closeState = getCloseState(market);
             const stale = isExternalMarketStale(market);

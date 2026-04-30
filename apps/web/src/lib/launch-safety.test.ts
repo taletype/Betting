@@ -13,6 +13,7 @@ import TermsPage from "../app/terms/page";
 import PrivacyPage from "../app/privacy/page";
 import RiskPage from "../app/risk/page";
 import { ambassadorRewardRevenueKinds, revenueSourcePolicies } from "./revenue-model";
+import { getSiteUrl } from "./site-url";
 
 const repoRoot = resolve(process.cwd(), "../..");
 
@@ -59,6 +60,34 @@ test("builder code stays out of client components and public env variables", () 
   assert.match(envExample, /NEXT_PUBLIC_APP_LAUNCH_MODE=beta/);
   assert.match(envExample, /POLYMARKET_ROUTED_TRADING_ENABLED=false/);
   assert.match(envExample, /AMBASSADOR_AUTO_PAYOUT_ENABLED=false/);
+});
+
+test("share links use Vercel production URL before localhost fallback", (t) => {
+  const previousSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const previousProductionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const previousVercelUrl = process.env.VERCEL_URL;
+  const previousPort = process.env.PORT;
+
+  t.after(() => {
+    if (previousSiteUrl === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = previousSiteUrl;
+    if (previousProductionUrl === undefined) delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    else process.env.VERCEL_PROJECT_PRODUCTION_URL = previousProductionUrl;
+    if (previousVercelUrl === undefined) delete process.env.VERCEL_URL;
+    else process.env.VERCEL_URL = previousVercelUrl;
+    if (previousPort === undefined) delete process.env.PORT;
+    else process.env.PORT = previousPort;
+  });
+
+  delete process.env.NEXT_PUBLIC_SITE_URL;
+  process.env.VERCEL_PROJECT_PRODUCTION_URL = "betting-web-ten.vercel.app";
+  process.env.VERCEL_URL = "preview-bet.vercel.app";
+  assert.equal(getSiteUrl(), "https://betting-web-ten.vercel.app");
+
+  delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  delete process.env.VERCEL_URL;
+  process.env.PORT = "3007";
+  assert.equal(getSiteUrl(), "http://127.0.0.1:3007");
 });
 
 test("public beta launch mode renders explicit disabled trading and manual payout state", async (t) => {

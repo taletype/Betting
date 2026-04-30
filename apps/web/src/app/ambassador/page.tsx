@@ -8,6 +8,7 @@ import { PendingReferralApplier } from "../pending-referral-applier";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure, StatusChip } from "../product-ui";
 import { TrackedCopyButton } from "../tracked-copy-button";
+import { getSiteUrl } from "../../lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function AmbassadorPage() {
   const copy = getLocaleCopy(locale).ambassador;
   const authCopy = getLocaleCopy(locale).auth;
   const dashboard = await getAmbassadorDashboard().catch(() => null);
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
+  const siteUrl = getSiteUrl();
   const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
 
   return (

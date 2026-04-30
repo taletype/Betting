@@ -32,6 +32,7 @@ import {
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../../lib/locale";
 import { siteCopy } from "../../../lib/i18n";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
+import { getSiteUrl } from "../../../lib/site-url";
 
 interface PolymarketSlugPageProps {
   params: Promise<{ slug: string }>;
@@ -45,8 +46,6 @@ const toDisplay = (value: number | null): string =>
 
 const toPriceDisplay = (value: number | null): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 const hasPolymarketBuilderCode = (): boolean => {
   try {
@@ -229,7 +228,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const disabledReasons = getPolymarketRoutingDisabledReasons(routingInput);
   const publicTradingReady = routedTradingEnabled && hasBuilderCode && submitterAvailable;
   const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-  const marketShareUrl = `${siteUrl()}${detailPath}`;
+  const marketShareUrl = `${getSiteUrl()}${detailPath}`;
   const tradeTicketProps = {
     locale,
     hasBuilderCode,

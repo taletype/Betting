@@ -15,6 +15,7 @@ import {
 } from "../lib/external-market-status";
 import { formatDateTime, defaultLocale, getLocaleHref, type AppLocale } from "../lib/locale";
 import { normalizeReferralCode } from "../lib/referral-capture";
+import { getSiteUrl } from "../lib/site-url";
 
 interface HomePageProps {
   searchParams?: Promise<{ ref?: string }>;
@@ -22,8 +23,6 @@ interface HomePageProps {
 
 const numberOrDash = (value: number | null): string =>
   value === null ? "—" : value.toLocaleString(defaultLocale, { maximumFractionDigits: 2 });
-
-const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 const priceOrUnavailable = (value: number | null): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -52,7 +51,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
   const refCode = normalizeReferralCode(params?.ref);
   const markets = await getTrendingMarkets(locale);
   const marketHref = `${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-  const inviteUrl = refCode ? `${siteUrl()}/?ref=${encodeURIComponent(refCode)}` : siteUrl();
+  const inviteUrl = refCode ? `${getSiteUrl()}/?ref=${encodeURIComponent(refCode)}` : getSiteUrl();
 
   return (
     <main className="stack">
