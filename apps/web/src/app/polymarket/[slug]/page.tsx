@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import React from "react";
 
 import { getPolymarketBuilderCode } from "@bet/integrations";
@@ -154,6 +153,14 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
   }
 
   return market.source;
+};
+
+const MarketHeroImage = ({ market, alt }: { market: ExternalMarketApiRecord; alt: string }) => {
+  if (!market.imageUrl) {
+    return <div className="market-card-image market-card-image-fallback" aria-hidden="true" />;
+  }
+
+  return <img src={market.imageUrl} alt={alt} width={1440} height={720} className="market-card-image" />;
 };
 
 const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
@@ -382,18 +389,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <FunnelEventTracker name="market_detail_view" metadata={{ market: market.slug || market.externalId }} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
       <section className="hero">
-        {market.imageUrl ? (
-          <Image
-            src={market.imageUrl}
-            alt={localizedTitle}
-            width={1440}
-            height={720}
-            className="market-card-image"
-            priority
-          />
-        ) : (
-          <div className="market-card-image market-card-image-fallback" aria-hidden="true" />
-        )}
+        <MarketHeroImage market={market} alt={localizedTitle} />
         <div className="market-card-meta">
           <div className="badge badge-info">Polymarket</div>
           <div className="badge badge-success">非託管</div>

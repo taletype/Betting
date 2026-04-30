@@ -1,6 +1,5 @@
 import React from "react";
 import Link from "next/link";
-import Image from "next/image";
 
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
@@ -193,19 +192,26 @@ const translationBadge = (market: ExternalMarketApiRecord, locale: AppLocale): s
   return null;
 };
 
-const MarketImage = ({ market, alt, priority = false }: { market: ExternalMarketApiRecord; alt: string; priority?: boolean }) =>
-  market.imageUrl ? (
-    <Image
-      src={market.imageUrl}
-      alt={alt}
-      width={720}
-      height={400}
-      className="market-card-image"
-      priority={priority}
-    />
-  ) : (
-    <div className="market-card-image market-card-image-fallback" aria-hidden="true" />
-  );
+const formatProvenance = (market: ExternalMarketApiRecord): string => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (provenance && typeof provenance === "object") {
+    const record = provenance as Record<string, unknown>;
+    const upstream = typeof record.upstream === "string" ? record.upstream : null;
+    const endpoint = typeof record.endpoint === "string" ? record.endpoint : null;
+    return [upstream, endpoint].filter(Boolean).join(" ") || market.source;
+  }
+
+  return market.source;
+};
+
+const MarketImage = ({ market, alt, priority = false }: { market: ExternalMarketApiRecord; alt: string; priority?: boolean }) => {
+  void priority;
+  if (!market.imageUrl) {
+    return <div className="market-card-image market-card-image-fallback" aria-hidden="true" />;
+  }
+
+  return <img src={market.imageUrl} alt={alt} width={720} height={400} className="market-card-image" />;
+};
 
 const sanitizeSourceName = (source: string): string | null => {
   const trimmed = source.trim();

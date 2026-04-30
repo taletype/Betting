@@ -96,6 +96,10 @@ const sampleMarket = {
   title: "Sample",
   description: "",
   url: null,
+  imageUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/sample.png",
+  iconUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/sample-icon.png",
+  imageSourceUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/sample.png",
+  imageUpdatedAt: "2026-01-01T00:00:00.000Z",
   status: "open" as const,
   closeTime: null,
   endTime: null,
@@ -200,8 +204,9 @@ test("market upsert stores raw payload/provenance and does not touch internal tr
   await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
   const firstInsert = marketInsertValues[0] ?? [];
   const firstTradeInsert = tradeInsertValues[0] ?? [];
-  assert.match(String(firstInsert[17]), /rawJson/);
-  assert.match(String(firstInsert[19]), /gamma-api.polymarket.com/);
+  assert.equal(firstInsert[7], "https://polymarket-upload.s3.us-east-2.amazonaws.com/sample.png");
+  assert.match(String(firstInsert[21]), /rawJson/);
+  assert.match(String(firstInsert[23]), /gamma-api.polymarket.com/);
   assert.equal(firstTradeInsert[3], "polymarket");
   assert.equal(firstTradeInsert[6], "450000");
   assert.equal(firstTradeInsert[8], "5000000");

@@ -515,7 +515,7 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /透過 Polymarket 交易/);
   assert.match(markup, /來源：Polymarket/);
   assert.match(markup, /資料來源：Polymarket API/);
-  assert.match(markup, /最後更新：/);
+  assert.match(markup, /上次同步/);
   assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
   assert.match(markup, /mobile-trade-sheet/);
   assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
