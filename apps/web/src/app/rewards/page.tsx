@@ -21,7 +21,7 @@ export default async function RewardsPage() {
       <section className="hero">
         <h1>推薦獎勵帳務紀錄</h1>
         <p>此頁只顯示推薦獎勵的會計紀錄，與交易結餘分開。獎勵在管理員審批並完成 Polygon 上的 pUSD 支付前，並不是可自由使用的交易資金。</p>
-        <p>獎勵計算可自動記錄，但實際支付不會自動執行，不會自動從金庫轉帳，需要管理員審批。</p>
+        <p>獎勵計算可自動記錄，但實際支付不會自動執行，必須由管理員審批及記錄交易哈希。不會自動從金庫轉帳。</p>
         <div className="trust-badge-row">
           <span className="badge badge-warning">待確認獎勵</span>
           <span className="badge badge-success">可提取獎勵</span>

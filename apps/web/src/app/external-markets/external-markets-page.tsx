@@ -5,7 +5,7 @@ import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { getCurrentWebUser } from "../auth-session";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
-import { MarketSparkline, MiniMetricTrend, type TimeSeriesPoint } from "../charts/market-charts";
+import { MarketSparkline, MiniMetricTrend, shouldRenderSparkline, type TimeSeriesPoint } from "../charts/market-charts";
 import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { TrackedCopyButton } from "../tracked-copy-button";
@@ -32,6 +32,7 @@ import {
   isExternalMarketStale,
 } from "../../lib/external-market-status";
 import { formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
+import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../../lib/market-localization";
 import { siteCopy } from "../../lib/i18n";
 import { normalizeReferralCode } from "../../lib/referral-capture";
 import { getSiteUrl } from "../../lib/site-url";
@@ -128,7 +129,7 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
 
   return markets
     .filter((item) => {
-      if (q && !`${item.title} ${item.description} ${item.externalId} ${item.slug}`.toLowerCase().includes(q)) {
+      if (q && !`${item.title} ${item.titleOriginal ?? ""} ${item.titleLocalized ?? ""} ${item.description} ${item.externalId} ${item.slug}`.toLowerCase().includes(q)) {
         return false;
       }
       if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
@@ -395,8 +396,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
-            <strong>未找到符合條件的市場</strong>
-            <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : "暫時未有符合條件的開放市場。"}</p>
+            <strong>暫時未有市場資料</strong>
+            <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : "暫時未有市場資料"}</p>
             <span className="sr-only">暫時未有活躍市場資料</span>
             {defaultFeed ? (
               <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>查看全部市場</Link>
@@ -445,14 +446,14 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                         </div>
                       </td>
                       <td>
-                        <strong>{market.title}</strong>
-                        <div className="muted">{market.titleOriginal && market.titleOriginal !== market.title ? market.titleOriginal : market.description}</div>
+                        <strong>{localizeMarketTitle(market, locale)}</strong>
+                        <div className="muted">{getOriginalMarketTitle(market) !== localizeMarketTitle(market, locale) ? getOriginalMarketTitle(market) : market.description}</div>
                       </td>
                       <td>
                         <div className="outcome-pill-row">
                           {market.outcomes.length > 0 ? market.outcomes.slice(0, 3).map((outcome) => (
                             <span className="outcome-pill" key={outcome.externalOutcomeId}>
-                              <span>{outcome.title}</span>
+                              <span>{localizeOutcomeLabel(outcome.title, locale)}</span>
                               <strong>{toPriceDisplay(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid, locale)}</strong>
                             </span>
                           )) : <span className="muted">{copy.outcomesUnavailable}</span>}
@@ -510,18 +511,18 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                     {noTradeData ? <div className="badge badge-warning">暫無成交資料</div> : null}
                     {translationBadge(market, locale) ? <div className="badge badge-warning">{translationBadge(market, locale)}</div> : null}
                   </div>
-                  <strong className="market-card-title">{market.title}</strong>
-                  {market.titleOriginal && market.titleOriginal !== market.title ? (
+                  <strong className="market-card-title">{localizeMarketTitle(market, locale)}</strong>
+                  {getOriginalMarketTitle(market) && getOriginalMarketTitle(market) !== localizeMarketTitle(market, locale) ? (
                     <details className="original-copy">
                       <summary>{locale === "en" ? "Original" : "原文"}</summary>
-                      <p className="muted">{market.titleOriginal}</p>
+                      <p className="muted">{getOriginalMarketTitle(market)}</p>
                     </details>
                   ) : null}
                   <div className="outcome-pill-row">
                     {market.outcomes.length > 0 ? (
                       market.outcomes.slice(0, 4).map((outcome) => (
                         <span className="outcome-pill" key={outcome.externalOutcomeId}>
-                          <span>{outcome.title}</span>
+                          <span>{localizeOutcomeLabel(outcome.title, locale)}</span>
                           <strong>{toPriceDisplay(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid, locale)}</strong>
                         </span>
                       ))
@@ -536,10 +537,13 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk, locale)}</span></div>
                   <MiniMetricTrend label={copy.volume24h} value={toDisplay(market.volume24h, locale)} points={sparklinePoints} />
                   <div className="kv"><span className="kv-key">{copy.liquidity}</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</span></div>
+                  <div className="kv"><span className="kv-key">更新時間</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
                 </div>
-                <div className="market-card-chart">
-                  <MarketSparkline points={sparklinePoints} label="價格走勢" />
-                </div>
+                {shouldRenderSparkline(sparklinePoints) ? (
+                  <div className="market-card-chart">
+                    <MarketSparkline points={sparklinePoints} label="價格走勢" hideWhenEmpty />
+                  </div>
+                ) : null}
               </div>
               <div className="stack">
                 <div className="kv"><span className="kv-key">{closeState.label}</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>

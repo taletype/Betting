@@ -112,7 +112,8 @@ test("home page renders Chinese-first Polymarket landing page", async (t) => {
   assert.match(markup, /瀏覽市場、比較價格/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
-  assert.match(markup, /前往 Polymarket 市場/);
+  assert.match(markup, /查看熱門市場/);
+  assert.match(markup, /邀請朋友/);
   assert.match(markup, /交易尚未啟用/);
   assert.match(markup, /複製邀請連結/);
   assert.match(markup, /本平台不會代用戶下注或交易/);
@@ -163,6 +164,39 @@ test("home page renders real trade-tick chart preview when synced ticks exist", 
   assert.match(markup, /Will launch QA keep chart data honest/);
   assert.match(markup, /<svg class="line-chart"/);
   assert.doesNotMatch(markup, /市場資料暫時未能更新/);
+});
+
+test("home page localizes World Cup markets and hides empty compact chart placeholders", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({
+          id: "morocco",
+          externalId: "POLY-MOROCCO",
+          slug: "will-morocco-win-2026-world-cup",
+          title: "Will Morocco win the 2026 FIFA World Cup?",
+          outcomes: [
+            { externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.11, bestAsk: 0.12, lastPrice: 0.11, volume: null },
+            { externalOutcomeId: "no", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.88, bestAsk: 0.89, lastPrice: 0.89, volume: null },
+          ],
+          recentTrades: [],
+        }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await HomePage({ searchParams: Promise.resolve({}) }));
+  assert.match(markup, /摩洛哥會否贏得 2026 FIFA 世界盃？/);
+  assert.match(markup, /是/);
+  assert.match(markup, /否/);
+  assert.doesNotMatch(markup, /暫時未有圖表資料/);
+  assert.doesNotMatch(markup, /chart-empty/);
 });
 
 test("Polymarket page renders empty-state when no synced rows exist", async (t) => {
@@ -432,6 +466,7 @@ test("Polymarket detail page renders synced market detail", async (t) => {
     searchParams: Promise.resolve({ ref: "hkref001" }),
   }));
   assert.match(markup, /Will the detail page show a Polymarket market/);
+  assert.match(markup, /原始市場問題：/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /推薦分成/);
   assert.match(markup, /Orderbook snapshot/);
@@ -474,6 +509,58 @@ test("Polymarket detail page renders safe not-found state", async (t) => {
   assert.match(markup, /暫時未有市場資料/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
+});
+
+test("Polymarket detail page shows localized primary title and original source question", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(JSON.stringify({ source: "polymarket", externalId: "POLY-SENEGAL", volume24h: 500, liquidity: 110, spread: 0.03, closeTime: null, lastUpdatedAt: "2026-05-01T01:05:00.000Z", stale: false }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(
+      JSON.stringify({
+        market: makePolymarketRecord({
+          id: "senegal",
+          externalId: "POLY-SENEGAL",
+          slug: "will-senegal-win-2026-world-cup",
+          title: "Will Senegal win the 2026 FIFA World Cup?",
+          outcomes: [
+            { externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.11, bestAsk: 0.12, lastPrice: 0.11, volume: null },
+            { externalOutcomeId: "no", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.88, bestAsk: 0.89, lastPrice: 0.89, volume: null },
+          ],
+        }),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "will-senegal-win-2026-world-cup" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /塞內加爾會否贏得 2026 FIFA 世界盃？/);
+  assert.match(markup, /原始市場問題：/);
+  assert.match(markup, /Will Senegal win the 2026 FIFA World Cup\?/);
+  assert.match(markup, /<strong>是<\/strong>/);
+  assert.match(markup, /<strong>否<\/strong>/);
+  assert.match(markup, /暫時未有價格歷史。市場資料會在同步後顯示。/);
 });
 
 test("cancelled Polymarket detail page renders safely with disabled trade CTA", async (t) => {
@@ -852,6 +939,7 @@ test("Polymarket page renders synced rows when markets exist", async (t) => {
 
   const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /Will CPI be above 3%/);
+  assert.match(markup, />是<\/span>/);
   assert.match(markup, /polymarket/);
   assert.doesNotMatch(markup, /Legacy non-Polymarket row/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
@@ -899,6 +987,38 @@ test("Polymarket referral code survives navigation into market detail", async (t
   }));
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /href="\/polymarket\/polyref-1\?ref=HKREF001"/);
+});
+
+test("Polymarket feed localizes safe World Cup titles and outcomes", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({
+          id: "norway",
+          externalId: "POLY-NORWAY",
+          slug: "will-norway-win-2026-world-cup",
+          title: "Will Norway win the 2026 FIFA World Cup?",
+          outcomes: [
+            { externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.11, bestAsk: 0.12, lastPrice: 0.11, volume: null },
+            { externalOutcomeId: "no", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.88, bestAsk: 0.89, lastPrice: 0.89, volume: null },
+          ],
+          recentTrades: [],
+        }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /挪威會否贏得 2026 FIFA 世界盃？/);
+  assert.match(markup, />是<\/span>/);
+  assert.match(markup, />否<\/span>/);
+  assert.doesNotMatch(markup, /暫時未有圖表資料/);
 });
 
 test("Polymarket page uses same-site route instead of configured service API base", async (t) => {

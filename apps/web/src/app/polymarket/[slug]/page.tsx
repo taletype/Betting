@@ -30,6 +30,7 @@ import {
   isExternalMarketStale,
 } from "../../../lib/external-market-status";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../../lib/locale";
+import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../../../lib/market-localization";
 import { siteCopy } from "../../../lib/i18n";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
 import { getSiteUrl } from "../../../lib/site-url";
@@ -193,6 +194,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     );
   }
   const loadedMarket = market;
+  const localizedTitle = localizeMarketTitle(loadedMarket, locale);
+  const originalQuestion = getOriginalMarketTitle(loadedMarket);
   const [orderbookPayload, trades, history, stats] = await Promise.all([
     getExternalMarketOrderbook("polymarket", loadedMarket.externalId).catch(() => ({ orderbook: loadedMarket.latestOrderbook ?? [], depth: [] })),
     getExternalMarketTrades("polymarket", loadedMarket.externalId).catch(() => loadedMarket.recentTrades),
@@ -249,16 +252,16 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     marketTradable,
     orderValid,
     submitterAvailable,
-    marketTitle: market.title,
+    marketTitle: localizedTitle,
     outcomes: market.outcomes.map((outcome) => ({
       tokenId: outcome.externalOutcomeId,
-      title: outcome.title,
+      title: localizeOutcomeLabel(outcome.title, locale),
       bestBid: outcome.bestBid,
       bestAsk: outcome.bestAsk,
       lastPrice: outcome.lastPrice,
     })),
     tokenId: market.outcomes[0]?.externalOutcomeId,
-    outcome: market.outcomes[0]?.title ?? "Yes",
+    outcome: localizeOutcomeLabel(market.outcomes[0]?.title ?? "Yes", locale),
     side: "buy" as const,
     price: market.lastTradePrice ?? market.outcomes[0]?.lastPrice ?? market.outcomes[0]?.bestAsk ?? market.outcomes[0]?.bestBid ?? null,
     size: 10,
@@ -280,7 +283,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
           {market.translationStatus === "stale" ? <div className="badge badge-warning">{shortCopy.translationStale}</div> : null}
           {market.locale === "en" && locale !== "en" ? <div className="badge badge-warning">{shortCopy.showingOriginal}</div> : null}
         </div>
-        <h1>{market.title}</h1>
+        <h1>{localizedTitle}</h1>
         <p>{market.description || copy.subtitle}</p>
         <div className="trust-badge-row" aria-label="市場重點">
           <span className="badge badge-neutral">類別：{formatProvenance(market)}</span>
@@ -288,13 +291,11 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
           <span className="badge badge-neutral">流動性：{toDisplay(market.liquidity ?? market.volumeTotal)}</span>
           <span className="badge badge-neutral">結束：{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span>
         </div>
-        {market.titleOriginal && market.titleOriginal !== market.title ? (
-          <details className="original-copy">
-            <summary>{locale === "en" ? "Original" : "原文"}</summary>
-            <p className="muted">{market.titleOriginal}</p>
-            {market.descriptionOriginal ? <p className="muted">{market.descriptionOriginal}</p> : null}
-          </details>
-        ) : null}
+        <section className="original-copy" aria-label="原始市場問題">
+          <strong>原始市場問題：</strong>
+          <p className="muted">{originalQuestion || market.title}</p>
+          {market.descriptionOriginal ? <p className="muted">{market.descriptionOriginal}</p> : null}
+        </section>
         <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
@@ -360,7 +361,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
           <div className="grid">
             {market.outcomes.map((outcome) => (
               <article className="outcome-card stack" key={outcome.externalOutcomeId}>
-                <strong>{outcome.title}</strong>
+                <strong>{localizeOutcomeLabel(outcome.title, locale)}</strong>
+                {localizeOutcomeLabel(outcome.title, locale) !== outcome.title ? <span className="muted">原文：{outcome.title}</span> : null}
                 <div className="kv"><span className="kv-key">{copy.price}</span><span className="kv-value">{toPriceDisplay(outcome.lastPrice)}</span></div>
                 <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(outcome.bestBid)}</span></div>
                 <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(outcome.bestAsk)}</span></div>

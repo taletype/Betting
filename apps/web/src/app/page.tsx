@@ -14,6 +14,7 @@ import {
   isExternalMarketStale,
 } from "../lib/external-market-status";
 import { formatDateTime, defaultLocale, getLocaleHref, type AppLocale } from "../lib/locale";
+import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../lib/market-localization";
 import { normalizeReferralCode } from "../lib/referral-capture";
 import { getSiteUrl } from "../lib/site-url";
 
@@ -70,8 +71,8 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
             ))}
           </div>
           <div className="market-actions">
-            <Link className="button-link primary-cta" href={marketHref}>前往 Polymarket 市場</Link>
-            <Link className="button-link secondary" href={getLocaleHref(locale, "/ambassador")}>查看邀請獎勵</Link>
+            <Link className="button-link primary-cta" href={marketHref}>查看熱門市場</Link>
+            <Link className="button-link secondary" href={getLocaleHref(locale, "/ambassador")}>邀請朋友</Link>
             <TrackedCopyButton
               value={inviteUrl}
               label="複製邀請連結"
@@ -88,11 +89,11 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
           </div>
           {markets[0] ? (
             <>
-              <strong>{markets[0].title}</strong>
+              <strong>{localizeMarketTitle(markets[0], locale)}</strong>
               <div className="outcome-pill-row">
                 {markets[0].outcomes.slice(0, 2).map((outcome) => (
                   <span className="outcome-pill" key={outcome.externalOutcomeId}>
-                    <span>{outcome.title}</span>
+                    <span>{localizeOutcomeLabel(outcome.title, locale)}</span>
                     <strong>{priceOrUnavailable(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid)}</strong>
                   </span>
                 ))}
@@ -100,6 +101,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
               <MarketSparkline
                 points={markets[0].recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }))}
                 label="價格走勢"
+                hideWhenEmpty
               />
               <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{numberOrDash(markets[0].volume24h ?? markets[0].volumeTotal)}</span></div>
             </>
@@ -130,19 +132,21 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
                   <StatusChip tone="info">Polymarket</StatusChip>
                   <StatusChip tone="success">開放</StatusChip>
                 </div>
-                <strong>{market.title}</strong>
+                <strong>{localizeMarketTitle(market, locale)}</strong>
                 <div className="muted">
                   {market.outcomes.length > 0
-                    ? market.outcomes.map((outcome) => outcome.title).join(" / ")
+                    ? market.outcomes.map((outcome) => localizeOutcomeLabel(outcome.title, locale)).join(" / ")
                     : "結果資料同步中"}
                 </div>
                 <div className="kv"><span className="kv-key">價格</span><span className="kv-value">{priceOrUnavailable(market.lastTradePrice)}</span></div>
                 <MarketSparkline
                   points={market.recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }))}
                   label="價格走勢"
+                  hideWhenEmpty
                 />
                 <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{numberOrDash(market.volume24h ?? market.volumeTotal)}</span></div>
-                {market.titleOriginal && market.titleOriginal !== market.title ? <div className="muted">原文：{market.titleOriginal}</div> : null}
+                <div className="kv"><span className="kv-key">流動性</span><span className="kv-value">{numberOrDash(market.liquidity ?? null)}</span></div>
+                {getOriginalMarketTitle(market) && getOriginalMarketTitle(market) !== localizeMarketTitle(market, locale) ? <div className="muted">原文：{getOriginalMarketTitle(market)}</div> : null}
                 <div className="muted">更新：{market.lastSyncedAt ? formatDateTime(locale, market.lastSyncedAt, "UTC") : "—"}</div>
                 <Link className="button-link secondary" href={`${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>
                   市場詳情

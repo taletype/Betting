@@ -36,10 +36,16 @@ const toneColor = (tone: ChartTone): string => {
   return "#2dd4bf";
 };
 
-const finitePoints = (points: TimeSeriesPoint[]): Array<TimeSeriesPoint & { value: number }> =>
-  points.filter((point): point is TimeSeriesPoint & { value: number } =>
+export const normalizeChartPoints = (points?: TimeSeriesPoint[] | null): Array<TimeSeriesPoint & { value: number }> =>
+  (points ?? []).filter((point): point is TimeSeriesPoint & { value: number } =>
     typeof point.value === "number" && Number.isFinite(point.value)
   );
+
+export const hasChartData = (points?: TimeSeriesPoint[] | null): boolean => normalizeChartPoints(points).length > 0;
+
+export const shouldRenderSparkline = (points?: TimeSeriesPoint[] | null): boolean => normalizeChartPoints(points).length >= 2;
+
+const finitePoints = normalizeChartPoints;
 
 const formatValue = (value: number): string =>
   value >= 1000 ? value.toLocaleString("zh-HK", { maximumFractionDigits: 0 }) : value.toLocaleString("zh-HK", { maximumFractionDigits: 3 });
@@ -136,13 +142,19 @@ export function MarketSparkline({
   label = "市場熱度",
   loading,
   stale,
+  hideWhenEmpty = false,
 }: {
   points?: TimeSeriesPoint[] | null;
   label?: string;
   loading?: boolean;
   stale?: boolean;
+  hideWhenEmpty?: boolean;
 }) {
   const values = finitePoints(points ?? []);
+  if (!loading && hideWhenEmpty && values.length < 2) {
+    return null;
+  }
+
   return (
     <ChartShell title={label} loading={loading} stale={stale} empty={values.length < 2} emptyText="暫時未有圖表資料" compact>
       <LineChartSvg points={values} compact />
@@ -153,7 +165,7 @@ export function MarketSparkline({
 export function PriceHistoryChart({ points, loading, stale }: { points?: TimeSeriesPoint[] | null; loading?: boolean; stale?: boolean }) {
   const values = finitePoints(points ?? []);
   return (
-    <ChartShell title="價格走勢" loading={loading} stale={stale} empty={values.length < 2} emptyText="市場走勢資料暫時未能更新">
+    <ChartShell title="價格走勢" loading={loading} stale={stale} empty={values.length < 2} emptyText="暫時未有價格歷史。市場資料會在同步後顯示。">
       <LineChartSvg points={values} tone="price" />
       <div className="chart-caption">最新：{values.at(-1) ? formatValue(values.at(-1)!.value) : "—"}</div>
     </ChartShell>
@@ -243,8 +255,7 @@ export function MiniMetricTrend({ label, value, points }: { label: string; value
         <span className="kv-key">{label}</span>
         <strong>{value}</strong>
       </div>
-      <MarketSparkline points={points} label="市場熱度" />
+      {shouldRenderSparkline(points) ? <MarketSparkline points={points} label="市場熱度" hideWhenEmpty /> : null}
     </div>
   );
 }
-

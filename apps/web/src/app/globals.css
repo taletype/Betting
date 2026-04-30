@@ -895,6 +895,7 @@ button:disabled:hover {
 .chart-panel-compact {
   min-height: 82px;
   padding: 8px;
+  box-shadow: none;
 }
 
 .chart-panel-compact .section-heading-row {
@@ -915,7 +916,7 @@ button:disabled:hover {
 
 .chart-empty,
 .chart-skeleton {
-  min-height: 120px;
+  min-height: 72px;
   border: 1px dashed rgba(21, 34, 58, 0.18);
   border-radius: var(--radius-sm);
   display: grid;
@@ -925,6 +926,7 @@ button:disabled:hover {
 }
 
 .chart-skeleton {
+  min-height: 120px;
   position: relative;
   overflow: hidden;
 }
