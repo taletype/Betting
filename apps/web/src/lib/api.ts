@@ -572,6 +572,10 @@ export interface ExternalMarketApiRecord {
   description: string;
   status: "open" | "closed" | "resolved" | "cancelled";
   marketUrl: string | null;
+  imageUrl: string | null;
+  iconUrl: string | null;
+  imageSourceUrl: string | null;
+  imageUpdatedAt: string | null;
   closeTime: string | null;
   endTime: string | null;
   resolvedAt: string | null;

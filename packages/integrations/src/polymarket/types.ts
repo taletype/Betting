@@ -12,6 +12,14 @@ export interface PolymarketEvent {
   resolved_at?: string;
   volume?: number | string;
   volume24hr?: number | string;
+  image?: string;
+  featuredImage?: string;
+  imageOptimized?: {
+    imageUrlOptimized?: string;
+  };
+  featuredImageOptimized?: {
+    imageUrlOptimized?: string;
+  };
   markets?: PolymarketMarket[];
 }
 
@@ -52,6 +60,15 @@ export interface PolymarketMarket {
   volume24hr?: number | string;
   volume?: number | string;
   url?: string;
+  image?: string;
+  twitterCardImage?: string;
+  icon?: string;
+  imageOptimized?: {
+    imageUrlOptimized?: string;
+  };
+  iconOptimized?: {
+    imageUrlOptimized?: string;
+  };
   outcomes?: string | string[];
   outcomePrices?: string | number[] | string[];
   clobTokenIds?: string | string[];

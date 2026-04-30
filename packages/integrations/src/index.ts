@@ -30,6 +30,10 @@ export interface NormalizedExternalMarket {
   title: string;
   description: string;
   url: string | null;
+  imageUrl: string | null;
+  iconUrl: string | null;
+  imageSourceUrl: string | null;
+  imageUpdatedAt: string | null;
   status: "open" | "closed" | "resolved" | "cancelled";
   closeTime: string | null;
   endTime: string | null;

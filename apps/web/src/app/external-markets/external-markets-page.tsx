@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
@@ -191,6 +192,20 @@ const translationBadge = (market: ExternalMarketApiRecord, locale: AppLocale): s
   if (market.locale === "en" && locale !== "en") return copy.showingOriginal;
   return null;
 };
+
+const MarketImage = ({ market, alt, priority = false }: { market: ExternalMarketApiRecord; alt: string; priority?: boolean }) =>
+  market.imageUrl ? (
+    <Image
+      src={market.imageUrl}
+      alt={alt}
+      width={720}
+      height={400}
+      className="market-card-image"
+      priority={priority}
+    />
+  ) : (
+    <div className="market-card-image market-card-image-fallback" aria-hidden="true" />
+  );
 
 const sanitizeSourceName = (source: string): string | null => {
   const trimmed = source.trim();
@@ -514,6 +529,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
 
             return (
             <div key={`${market.source}:${market.externalId}`} className="panel stack market-card">
+              <MarketImage market={market} alt={localizeMarketTitle(market, locale)} />
               <div className="market-card-main">
                 <div className="stack">
                   <div className="market-card-meta">

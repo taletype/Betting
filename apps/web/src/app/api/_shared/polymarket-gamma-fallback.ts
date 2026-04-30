@@ -13,6 +13,10 @@ export interface PublicExternalMarketRecord {
   description: string;
   status: "open" | "closed" | "resolved" | "cancelled";
   marketUrl: string | null;
+  imageUrl: string | null;
+  iconUrl: string | null;
+  imageSourceUrl: string | null;
+  imageUpdatedAt: string | null;
   closeTime: string | null;
   endTime: string | null;
   resolvedAt: string | null;
@@ -129,6 +133,10 @@ const mapGammaMarket = (
     description: market.description,
     status: market.status,
     marketUrl: market.url,
+    imageUrl: market.imageUrl,
+    iconUrl: market.iconUrl,
+    imageSourceUrl: market.imageSourceUrl,
+    imageUpdatedAt: market.imageUpdatedAt,
     closeTime: market.closeTime,
     endTime: market.endTime,
     resolvedAt: market.resolvedAt,

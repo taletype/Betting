@@ -20,6 +20,64 @@ test("normalizes gamma market payload into external market", () => {
   assert.equal(market?.outcomes[0]?.yesNo, "yes");
 });
 
+test("image URL is normalized from optimized image", () => {
+  const market = normalizePolymarketMarket({
+    id: "123",
+    question: "Will it rain?",
+    imageOptimized: { imageUrlOptimized: "https://polymarket-upload.s3.us-east-2.amazonaws.com/optimized.png" },
+  });
+
+  assert.equal(market?.imageUrl, "https://polymarket-upload.s3.us-east-2.amazonaws.com/optimized.png");
+  assert.equal(market?.imageSourceUrl, market?.imageUrl);
+});
+
+test("image fallback priority uses event images before icon", () => {
+  const market = normalizePolymarketMarket({
+    id: "123",
+    question: "Will it rain?",
+    icon: "https://example.com/icon.png",
+    events: [{
+      featuredImage: "https://example.com/featured.png",
+    }],
+  });
+
+  assert.equal(market?.imageUrl, "https://example.com/featured.png");
+  assert.equal(market?.iconUrl, "https://example.com/icon.png");
+});
+
+test("missing image is safe", () => {
+  const market = normalizePolymarketMarket({
+    id: "123",
+    question: "Will it rain?",
+  });
+
+  assert.equal(market?.imageUrl, null);
+  assert.equal(market?.iconUrl, null);
+  assert.equal(market?.imageSourceUrl, null);
+  assert.equal(market?.imageUpdatedAt, null);
+});
+
+test("invalid image URLs are rejected", () => {
+  const market = normalizePolymarketMarket({
+    id: "123",
+    question: "Will it rain?",
+    image: "javascript:alert(1)",
+    twitterCardImage: "data:image/png;base64,abc",
+    icon: "file:///tmp/example.png",
+  });
+
+  assert.equal(market?.imageUrl, null);
+  assert.equal(market?.iconUrl, null);
+});
+
+test("normalize source contains no scraping code paths", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const file = await readFile(new URL("./gamma.ts", import.meta.url), "utf8");
+
+  assert.match(file, /gamma-api\.polymarket\.com/);
+  assert.doesNotMatch(file, /fetch\([^)]*polymarket\.com\//);
+});
+
 test("returns null for malformed upstream payload missing id/title", () => {
   const market = normalizePolymarketMarket({ id: "", question: "" });
   assert.equal(market, null);

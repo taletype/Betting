@@ -75,6 +75,10 @@ const makePolymarketRecord = (overrides: Record<string, unknown> = {}) => ({
   description: "Useful market",
   status: "open",
   marketUrl: "https://polymarket.com/event/poly-open",
+  imageUrl: null,
+  iconUrl: null,
+  imageSourceUrl: null,
+  imageUpdatedAt: null,
   closeTime: null,
   endTime: null,
   resolvedAt: null,
@@ -264,6 +268,34 @@ test("Polymarket default feed hides cancelled and zero-liquidity markets", async
   assert.doesNotMatch(markup, /Cancelled zero volume market/);
 });
 
+test("market feed renders image when image_url is present", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({
+          id: "with-image",
+          externalId: "POLY-IMAGE",
+          slug: "poly-image",
+          title: "Image market",
+          imageUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/feed-image.png",
+          imageSourceUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/feed-image.png",
+          imageUpdatedAt: "2026-05-01T01:00:00.000Z",
+        }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /feed-image\.png/);
+  assert.match(markup, /alt=\"Image market\"/);
+});
+
 test("Polymarket cancelled filter shows cancelled markets with badge", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -442,6 +474,10 @@ test("Polymarket detail page renders synced market detail", async (t) => {
           description: "Detail test",
           status: "open",
           marketUrl: "https://polymarket.com/event/poly-detail-1",
+          imageUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/detail-image.png",
+          iconUrl: null,
+          imageSourceUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/detail-image.png",
+          imageUpdatedAt: "2026-05-01T01:00:00.000Z",
           closeTime: "2026-06-01T00:00:00.000Z",
           endTime: null,
           resolvedAt: null,
@@ -471,6 +507,7 @@ test("Polymarket detail page renders synced market detail", async (t) => {
     searchParams: Promise.resolve({ ref: "hkref001" }),
   }));
   assert.match(markup, /Will the detail page show a Polymarket market/);
+  assert.match(markup, /detail-image\.png/);
   assert.match(markup, /原始市場問題：/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /推薦分成/);

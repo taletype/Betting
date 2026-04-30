@@ -1,5 +1,5 @@
 import type { NormalizedExternalMarket, NormalizedExternalOutcome } from "../index";
-import type { PolymarketMarket, PolymarketToken } from "./types";
+import type { PolymarketEvent, PolymarketMarket, PolymarketToken } from "./types";
 
 const parseNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -33,6 +33,46 @@ const toIsoOrNull = (value: unknown): string | null => {
 
 const getString = (value: unknown): string | null =>
   typeof value === "string" && value.trim() ? value.trim() : null;
+
+const toHttpUrlOrNull = (value: unknown): string | null => {
+  const candidate = getString(value);
+  if (!candidate) return null;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const getOptimizedImage = (value: unknown): string | null => {
+  if (!value || typeof value !== "object") return null;
+  return toHttpUrlOrNull((value as { imageUrlOptimized?: unknown }).imageUrlOptimized);
+};
+
+const getRelatedEvent = (market: PolymarketMarket): PolymarketEvent | null => {
+  const event = Array.isArray(market.events) ? market.events[0] : null;
+  return event && typeof event === "object" ? event : null;
+};
+
+const selectImageUrl = (market: PolymarketMarket): string | null => {
+  const event = getRelatedEvent(market);
+  return (
+    getOptimizedImage(market.imageOptimized) ??
+    toHttpUrlOrNull(market.image) ??
+    toHttpUrlOrNull(market.twitterCardImage) ??
+    getOptimizedImage(event?.featuredImageOptimized) ??
+    toHttpUrlOrNull(event?.featuredImage) ??
+    getOptimizedImage(event?.imageOptimized) ??
+    toHttpUrlOrNull(event?.image) ??
+    getOptimizedImage(market.iconOptimized) ??
+    toHttpUrlOrNull(market.icon) ??
+    null
+  );
+};
+
+const selectIconUrl = (market: PolymarketMarket): string | null =>
+  getOptimizedImage(market.iconOptimized) ?? toHttpUrlOrNull(market.icon) ?? null;
 
 const getStatusString = (market: PolymarketMarket): string | null =>
   getString(market.status ?? market.resolutionStatus ?? market.resolution_status)?.toLowerCase() ?? null;
@@ -125,6 +165,8 @@ export const normalizePolymarketMarket = (market: PolymarketMarket): NormalizedE
 
   const outcomes = normalizePolymarketOutcomes(market);
   const closeTime = toIsoOrNull(market.closeTime ?? market.closedTime ?? market.endDate ?? market.end_date_iso);
+  const imageUrl = selectImageUrl(market);
+  const iconUrl = selectIconUrl(market);
   return {
     source: "polymarket",
     externalId,
@@ -132,6 +174,10 @@ export const normalizePolymarketMarket = (market: PolymarketMarket): NormalizedE
     title,
     description: market.description?.trim() ?? "",
     url: market.url ?? (market.slug ? `https://polymarket.com/event/${market.slug}` : null),
+    imageUrl,
+    iconUrl,
+    imageSourceUrl: imageUrl,
+    imageUpdatedAt: imageUrl ? new Date().toISOString() : null,
     status: resolvePolymarketMarketStatus(market),
     closeTime,
     endTime: toIsoOrNull(market.endDate ?? market.end_date_iso),

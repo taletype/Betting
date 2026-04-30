@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import React from "react";
 
 import { getPolymarketBuilderCode } from "@bet/integrations";
@@ -381,6 +382,18 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <FunnelEventTracker name="market_detail_view" metadata={{ market: market.slug || market.externalId }} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
       <section className="hero">
+        {market.imageUrl ? (
+          <Image
+            src={market.imageUrl}
+            alt={localizedTitle}
+            width={1440}
+            height={720}
+            className="market-card-image"
+            priority
+          />
+        ) : (
+          <div className="market-card-image market-card-image-fallback" aria-hidden="true" />
+        )}
         <div className="market-card-meta">
           <div className="badge badge-info">Polymarket</div>
           <div className="badge badge-success">非託管</div>

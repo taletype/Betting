@@ -196,6 +196,10 @@ const mapMarket = (market: KalshiMarket): NormalizedExternalMarket | null => {
     title: market.title,
     description: market.subtitle ?? "",
     url: `https://kalshi.com/markets/${market.ticker.toLowerCase()}`,
+    imageUrl: null,
+    iconUrl: null,
+    imageSourceUrl: null,
+    imageUpdatedAt: null,
     status:
       status === "settled" ? "resolved" : status === "open" ? "open" : status === "closed" ? "closed" : "closed",
     closeTime: toIsoOrNull(market.close_time),

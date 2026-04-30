@@ -70,15 +70,17 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
       `
         insert into public.external_markets (
           source, external_id, slug, title, question, description, status, resolution_status, market_url, source_url,
+          image_url, icon_url, image_source_url, image_updated_at,
           outcomes, outcome_prices,
           close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price,
           volume_24h, volume_total, volume, liquidity, raw_payload, raw_json, source_provenance,
           last_synced_at, last_seen_at, updated_at
         ) values (
           $1, $2, $3, $4, $4, $5, $6, $6, $7, $7,
-          $8::jsonb, $9::jsonb,
-          $10, $11, $12, $13, $14, $15,
-          $16, $17, $17, $17, $18::jsonb, $19::jsonb, $20::jsonb,
+          $8, $9, $10, $11,
+          $12::jsonb, $13::jsonb,
+          $14, $15, $16, $17, $18, $19,
+          $20, $21, $21, $21, $22::jsonb, $23::jsonb, $24::jsonb,
           now(), now(), now()
         )
         on conflict (source, external_id)
@@ -91,6 +93,10 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
           resolution_status = excluded.resolution_status,
           market_url = excluded.market_url,
           source_url = excluded.source_url,
+          image_url = excluded.image_url,
+          icon_url = excluded.icon_url,
+          image_source_url = excluded.image_source_url,
+          image_updated_at = excluded.image_updated_at,
           outcomes = excluded.outcomes,
           outcome_prices = excluded.outcome_prices,
           close_time = excluded.close_time,
@@ -118,6 +124,10 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
         market.description,
         market.status,
         market.url,
+        market.imageUrl,
+        market.iconUrl,
+        market.imageSourceUrl,
+        market.imageUpdatedAt,
         JSON.stringify(market.outcomes),
         JSON.stringify(outcomePrices),
         market.closeTime,

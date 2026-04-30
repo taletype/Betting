@@ -33,6 +33,10 @@ interface ExternalMarketCacheRow {
   close_time: string | null;
   resolution_status: string | null;
   polymarket_url: string | null;
+  image_url: string | null;
+  icon_url: string | null;
+  image_source_url: string | null;
+  image_updated_at: string | null;
   raw_json: unknown;
   source_provenance: unknown;
   first_seen_at: string;
@@ -104,6 +108,10 @@ const CACHE_COLUMNS = [
   "close_time",
   "resolution_status",
   "polymarket_url",
+  "image_url",
+  "icon_url",
+  "image_source_url",
+  "image_updated_at",
   "raw_json",
   "source_provenance",
   "first_seen_at",
@@ -184,6 +192,10 @@ const mapCacheRow = (row: ExternalMarketCacheRow): PublicExternalMarketRecord =>
     description: row.description ?? "",
     status: toStatus(row),
     marketUrl: row.polymarket_url,
+    imageUrl: row.image_url,
+    iconUrl: row.icon_url,
+    imageSourceUrl: row.image_source_url,
+    imageUpdatedAt: row.image_updated_at,
     closeTime: row.close_time,
     endTime: row.close_time,
     resolvedAt: row.resolution_status === "resolved" ? row.last_seen_at : null,
@@ -427,6 +439,10 @@ export async function upsertExternalMarketsCache(supabase: SupabaseLike, inputs:
     close_time: market.closeTime ?? market.endTime,
     resolution_status: market.status,
     polymarket_url: market.url,
+    image_url: market.imageUrl,
+    icon_url: market.iconUrl,
+    image_source_url: market.imageSourceUrl,
+    image_updated_at: market.imageUpdatedAt,
     raw_json: rawJson,
     source_provenance: sourceProvenance,
     last_seen_at: now,

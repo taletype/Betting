@@ -19,6 +19,10 @@ interface ExternalMarketRow {
   description: string;
   status: "open" | "closed" | "resolved" | "cancelled";
   market_url: string | null;
+  image_url: string | null;
+  icon_url: string | null;
+  image_source_url: string | null;
+  image_updated_at: string | null;
   close_time: string | null;
   end_time: string | null;
   resolved_at: string | null;
@@ -118,6 +122,10 @@ const mapExternalMarket = (row: ExternalMarketRow): PublicExternalMarketRecord =
   description: row.description,
   status: mapExternalMarketStatus(row),
   marketUrl: row.market_url,
+  imageUrl: row.image_url,
+  iconUrl: row.icon_url,
+  imageSourceUrl: row.image_source_url,
+  imageUpdatedAt: row.image_updated_at,
   closeTime: row.close_time,
   endTime: row.end_time,
   resolvedAt: row.resolved_at,
@@ -220,7 +228,7 @@ export async function readExternalMarkets(supabase: {
     };
   })
     .select(
-      "id, source, external_id, slug, title, description, status, market_url, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, raw_json, source_provenance, last_seen_at, last_synced_at, created_at, updated_at",
+      "id, source, external_id, slug, title, description, status, market_url, image_url, icon_url, image_source_url, image_updated_at, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, raw_json, source_provenance, last_seen_at, last_synced_at, created_at, updated_at",
     )
     .order("last_synced_at", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
