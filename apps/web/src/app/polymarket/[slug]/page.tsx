@@ -3,6 +3,7 @@ import React from "react";
 
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
+import { resolvePolymarketDetailSlug } from "../../api/_shared/polymarket-detail-slug";
 import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
 import {
   LiquidityHistoryChart,
@@ -37,7 +38,7 @@ import { getSiteUrl } from "../../../lib/site-url";
 
 interface PolymarketSlugPageProps {
   params: Promise<{ slug: string }>;
-  searchParams?: Promise<{ ref?: string }>;
+  searchParams?: Promise<{ ref?: string; source?: string; externalId?: string }>;
 }
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,63 @@ const findMarket = (markets: ExternalMarketApiRecord[], slug: string) => {
     market.externalId.toLowerCase() === normalized ||
     market.id.toLowerCase() === normalized
   ) ?? null;
+};
+
+const uniqueNonEmpty = (values: Array<string | null | undefined>): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+};
+
+const resolvePolymarketDetailMarket = async (
+  slug: string,
+  locale: AppLocale,
+  options: { source?: string; externalId?: string },
+): Promise<{ market: ExternalMarketApiRecord | null; failed: boolean }> => {
+  const slugResolution = resolvePolymarketDetailSlug(slug);
+  const requestedSource = options.source?.toLowerCase() === "polymarket" ? "polymarket" : null;
+  const candidates = uniqueNonEmpty([
+    requestedSource ? options.externalId : null,
+    ...slugResolution.candidates,
+    slugResolution.originalSlug,
+  ]);
+  const errors: unknown[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const market = await getExternalMarket("polymarket", candidate, locale);
+      if (market) return { market, failed: false };
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  for (const status of ["open", "all"] as const) {
+    try {
+      const markets = (await listExternalMarkets(locale, status)).filter((item) => item.source === "polymarket");
+      for (const candidate of candidates) {
+        const market = findMarket(markets, candidate);
+        if (market) return { market, failed: false };
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length === candidates.length + 2) {
+    console.error("failed to load Polymarket market detail", errors.at(-1));
+    return { market: null, failed: true };
+  }
+
+  return { market: null, failed: false };
 };
 
 const formatSlugTitle = (slug: string): string => {
@@ -98,8 +156,29 @@ const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
 const isMarketTradable = (market: ExternalMarketApiRecord, stale: boolean): boolean =>
   isExternalMarketOpenNow(market) && !stale && hasValidTradeData(market);
 
+const getStatusFlags = (market: ExternalMarketApiRecord): {
+  active: boolean | null;
+  closed: boolean | null;
+  archived: boolean | null;
+  restricted: boolean | null;
+} => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  const record = provenance && typeof provenance === "object" ? provenance as Record<string, unknown> : {};
+  const flags = record.statusFlags && typeof record.statusFlags === "object" ? record.statusFlags as Record<string, unknown> : {};
+  const readFlag = (key: string): boolean | null => typeof flags[key] === "boolean" ? flags[key] : null;
+  return {
+    active: readFlag("active"),
+    closed: readFlag("closed"),
+    archived: readFlag("archived"),
+    restricted: readFlag("restricted"),
+  };
+};
+
+const yesNo = (value: boolean | null): string => value === null ? "未知" : value ? "是" : "否";
+
 export async function renderPolymarketSlugPage(locale: AppLocale, { params, searchParams }: PolymarketSlugPageProps) {
   const { slug } = await params;
+  const slugResolution = resolvePolymarketDetailSlug(slug);
   const query = await searchParams;
   const refCode = normalizeReferralCode(query?.ref);
   const copy = getLocaleCopy(locale).research;
@@ -109,18 +188,10 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const submitModeEnabled = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
   const submitterAvailable = submitModeEnabled;
   const currentUser = await getCurrentWebUser();
-  let market: ExternalMarketApiRecord | null = null;
-  let failed = false;
-
-  try {
-    market = await getExternalMarket("polymarket", slug, locale);
-    if (!market) {
-      market = findMarket((await listExternalMarkets(locale, "all")).filter((item) => item.source === "polymarket"), slug);
-    }
-  } catch (error) {
-    failed = true;
-    console.error("failed to load Polymarket market detail", error);
-  }
+  const { market, failed } = await resolvePolymarketDetailMarket(slug, locale, {
+    source: query?.source,
+    externalId: query?.externalId,
+  });
   if (failed) {
     const fallbackTitle = formatSlugTitle(slug);
     const unavailableTicketProps = {
@@ -185,10 +256,17 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
         <section className="hero">
           <h1>暫時未有市場資料</h1>
-          <p>{copy.empty}</p>
+          <p>找不到此 Polymarket 市場。已嘗試精確 slug、標準化 slug、快取外部 ID，以及 Polymarket Gamma 公開 detail fallback。</p>
           {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         </section>
-        <div className="panel empty-state">{copy.empty}</div>
+        <div className="panel empty-state">
+          <strong>市場資料未找到</strong>
+          <ul>
+            <li>原始 slug：<span className="mono">{slugResolution.decodedSlug}</span></li>
+            <li>標準化 slug：<span className="mono">{slugResolution.canonicalSlug}</span></li>
+            <li>Gamma fallback：已嘗試</li>
+          </ul>
+        </div>
         <Link href={`${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>返回 Polymarket 市場</Link>
       </main>
     );
@@ -198,19 +276,24 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const originalQuestion = getOriginalMarketTitle(loadedMarket);
   const [orderbookPayload, trades, history, stats] = await Promise.all([
     getExternalMarketOrderbook("polymarket", loadedMarket.externalId).catch(() => ({ orderbook: loadedMarket.latestOrderbook ?? [], depth: [] })),
-    getExternalMarketTrades("polymarket", loadedMarket.externalId).catch(() => loadedMarket.recentTrades),
+    getExternalMarketTrades("polymarket", loadedMarket.externalId).catch(() => ({ trades: loadedMarket.recentTrades, recentTrades: loadedMarket.normalizedRecentTrades ?? [] })),
     getExternalMarketHistory("polymarket", loadedMarket.externalId).catch(() => []),
     getExternalMarketStats("polymarket", loadedMarket.externalId).catch(() => null),
   ]);
   const visibleOrderbook = orderbookPayload.orderbook.length ? orderbookPayload.orderbook : loadedMarket.latestOrderbook ?? [];
-  const visibleTrades = trades.length ? trades : loadedMarket.recentTrades;
-  const historyPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.price }));
-  const volumePoints = history.map((point) => ({ timestamp: point.timestamp, value: point.volume }));
-  const liquidityPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.liquidity }));
-  const tradePoints = visibleTrades.map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
+  const visibleTrades = trades.trades.length ? trades.trades : loadedMarket.recentTrades;
+  const normalizedTrades = trades.recentTrades.length ? trades.recentTrades : loadedMarket.normalizedRecentTrades ?? [];
+  const historyPoints = (loadedMarket.priceHistory?.length ? loadedMarket.priceHistory : history).map((point) => ({ timestamp: point.timestamp, value: "price" in point ? point.price : null }));
+  const volumePoints = (loadedMarket.volumeHistory?.length ? loadedMarket.volumeHistory : history).map((point) => ({ timestamp: point.timestamp, value: "volume" in point ? point.volume : null }));
+  const liquidityPoints = (loadedMarket.liquidityHistory?.length ? loadedMarket.liquidityHistory : history).map((point) => ({ timestamp: point.timestamp, value: "liquidity" in point ? point.liquidity : null }));
+  const tradePoints = normalizedTrades.length
+    ? normalizedTrades.map((trade) => ({ timestamp: trade.timestamp, value: trade.price }))
+    : visibleTrades.map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
   const stale = stats?.stale || isExternalMarketStale(market);
   const externalDataUnavailable = stale || !stats || history.length === 0 || visibleOrderbook.length === 0;
-  const marketTradable = isMarketTradable(market, Boolean(stale));
+  const statusFlags = getStatusFlags(market);
+  const upstreamTradable = statusFlags.active !== false && statusFlags.archived !== true && statusFlags.restricted !== true;
+  const marketTradable = upstreamTradable && isMarketTradable(market, Boolean(stale));
   const orderValid = hasValidTradeData(market);
 
   const routingInput: PolymarketRoutingReadinessInput = {
@@ -238,7 +321,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     : routedTradingEnabled
       ? "交易介面預覽已啟用；實盤提交仍然停用"
       : "交易介面預覽；實盤提交停用";
-  const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(slug)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const marketShareUrl = `${getSiteUrl()}${detailPath}`;
   const tradeTicketProps = {
     locale,
@@ -320,8 +403,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
       {!marketTradable ? (
         <section className="panel disclosure-card stack">
-          <strong>此市場目前不可交易。</strong>
-          <p className="muted">已結束、已結算、已取消、資料過期或缺少有效價格資料的市場只供瀏覽，不會開放 Polymarket 路由交易。</p>
+          <strong>市場暫時不可交易</strong>
+          <p className="muted">已結束、已結算、已取消、受限制、資料過期或缺少有效價格資料的市場只供瀏覽，不會開放 Polymarket 路由交易。</p>
         </section>
       ) : null}
       {externalDataUnavailable ? (
@@ -383,8 +466,23 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">{market.source}</span></div>
         <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
+        <div className="kv"><span className="kv-key">原始 route slug</span><span className="kv-value mono">{slugResolution.decodedSlug}</span></div>
+        <div className="kv"><span className="kv-key">Gamma canonical slug</span><span className="kv-value mono">{market.slug}</span></div>
+        <div className="kv"><span className="kv-key">active / closed / archived / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.restricted)}</span></div>
         <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
         {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+      </section>
+
+      <section className="panel stack">
+        <h2 className="section-title">市場資料健康狀態</h2>
+        <div className="grid">
+          <div className="kv"><span className="kv-key">feed cache available</span><span className="kv-value">{market.sourceProvenance || market.provenance ? "yes" : "unknown"}</span></div>
+          <div className="kv"><span className="kv-key">detail fallback available</span><span className="kv-value">yes</span></div>
+          <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{failed ? "no" : "yes"}</span></div>
+          <div className="kv"><span className="kv-key">Gamma fallback enabled/used</span><span className="kv-value">{formatProvenance(market).includes("gamma-api.polymarket.com") ? "yes" : "enabled"}</span></div>
+          <div className="kv"><span className="kv-key">stale cache</span><span className="kv-value">{stale ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">detail not found</span><span className="kv-value">no</span></div>
+        </div>
       </section>
 
       <section className="panel stack">

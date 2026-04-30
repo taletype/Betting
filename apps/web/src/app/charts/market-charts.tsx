@@ -38,8 +38,10 @@ const toneColor = (tone: ChartTone): string => {
 
 export const normalizeChartPoints = (points?: TimeSeriesPoint[] | null): Array<TimeSeriesPoint & { value: number }> =>
   (points ?? []).filter((point): point is TimeSeriesPoint & { value: number } =>
+    Boolean(point.timestamp) &&
+    Number.isFinite(new Date(point.timestamp).getTime()) &&
     typeof point.value === "number" && Number.isFinite(point.value)
-  );
+  ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
 export const hasChartData = (points?: TimeSeriesPoint[] | null): boolean => normalizeChartPoints(points).length > 0;
 
@@ -175,7 +177,7 @@ export function PriceHistoryChart({ points, loading, stale }: { points?: TimeSer
 export function VolumeHistoryChart({ points, loading, stale }: { points?: TimeSeriesPoint[] | null; loading?: boolean; stale?: boolean }) {
   const values = finitePoints(points ?? []);
   return (
-    <ChartShell title="成交量" loading={loading} stale={stale} empty={values.length === 0} emptyText="成交資料暫時未有">
+    <ChartShell title="成交量走勢" loading={loading} stale={stale} empty={values.length < 2} emptyText="暫時未有成交資料">
       <BarChartSvg points={values} tone="volume" />
     </ChartShell>
   );
@@ -184,7 +186,7 @@ export function VolumeHistoryChart({ points, loading, stale }: { points?: TimeSe
 export function LiquidityHistoryChart({ points, loading, stale }: { points?: TimeSeriesPoint[] | null; loading?: boolean; stale?: boolean }) {
   const values = finitePoints(points ?? []);
   return (
-    <ChartShell title="流動性" loading={loading} stale={stale} empty={values.length < 2}>
+    <ChartShell title="流動性走勢" loading={loading} stale={stale} empty={values.length < 2}>
       <LineChartSvg points={values} tone="liquidity" />
     </ChartShell>
   );
@@ -192,12 +194,12 @@ export function LiquidityHistoryChart({ points, loading, stale }: { points?: Tim
 
 export function OrderBookDepthChart({ points, loading, stale }: { points?: DepthPoint[] | null; loading?: boolean; stale?: boolean }) {
   const depth = (points ?? []).filter((point): point is DepthPoint & { price: number; cumulativeSize: number } =>
-    typeof point.price === "number" && Number.isFinite(point.price) &&
-    typeof point.cumulativeSize === "number" && Number.isFinite(point.cumulativeSize)
+    typeof point.price === "number" && Number.isFinite(point.price) && point.price >= 0 && point.price <= 1 &&
+    typeof point.cumulativeSize === "number" && Number.isFinite(point.cumulativeSize) && point.cumulativeSize >= 0
   );
-  const series = depth.map((point) => ({ timestamp: `${point.side}:${point.price}`, value: point.cumulativeSize }));
+  const series = depth.map((point, index) => ({ timestamp: new Date(index * 1000).toISOString(), label: `${point.side}:${point.price}`, value: point.cumulativeSize }));
   return (
-    <ChartShell title="訂單簿深度" loading={loading} stale={stale} empty={depth.length === 0} emptyText="訂單簿資料暫時未有">
+    <ChartShell title="買賣盤深度" loading={loading} stale={stale} empty={depth.length === 0} emptyText="暫時未有買賣盤資料">
       <LineChartSvg points={series} tone="bid" />
     </ChartShell>
   );
@@ -206,7 +208,7 @@ export function OrderBookDepthChart({ points, loading, stale }: { points?: Depth
 export function RecentTradesChart({ points, loading, stale }: { points?: TimeSeriesPoint[] | null; loading?: boolean; stale?: boolean }) {
   const values = finitePoints(points ?? []);
   return (
-    <ChartShell title="近期成交" loading={loading} stale={stale} empty={values.length === 0} emptyText="成交資料暫時未有">
+    <ChartShell title="最近成交" loading={loading} stale={stale} empty={values.length === 0} emptyText="暫時未有成交資料">
       <LineChartSvg points={values} tone="neutral" />
     </ChartShell>
   );

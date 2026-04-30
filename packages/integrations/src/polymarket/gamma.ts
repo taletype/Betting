@@ -21,6 +21,7 @@ export interface FetchPolymarketGammaMarketsOptions {
 const fetchGammaPayload = async (
   endpoint: string,
   timeoutMs: number,
+  options: { allowNotFound?: boolean } = {},
 ): Promise<unknown> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -30,6 +31,9 @@ const fetchGammaPayload = async (
       headers: { accept: "application/json" },
       signal: controller.signal,
     });
+    if (options.allowNotFound && response.status === 404) {
+      return null;
+    }
     if (!response.ok) {
       throw new Error(`polymarket gamma request failed: ${response.status}`);
     }
@@ -38,6 +42,13 @@ const fetchGammaPayload = async (
   } finally {
     clearTimeout(timeout);
   }
+};
+
+const mapGammaMarketPayload = (payload: unknown, endpointPath: string): PolymarketGammaRecord | null => {
+  if (!payload || typeof payload !== "object") return null;
+  const provenance = createProvenance("gamma-api.polymarket.com", endpointPath);
+  const market = normalizePolymarketMarket(payload as PolymarketMarket);
+  return market ? { rawJson: payload, market, provenance } : null;
 };
 
 const mapGammaPayload = (payload: unknown, endpointPath: string): PolymarketGammaRecord[] => {
@@ -152,4 +163,30 @@ export const fetchPolymarketGammaMarketBySlugOrId = async (
     market.slug.toLowerCase() === normalized ||
     market.externalId.toLowerCase() === normalized
   ) ?? records[0] ?? null;
+};
+
+export const fetchPolymarketGammaMarketBySlug = async (
+  slug: string,
+  options: Omit<FetchPolymarketGammaMarketsOptions, "slug"> = {},
+): Promise<PolymarketGammaRecord | null> => {
+  const endpointPath = `/markets/slug/${encodeURIComponent(slug)}`;
+  const payload = await fetchGammaPayload(
+    `${GAMMA_BASE_URL}${endpointPath}`,
+    options.timeoutMs ?? DEFAULT_GAMMA_TIMEOUT_MS,
+    { allowNotFound: true },
+  );
+  return mapGammaMarketPayload(payload, endpointPath);
+};
+
+export const fetchPolymarketGammaEventMarketBySlug = async (
+  slug: string,
+  options: Omit<FetchPolymarketGammaMarketsOptions, "slug"> = {},
+): Promise<PolymarketGammaRecord | null> => {
+  const endpointPath = `/events/slug/${encodeURIComponent(slug)}`;
+  const payload = await fetchGammaPayload(
+    `${GAMMA_BASE_URL}${endpointPath}`,
+    options.timeoutMs ?? DEFAULT_GAMMA_TIMEOUT_MS,
+    { allowNotFound: true },
+  );
+  return mapGammaEventsPayload(payload ? [payload] : [], endpointPath)[0] ?? null;
 };

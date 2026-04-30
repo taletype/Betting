@@ -488,6 +488,41 @@ export interface ExternalMarketApiTrade {
   tradedAt: string;
 }
 
+export interface ExternalMarketApiPriceHistoryPoint {
+  timestamp: string;
+  outcome?: string;
+  price: number;
+  source?: "cache" | "gamma" | "clob" | "data_api";
+}
+
+export interface ExternalMarketApiVolumeHistoryPoint {
+  timestamp: string;
+  volume: number;
+  source?: "cache" | "gamma" | "clob" | "data_api";
+}
+
+export interface ExternalMarketApiLiquidityHistoryPoint {
+  timestamp: string;
+  liquidity: number;
+  source?: "cache" | "gamma" | "clob" | "data_api";
+}
+
+export interface ExternalMarketApiOrderbookDepth {
+  bids: Array<{ price: number; size: number }>;
+  asks: Array<{ price: number; size: number }>;
+  updatedAt?: string;
+  source?: string;
+}
+
+export interface ExternalMarketApiRecentTrade {
+  timestamp: string;
+  price: number;
+  size?: number;
+  side?: string;
+  outcome?: string;
+  source?: string;
+}
+
 export interface ExternalMarketApiOrderbookSnapshot {
   externalOutcomeId: string;
   bids: unknown;
@@ -554,6 +589,14 @@ export interface ExternalMarketApiRecord {
   updatedAt: string;
   outcomes: ExternalMarketApiOutcome[];
   recentTrades: ExternalMarketApiTrade[];
+  priceHistory?: ExternalMarketApiPriceHistoryPoint[];
+  volumeHistory?: ExternalMarketApiVolumeHistoryPoint[];
+  liquidityHistory?: ExternalMarketApiLiquidityHistoryPoint[];
+  orderbookDepth?: ExternalMarketApiOrderbookDepth;
+  normalizedRecentTrades?: ExternalMarketApiRecentTrade[];
+  spread?: number | null;
+  chartUpdatedAt?: string;
+  chartSource?: string;
   latestOrderbook?: ExternalMarketApiOrderbookSnapshot[];
   titleOriginal?: string;
   titleLocalized?: string;
@@ -585,6 +628,28 @@ export interface ExternalMarketsApiEnvelope {
   };
 }
 
+export interface ExternalMarketsListResult {
+  markets: ExternalMarketApiRecord[];
+  fallbackUsed: boolean;
+  source: string | null;
+  stale: boolean | null;
+  lastUpdatedAt: string | null;
+  diagnostics?: ExternalMarketsApiEnvelope["diagnostics"];
+}
+
+export interface ExternalMarketDetailDiagnostics {
+  feedCacheAvailable?: boolean;
+  detailFallbackAvailable?: boolean;
+  serviceApiReachable?: boolean;
+  gammaFallbackEnabled?: boolean;
+  gammaFallbackUsed?: boolean;
+  staleCache?: boolean;
+  detailNotFound?: boolean;
+  source?: string;
+  lookupSlug?: string;
+  canonicalSlug?: string;
+}
+
 export const getPublicExternalMarketsReadiness = () => {
   const configuredApiBaseUrl = getConfiguredPublicApiBaseUrl();
   const sameOriginUrl = getLocalApiUrl("/external/markets");
@@ -608,6 +673,13 @@ export const listExternalMarkets = async (
   locale?: string,
   status: ExternalMarketStatusQuery = "open",
 ): Promise<ExternalMarketApiRecord[]> => {
+  return (await listExternalMarketsWithMetadata(locale, status)).markets;
+};
+
+export const listExternalMarketsWithMetadata = async (
+  locale?: string,
+  status: ExternalMarketStatusQuery = "open",
+): Promise<ExternalMarketsListResult> => {
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
   if (!getConfiguredPublicApiBaseUrl()) {
@@ -624,11 +696,33 @@ export const listExternalMarkets = async (
     const query = search.toString();
     const path = `/external/markets${query ? `?${query}` : ""}`;
     const payload = await executeApiRequest<unknown>(getLocalApiUrl(path));
-    if (Array.isArray(payload)) return payload as ExternalMarketApiRecord[];
-    if (payload && typeof payload === "object" && Array.isArray((payload as ExternalMarketsApiEnvelope).markets)) {
-      return (payload as ExternalMarketsApiEnvelope).markets;
+    if (Array.isArray(payload)) {
+      return {
+        markets: payload as ExternalMarketApiRecord[],
+        fallbackUsed: false,
+        source: null,
+        stale: null,
+        lastUpdatedAt: null,
+      };
     }
-    return [];
+    if (payload && typeof payload === "object" && Array.isArray((payload as ExternalMarketsApiEnvelope).markets)) {
+      const envelope = payload as ExternalMarketsApiEnvelope;
+      return {
+        markets: envelope.markets,
+        fallbackUsed: envelope.fallbackUsed,
+        source: envelope.source,
+        stale: envelope.stale,
+        lastUpdatedAt: envelope.lastUpdatedAt,
+        diagnostics: envelope.diagnostics,
+      };
+    }
+    return {
+      markets: [],
+      fallbackUsed: false,
+      source: null,
+      stale: null,
+      lastUpdatedAt: null,
+    };
   } catch (error) {
     if (error instanceof ApiResponseError) {
       if (error.code === "MARKET_SOURCE_UNAVAILABLE") {
@@ -680,32 +774,37 @@ export const getExternalMarket = async (
 export const getExternalMarketOrderbook = async (
   source: string,
   externalId: string,
-): Promise<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth: ExternalMarketApiDepthPoint[] }> => {
-  const payload = await executePublicRouteRequest<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth?: ExternalMarketApiDepthPoint[] }>(
+): Promise<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth: ExternalMarketApiDepthPoint[]; orderbookDepth: ExternalMarketApiOrderbookDepth }> => {
+  const payload = await executePublicRouteRequest<{ orderbook: ExternalMarketApiOrderbookSnapshot[]; depth?: ExternalMarketApiDepthPoint[]; orderbookDepth?: ExternalMarketApiOrderbookDepth }>(
     `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/orderbook`,
     { allowNotFound: true },
   );
 
-  return { orderbook: payload?.orderbook ?? [], depth: payload?.depth ?? [] };
+  return { orderbook: payload?.orderbook ?? [], depth: payload?.depth ?? [], orderbookDepth: payload?.orderbookDepth ?? { bids: [], asks: [] } };
 };
 
 export const getExternalMarketTrades = async (
   source: string,
   externalId: string,
-): Promise<ExternalMarketApiTrade[]> => {
-  const payload = await executePublicRouteRequest<{ trades: ExternalMarketApiTrade[] }>(
+): Promise<{ trades: ExternalMarketApiTrade[]; recentTrades: ExternalMarketApiRecentTrade[] }> => {
+  const payload = await executePublicRouteRequest<{ trades: ExternalMarketApiTrade[]; recentTrades?: ExternalMarketApiRecentTrade[] }>(
     `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/trades`,
     { allowNotFound: true },
   );
 
-  return payload?.trades ?? [];
+  return { trades: payload?.trades ?? [], recentTrades: payload?.recentTrades ?? [] };
 };
 
 export const getExternalMarketHistory = async (
   source: string,
   externalId: string,
 ): Promise<ExternalMarketApiHistoryPoint[]> => {
-  const payload = await executePublicRouteRequest<{ history: ExternalMarketApiHistoryPoint[] }>(
+  const payload = await executePublicRouteRequest<{
+    history: ExternalMarketApiHistoryPoint[];
+    priceHistory?: ExternalMarketApiPriceHistoryPoint[];
+    volumeHistory?: ExternalMarketApiVolumeHistoryPoint[];
+    liquidityHistory?: ExternalMarketApiLiquidityHistoryPoint[];
+  }>(
     `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/history`,
     { allowNotFound: true },
   );

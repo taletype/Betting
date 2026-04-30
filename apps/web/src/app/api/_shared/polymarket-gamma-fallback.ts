@@ -1,4 +1,4 @@
-import { fetchPolymarketGammaEventMarkets, fetchPolymarketGammaMarketBySlugOrId, fetchPolymarketGammaMarkets } from "@bet/integrations";
+import { fetchPolymarketGammaEventMarketBySlug, fetchPolymarketGammaEventMarkets, fetchPolymarketGammaMarketBySlug, fetchPolymarketGammaMarkets } from "@bet/integrations";
 
 type NormalizedGammaMarket = Awaited<ReturnType<typeof fetchPolymarketGammaMarkets>>[number]["market"];
 type GammaProvenance = Awaited<ReturnType<typeof fetchPolymarketGammaMarkets>>[number]["provenance"];
@@ -47,6 +47,39 @@ export interface PublicExternalMarketRecord {
     size: number | null;
     tradedAt: string;
   }>;
+  normalizedRecentTrades?: Array<{
+    timestamp: string;
+    price: number;
+    size?: number;
+    side?: string;
+    outcome?: string;
+    source?: string;
+  }>;
+  priceHistory?: Array<{
+    timestamp: string;
+    outcome?: string;
+    price: number;
+    source?: "cache" | "gamma" | "clob" | "data_api";
+  }>;
+  volumeHistory?: Array<{
+    timestamp: string;
+    volume: number;
+    source?: "cache" | "gamma" | "clob" | "data_api";
+  }>;
+  liquidityHistory?: Array<{
+    timestamp: string;
+    liquidity: number;
+    source?: "cache" | "gamma" | "clob" | "data_api";
+  }>;
+  orderbookDepth?: {
+    bids: Array<{ price: number; size: number }>;
+    asks: Array<{ price: number; size: number }>;
+    updatedAt?: string;
+    source?: string;
+  };
+  spread?: number | null;
+  chartUpdatedAt?: string;
+  chartSource?: string;
   latestOrderbook: Array<{
     externalOutcomeId: string;
     bids: unknown;
@@ -69,11 +102,20 @@ export interface PublicExternalMarketRecord {
 const mapGammaMarket = (
   market: NormalizedGammaMarket,
   provenance: GammaProvenance,
+  options: { fetchedVia?: string } = {},
 ): PublicExternalMarketRecord => {
   const updatedAt = provenance.fetchedAt;
+  const rawRecord = market.rawPayload && typeof market.rawPayload === "object" ? market.rawPayload as Record<string, unknown> : {};
   const fallbackProvenance = {
     ...provenance,
     dataPath: "fallback",
+    fetchedVia: options.fetchedVia ?? "public-gamma-fallback",
+    statusFlags: {
+      active: rawRecord.active === undefined ? null : rawRecord.active === true,
+      closed: rawRecord.closed === undefined ? null : rawRecord.closed === true,
+      archived: rawRecord.archived === undefined ? null : rawRecord.archived === true,
+      restricted: rawRecord.restricted === undefined ? null : rawRecord.restricted === true,
+    },
     stale: false,
   };
 
@@ -131,6 +173,9 @@ export const readPolymarketGammaFallbackMarkets = async (): Promise<PublicExtern
 export const readPolymarketGammaFallbackMarketBySlugOrId = async (
   slugOrId: string,
 ): Promise<PublicExternalMarketRecord | null> => {
-  const record = await fetchPolymarketGammaMarketBySlugOrId(slugOrId);
-  return record ? mapGammaMarket(record.market, record.provenance) : null;
+  const record = await fetchPolymarketGammaMarketBySlug(slugOrId)
+    ?? await fetchPolymarketGammaEventMarketBySlug(slugOrId);
+  return record ? mapGammaMarket(record.market, record.provenance, { fetchedVia: "public-gamma-detail-fallback" }) : null;
 };
+
+export const normalizePolymarketGammaDetailRecord = mapGammaMarket;

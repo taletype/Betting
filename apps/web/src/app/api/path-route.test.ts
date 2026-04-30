@@ -410,7 +410,7 @@ test("GET /api/external/markets detail, orderbook, and trades return safe JSON",
     params: Promise.resolve({ path: ["external", "markets", "polymarket", "POLY-ROUTE-1", "orderbook"] }),
   });
   assert.equal(orderbookResponse.status, 200);
-  assert.deepEqual(await orderbookResponse.json(), { orderbook: [], depth: [] });
+  assert.deepEqual(await orderbookResponse.json(), { orderbook: [], orderbookDepth: { bids: [], asks: [] }, depth: [] });
 
   const tradesResponse = await GET(new NextRequest("http://localhost/api/external/markets/polymarket/POLY-ROUTE-1/trades?limit=20"), {
     params: Promise.resolve({ path: ["external", "markets", "polymarket", "POLY-ROUTE-1", "trades"] }),
@@ -448,7 +448,8 @@ test("public health, version, and external markets survive missing Supabase conf
       params: Promise.resolve({ source: "polymarket", externalId: "missing" }),
     });
     assert.equal(detailResponse.status, 404);
-    assert.deepEqual(await detailResponse.json(), { market: null });
+    const detailPayload = await detailResponse.json() as { market: null; diagnostics?: unknown };
+    assert.equal(detailPayload.market, null);
   });
 });
 

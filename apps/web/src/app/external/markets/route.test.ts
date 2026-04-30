@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { GET } from "./route";
-import { externalMarketsResponse } from "../../api/_shared/public-external-market-routes";
+import { externalMarketDetailResponse, externalMarketsResponse } from "../../api/_shared/public-external-market-routes";
 
 const makeCacheRow = (overrides: Record<string, unknown> = {}) => ({
   id: overrides.id ?? "row-open",
@@ -244,4 +244,141 @@ test("GET /external/markets uses Gamma fallback when cache has only stale closed
   assert.equal(payload.stale, false);
   assert.deepEqual(payload.markets.map((market) => `${market.externalId}:${market.status}`), ["FRESH-FALLBACK-1:open"]);
   assert.equal(payload.diagnostics.fallbackUsedLastRequest, true);
+});
+
+test("external market detail uses Gamma event-list fallback for feed slug", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.includes("/markets?")) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    return new Response(
+      JSON.stringify([
+        {
+          id: "event-norway",
+          slug: "will-norway-win-the-2026-fifa-world-cup-893",
+          title: "World Cup winner",
+          question: "World Cup winner?",
+          description: "World Cup event",
+          active: true,
+          closed: false,
+          endDate: "2099-01-01T00:00:00.000Z",
+          volume: "1000",
+          volume24hr: "100",
+          markets: [
+            {
+              id: "POLY-NORWAY",
+              slug: "will-norway-win-the-2026-fifa-world-cup-893",
+              question: "Will Norway win the 2026 FIFA World Cup?",
+              active: true,
+              closed: false,
+              endDate: "2099-01-01T00:00:00.000Z",
+              volume: "1000",
+              volume24hr: "100",
+              outcomes: ["Yes", "No"],
+              outcomePrices: ["0.11", "0.89"],
+              clobTokenIds: ["yes-token", "no-token"],
+            },
+          ],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const response = await externalMarketDetailResponse(
+    "polymarket",
+    "will-norway-win-the-2026-fifa-world-cup-893",
+    new Request("http://127.0.0.1/api/external/markets/polymarket/will-norway-win-the-2026-fifa-world-cup-893"),
+    (() => {
+      throw new Error("cache unavailable");
+    }) as never,
+  );
+  const payload = await response.json() as {
+    market: { externalId: string; slug: string; title: string } | null;
+    diagnostics: { gammaFallbackUsed: boolean; source: string };
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.market?.externalId, "POLY-NORWAY");
+  assert.equal(payload.market?.slug, "will-norway-win-the-2026-fifa-world-cup-893");
+  assert.equal(payload.diagnostics.gammaFallbackUsed, true);
+  assert.equal(payload.diagnostics.source, "polymarket_gamma_detail_fallback");
+});
+
+test("external market detail normalizes numeric suffix and uses Gamma slug endpoint", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith("/markets/slug/will-norway-win-the-2026-fifa-world-cup-893")) {
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/events/slug/will-norway-win-the-2026-fifa-world-cup-893")) {
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/markets/slug/will-norway-win-the-2026-fifa-world-cup")) {
+      return new Response(
+        JSON.stringify({
+          id: 558403,
+          slug: "will-norway-win-the-2026-fifa-world-cup",
+          question: "Will Norway win the 2026 FIFA World Cup?",
+          description: "Norway outright winner market",
+          active: true,
+          closed: false,
+          archived: false,
+          restricted: false,
+          endDate: "2099-07-19T00:00:00.000Z",
+          volume: "1000",
+          volume24hr: "100",
+          outcomes: ["Yes", "No"],
+          outcomePrices: ["0.11", "0.89"],
+          clobTokenIds: ["yes-token", "no-token"],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    return new Response(JSON.stringify({ error: "unexpected" }), { status: 500, headers: { "content-type": "application/json" } });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const response = await externalMarketDetailResponse(
+    "polymarket",
+    "will-norway-win-the-2026-fifa-world-cup-893",
+    new Request("http://127.0.0.1/api/external/markets/polymarket/will-norway-win-the-2026-fifa-world-cup-893"),
+    (() => {
+      throw new Error("cache unavailable");
+    }) as never,
+  );
+  const payload = await response.json() as {
+    market: { externalId: string; slug: string; title: string; sourceProvenance: { endpoint: string; fetchedVia: string } } | null;
+    diagnostics: { gammaFallbackUsed: boolean; canonicalSlug: string };
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.market?.externalId, "558403");
+  assert.equal(payload.market?.slug, "will-norway-win-the-2026-fifa-world-cup");
+  assert.equal(payload.market?.title, "Will Norway win the 2026 FIFA World Cup?");
+  assert.equal(payload.market?.sourceProvenance.endpoint, "/markets/slug/will-norway-win-the-2026-fifa-world-cup");
+  assert.equal(payload.market?.sourceProvenance.fetchedVia, "public-gamma-detail-fallback");
+  assert.equal(payload.diagnostics.gammaFallbackUsed, true);
+  assert.equal(payload.diagnostics.canonicalSlug, "will-norway-win-the-2026-fifa-world-cup");
+  assert.deepEqual(calls.slice(0, 3).map((url) => new URL(url).pathname), [
+    "/markets/slug/will-norway-win-the-2026-fifa-world-cup-893",
+    "/events/slug/will-norway-win-the-2026-fifa-world-cup-893",
+    "/markets/slug/will-norway-win-the-2026-fifa-world-cup",
+  ]);
 });

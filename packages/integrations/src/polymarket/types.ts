@@ -39,6 +39,7 @@ export interface PolymarketMarket {
   cancelled?: boolean;
   closed?: boolean;
   active?: boolean;
+  restricted?: boolean;
   endDate?: string;
   end_date_iso?: string;
   closedTime?: string;

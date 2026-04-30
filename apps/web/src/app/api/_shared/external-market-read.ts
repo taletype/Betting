@@ -1,6 +1,13 @@
 import { resolvePolymarketMarketStatus } from "@bet/integrations";
 
 import { normalizeApiPayload } from "./api-serialization";
+import {
+  normalizeLiquidityHistory,
+  normalizeOrderbookDepth,
+  normalizePriceHistory,
+  normalizeRecentTrades,
+  normalizeVolumeHistory,
+} from "./chart-history";
 import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
 
 interface ExternalMarketRow {
@@ -20,6 +27,7 @@ interface ExternalMarketRow {
   last_trade_price: string | number | null;
   volume_24h: string | number | null;
   volume_total: string | number | null;
+  raw_json?: unknown;
   source_provenance?: unknown;
   last_seen_at?: string | null;
   last_synced_at: string | null;
@@ -51,6 +59,8 @@ interface ExternalTradeRow {
   size_atoms?: string | number | null;
   traded_at: string;
   executed_at?: string | null;
+  raw_json?: unknown;
+  source_provenance?: unknown;
 }
 
 interface ExternalOrderbookSnapshotRow {
@@ -62,6 +72,22 @@ interface ExternalOrderbookSnapshotRow {
   last_trade_price: string | number | null;
   best_bid: string | number | null;
   best_ask: string | number | null;
+  raw_json?: unknown;
+  source_provenance?: unknown;
+}
+
+interface ExternalMarketPriceRow {
+  market_id: string;
+  source: "polymarket" | "kalshi";
+  observed_at: string;
+  outcome_prices: unknown;
+  best_bid: string | number | null;
+  best_ask: string | number | null;
+  last_trade_price: string | number | null;
+  volume: string | number | null;
+  liquidity: string | number | null;
+  raw_json?: unknown;
+  source_provenance?: unknown;
 }
 
 const toNumber = (value: string | number | null): number | null => {
@@ -118,6 +144,10 @@ const mapExternalMarket = (row: ExternalMarketRow): PublicExternalMarketRecord =
   outcomes: [] as ReturnType<typeof mapExternalOutcome>[],
   recentTrades: [] as ReturnType<typeof mapExternalTrade>[],
   latestOrderbook: [],
+  ...(normalizePriceHistory(row.raw_json, "cache", 100).length ? { priceHistory: normalizePriceHistory(row.raw_json, "cache", 100) } : {}),
+  ...(normalizeVolumeHistory(row.raw_json, "cache", 100).length ? { volumeHistory: normalizeVolumeHistory(row.raw_json, "cache", 100) } : {}),
+  ...(normalizeLiquidityHistory(row.raw_json, "cache", 100).length ? { liquidityHistory: normalizeLiquidityHistory(row.raw_json, "cache", 100) } : {}),
+  spread: toNumber(row.best_bid) !== null && toNumber(row.best_ask) !== null ? Math.max(0, toNumber(row.best_ask)! - toNumber(row.best_bid)!) : null,
 });
 
 const mapExternalOutcome = (row: ExternalOutcomeRow) => ({
@@ -146,6 +176,15 @@ const mapExternalTrade = (row: ExternalTradeRow) => ({
   })(),
   tradedAt: row.executed_at ?? row.traded_at,
 });
+
+const mapNormalizedTrade = (row: ExternalTradeRow) => normalizeRecentTrades([{
+  timestamp: row.executed_at ?? row.traded_at,
+  price: row.price_ppm === undefined || row.price_ppm === null ? row.price : toNumber(row.price_ppm) === null ? row.price : toNumber(row.price_ppm)! / 1_000_000,
+  size: row.size_atoms === undefined || row.size_atoms === null ? row.size : toNumber(row.size_atoms) === null ? row.size : toNumber(row.size_atoms)! / 1_000_000,
+  side: row.side,
+  outcome: row.external_outcome_id,
+  source: row.source_provenance && typeof row.source_provenance === "object" && (row.source_provenance as Record<string, unknown>).upstream === "data-api.polymarket.com" ? "data_api" : "cache",
+}], "cache", 1)[0] ?? null;
 
 const mapExternalOrderbookSnapshot = (row: ExternalOrderbookSnapshotRow) => ({
   externalOutcomeId: row.external_outcome_id,
@@ -181,7 +220,7 @@ export async function readExternalMarkets(supabase: {
     };
   })
     .select(
-      "id, source, external_id, slug, title, description, status, market_url, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, source_provenance, last_seen_at, last_synced_at, created_at, updated_at",
+      "id, source, external_id, slug, title, description, status, market_url, close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price, volume_24h, volume_total, raw_json, source_provenance, last_seen_at, last_synced_at, created_at, updated_at",
     )
     .order("last_synced_at", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
@@ -201,9 +240,10 @@ export async function readExternalMarkets(supabase: {
   const outcomeRows: ExternalOutcomeRow[] = [];
   const tradeRows: ExternalTradeRow[] = [];
   const orderbookRows: ExternalOrderbookSnapshotRow[] = [];
+  const priceRows: ExternalMarketPriceRow[] = [];
 
   for (const batch of chunk(marketIds, EXTERNAL_MARKET_CHILD_QUERY_BATCH_SIZE)) {
-    const [outcomeResult, tradeResult] = await Promise.all([
+    const [outcomeResult, tradeResult, priceResult] = await Promise.all([
       (supabase.from("external_outcomes") as {
         select: (columns: string) => {
           in: (column: string, values: string[]) => {
@@ -223,9 +263,25 @@ export async function readExternalMarkets(supabase: {
           };
         };
       })
-        .select("external_market_id, external_trade_id, external_outcome_id, side, price, price_ppm, size, size_atoms, traded_at, executed_at")
+        .select("external_market_id, external_trade_id, external_outcome_id, side, price, price_ppm, size, size_atoms, traded_at, executed_at, raw_json, source_provenance")
         .in("external_market_id", batch)
         .order("traded_at", { ascending: false }),
+      (async () => {
+        try {
+          return await (supabase.from("external_market_prices") as {
+            select: (columns: string) => {
+              in: (column: string, values: string[]) => {
+                order: (column: string, options?: Record<string, unknown>) => Promise<{ data: ExternalMarketPriceRow[] | null; error: Error | null }>;
+              };
+            };
+          })
+            .select("market_id, source, observed_at, outcome_prices, best_bid, best_ask, last_trade_price, volume, liquidity, raw_json, source_provenance")
+            .in("market_id", batch)
+            .order("observed_at", { ascending: false });
+        } catch (error) {
+          return { data: null, error: error instanceof Error ? error : new Error("external_market_prices read failed") };
+        }
+      })(),
     ]);
 
     const orderbookResult = await (async () => {
@@ -237,7 +293,7 @@ export async function readExternalMarkets(supabase: {
             };
           };
         })
-          .select("external_market_id, external_outcome_id, bids_json, asks_json, captured_at, last_trade_price, best_bid, best_ask")
+          .select("external_market_id, external_outcome_id, bids_json, asks_json, captured_at, last_trade_price, best_bid, best_ask, raw_json, source_provenance")
           .in("external_market_id", batch)
           .order("captured_at", { ascending: false });
       } catch (error) {
@@ -253,6 +309,10 @@ export async function readExternalMarkets(supabase: {
       throw tradeResult.error;
     }
 
+    if (priceResult.error) {
+      console.warn("external_market_prices read failed; continuing without price chart history", priceResult.error);
+    }
+
     if (orderbookResult.error) {
       console.warn("external_orderbook_snapshots read failed; continuing without orderbook snapshots", orderbookResult.error);
     }
@@ -260,6 +320,7 @@ export async function readExternalMarkets(supabase: {
     outcomeRows.push(...(outcomeResult.data ?? []));
     tradeRows.push(...(tradeResult.data ?? []));
     orderbookRows.push(...(orderbookResult.data ?? []));
+    priceRows.push(...(priceResult.data ?? []));
   }
 
   const markets = marketRows.map(mapExternalMarket);
@@ -303,7 +364,47 @@ export async function readExternalMarkets(supabase: {
     }
 
     market?.recentTrades.push(mappedTrade);
+    const normalizedTrade = mapNormalizedTrade(trade);
+    if (market && normalizedTrade) {
+      market.normalizedRecentTrades = [...(market.normalizedRecentTrades ?? []), normalizedTrade].slice(0, 100);
+    }
     tradeCounts.set(trade.external_market_id, current + 1);
+  }
+
+  const priceRowsByMarket = new Map<string, ExternalMarketPriceRow[]>();
+  for (const row of priceRows) {
+    const rows = priceRowsByMarket.get(row.market_id) ?? [];
+    rows.push(row);
+    priceRowsByMarket.set(row.market_id, rows);
+  }
+
+  for (const [marketId, rows] of priceRowsByMarket) {
+    const market = byId.get(marketId);
+    if (!market) continue;
+    const rawRows = rows.map((row) => ({
+      timestamp: row.observed_at,
+      outcomePrices: row.outcome_prices,
+      lastTradePrice: row.last_trade_price,
+      volume: row.volume,
+      liquidity: row.liquidity,
+      source: row.source === "polymarket" ? "cache" : "cache",
+    }));
+    const priceHistory = normalizePriceHistory(rawRows, "cache", 100);
+    const volumeHistory = normalizeVolumeHistory(rawRows, "cache", 100);
+    const liquidityHistory = normalizeLiquidityHistory(rawRows, "cache", 100);
+    if (priceHistory.length > 0) market.priceHistory = priceHistory;
+    if (volumeHistory.length > 0) market.volumeHistory = volumeHistory;
+    if (liquidityHistory.length > 0) market.liquidityHistory = liquidityHistory;
+    const chartUpdatedAt = [
+      market.chartUpdatedAt,
+      priceHistory.at(-1)?.timestamp,
+      volumeHistory.at(-1)?.timestamp,
+      liquidityHistory.at(-1)?.timestamp,
+    ].filter(Boolean).sort().at(-1);
+    if (chartUpdatedAt) {
+      market.chartUpdatedAt = chartUpdatedAt;
+      market.chartSource = "cache";
+    }
   }
 
   const latestOrderbookByOutcome = new Set<string>();
@@ -313,7 +414,19 @@ export async function readExternalMarkets(supabase: {
       continue;
     }
 
-    byId.get(snapshot.external_market_id)?.latestOrderbook.push(mapExternalOrderbookSnapshot(snapshot));
+    const market = byId.get(snapshot.external_market_id);
+    market?.latestOrderbook.push(mapExternalOrderbookSnapshot(snapshot));
+    if (market) {
+      const normalizedBook = normalizeOrderbookDepth({
+        bids: snapshot.bids_json,
+        asks: snapshot.asks_json,
+        capturedAt: snapshot.captured_at,
+        source: "clob",
+      });
+      if (normalizedBook.bids.length > 0 || normalizedBook.asks.length > 0) {
+        market.orderbookDepth = normalizedBook;
+      }
+    }
     latestOrderbookByOutcome.add(key);
   }
 

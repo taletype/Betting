@@ -20,7 +20,7 @@ import {
 import {
   ExternalMarketsLoadError,
   getPublicExternalMarketsReadiness,
-  listExternalMarkets,
+  listExternalMarketsWithMetadata,
   type ExternalMarketApiRecord,
   type ExternalMarketStatusQuery,
   type ExternalMarketsLoadErrorCode,
@@ -77,11 +77,13 @@ const getCloseState = (market: ExternalMarketApiRecord): { label: string; progre
 };
 
 const toSparklinePoints = (market: ExternalMarketApiRecord): TimeSeriesPoint[] =>
-  market.recentTrades
-    .filter((trade) => trade.price !== null)
-    .slice(0, 12)
-    .reverse()
-    .map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
+  (market.priceHistory?.length
+    ? market.priceHistory.slice(-50).map((point) => ({ timestamp: point.timestamp, value: point.price }))
+    : market.recentTrades
+      .filter((trade) => trade.price !== null)
+      .slice(0, 12)
+      .reverse()
+      .map((trade) => ({ timestamp: trade.tradedAt, value: trade.price })));
 
 const hasPolymarketBuilderCode = (): boolean => {
   try {
@@ -208,12 +210,22 @@ const sanitizeSourceName = (source: string): string | null => {
   return /^[a-z0-9._:/-]+$/i.test(trimmed) ? trimmed : null;
 };
 
+const buildDetailHref = (locale: AppLocale, market: ExternalMarketApiRecord, refCode: string | null): string => {
+  const routeKey = market.slug || market.externalId;
+  const search = new URLSearchParams();
+  search.set("source", market.source);
+  search.set("externalId", market.externalId);
+  if (refCode) search.set("ref", refCode);
+  return `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(routeKey)}`)}?${search.toString()}`;
+};
+
 export async function renderExternalMarketsPage(locale: AppLocale, params?: MarketFeedSearchParams) {
   const copy = getLocaleCopy(locale).research;
   let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
   let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
+  let fallbackUsed = false;
   const hasBuilderCode = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" ? "enabled" : "disabled";
@@ -243,7 +255,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         : "open";
 
   try {
-    markets = (await listExternalMarkets(locale, requestedStatus)).filter((market) => market.source === "polymarket");
+    const result = await listExternalMarketsWithMetadata(locale, requestedStatus);
+    markets = result.markets.filter((market) => market.source === "polymarket");
+    fallbackUsed = result.fallbackUsed || result.diagnostics?.fallbackUsedLastRequest === true;
   } catch (error) {
     loadFailed = true;
     if (error instanceof ExternalMarketsLoadError) {
@@ -427,8 +441,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               </thead>
               <tbody>
                 {visibleMarkets.map((market) => {
-                  const detailBase = getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`);
-                  const detailPath = `${detailBase}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+                  const detailPath = buildDetailHref(locale, market, refCode);
                   const marketTopReason = getPolymarketTopBlockingReason({
                     ...statusInput,
                     marketTradable: market.status === "open" && !isExternalMarketStale(market),
@@ -486,8 +499,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
           <div className="market-feed-cards stack">
           {visibleMarkets.map((market) => {
-            const detailBase = getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`);
-            const detailPath = `${detailBase}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+            const detailPath = buildDetailHref(locale, market, refCode);
             const marketTopReason = getPolymarketTopBlockingReason({
               ...statusInput,
               marketTradable: market.status === "open",
@@ -616,7 +628,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">no</span></div>
+            <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">{fallbackUsed ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">交易狀態</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
             <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
             <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>

@@ -28,6 +28,11 @@ const numberOrDash = (value: number | null): string =>
 const priceOrUnavailable = (value: number | null): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const sparklinePoints = (market: ExternalMarketApiRecord) =>
+  market.priceHistory?.length
+    ? market.priceHistory.slice(-50).map((point) => ({ timestamp: point.timestamp, value: point.price }))
+    : market.recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
+
 const getTrendingMarkets = async (locale: AppLocale): Promise<ExternalMarketApiRecord[]> => {
   try {
     return [...(await listExternalMarkets(locale, "open")).filter((market) =>
@@ -99,7 +104,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
                 ))}
               </div>
               <MarketSparkline
-                points={markets[0].recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }))}
+                points={sparklinePoints(markets[0])}
                 label="價格走勢"
                 hideWhenEmpty
               />
@@ -140,7 +145,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
                 </div>
                 <div className="kv"><span className="kv-key">價格</span><span className="kv-value">{priceOrUnavailable(market.lastTradePrice)}</span></div>
                 <MarketSparkline
-                  points={market.recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }))}
+                  points={sparklinePoints(market)}
                   label="價格走勢"
                   hideWhenEmpty
                 />

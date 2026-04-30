@@ -406,7 +406,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     const markup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ ref: "friend001" }) }));
     assert.match(markup, /Will Polymarket routing be scaffolded/);
     assert.match(markup, /你正在使用推薦碼：FRIEND001/);
-    assert.match(markup, /href="\/polymarket\/poly-1\?ref=FRIEND001"/);
+    assert.match(markup, /href="\/polymarket\/poly-1\?source=polymarket&amp;externalId=POLY-1&amp;ref=FRIEND001"/);
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /Builder Code 未設定/);
     assert.match(markup, /disabled=""/);
@@ -511,6 +511,216 @@ test("Polymarket detail page renders safe not-found state", async (t) => {
   assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
 });
 
+test("Polymarket detail page resolves feed fallback links from market list", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(JSON.stringify({ source: "polymarket", externalId: "POLY-NORWAY", volume24h: 500, liquidity: 10000, spread: 0.03, closeTime: null, lastUpdatedAt: "2099-05-01T01:00:00.000Z", stale: false }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.includes("/external/markets/polymarket/will-norway-win-the-2026-fifa-world-cup-893")) {
+      return new Response(JSON.stringify({ market: null }), { status: 404, headers: { "content-type": "application/json" } });
+    }
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        source: "polymarket_gamma_fallback",
+        fallbackUsed: true,
+        stale: false,
+        lastUpdatedAt: "2099-05-01T01:00:00.000Z",
+        markets: [
+          makePolymarketRecord({
+            id: "norway",
+            externalId: "POLY-NORWAY",
+            slug: "will-norway-win-the-2026-fifa-world-cup-893",
+            title: "Will Norway win the 2026 FIFA World Cup?",
+            outcomes: [
+              { externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.11, bestAsk: 0.12, lastPrice: 0.11, volume: null },
+              { externalOutcomeId: "no", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.88, bestAsk: 0.89, lastPrice: 0.89, volume: null },
+            ],
+          }),
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "will-norway-win-the-2026-fifa-world-cup-893" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /挪威會否贏得 2026 FIFA 世界盃？/);
+  assert.match(markup, /POLY-NORWAY/);
+  assert.doesNotMatch(markup, /暫時未有市場資料/);
+  assert.match(markup, /disabled=""/);
+});
+
+test("Polymarket detail page renders Norway Gamma fallback and preserves suffixed referral link", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: [], recentTrades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(JSON.stringify({ source: "polymarket", externalId: "558403", volume24h: 100, liquidity: 1000, spread: 0.03, closeTime: "2099-07-19T00:00:00.000Z", lastUpdatedAt: "2099-05-01T01:00:00.000Z", stale: false }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    return new Response(
+      JSON.stringify({
+        market: makePolymarketRecord({
+          id: "polymarket:558403",
+          externalId: "558403",
+          slug: "will-norway-win-the-2026-fifa-world-cup",
+          title: "Will Norway win the 2026 FIFA World Cup?",
+          description: "Norway outright winner market",
+          marketUrl: "https://polymarket.com/event/will-norway-win-the-2026-fifa-world-cup",
+          closeTime: "2099-07-19T00:00:00.000Z",
+          sourceProvenance: {
+            source: "polymarket",
+            upstream: "gamma-api.polymarket.com",
+            endpoint: "/markets/slug/will-norway-win-the-2026-fifa-world-cup",
+            fetchedVia: "public-gamma-detail-fallback",
+            stale: false,
+            statusFlags: { active: true, closed: false, archived: false, restricted: false },
+          },
+          outcomes: [
+            { externalOutcomeId: "yes-token", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.11, bestAsk: 0.12, lastPrice: 0.11, volume: null },
+            { externalOutcomeId: "no-token", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.88, bestAsk: 0.89, lastPrice: 0.89, volume: null },
+          ],
+        }),
+        diagnostics: { gammaFallbackUsed: true },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "will-norway-win-the-2026-fifa-world-cup-893" }),
+    searchParams: Promise.resolve({ ref: "hkref001" }),
+  }));
+
+  assert.match(markup, /挪威會否贏得 2026 FIFA 世界盃？/);
+  assert.match(markup, /558403/);
+  assert.match(markup, /gamma-api\.polymarket\.com \/markets\/slug\/will-norway-win-the-2026-fifa-world-cup/);
+  assert.match(markup, /原始 route slug<\/span><span class="kv-value mono">will-norway-win-the-2026-fifa-world-cup-893/);
+  assert.match(markup, /Gamma canonical slug<\/span><span class="kv-value mono">will-norway-win-the-2026-fifa-world-cup/);
+  assert.match(markup, /data-copy-value="http:\/\/127\.0\.0\.1:3000\/polymarket\/will-norway-win-the-2026-fifa-world-cup-893\?ref=HKREF001"/);
+  assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /市場資料健康狀態/);
+  assert.doesNotMatch(markup, /暫時未有市場資料/);
+  assert.match(markup, /disabled=""/);
+});
+
+test("restricted Polymarket detail renders data but disables trading", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/orderbook")) return new Response(JSON.stringify({ orderbook: [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.endsWith("/trades")) return new Response(JSON.stringify({ trades: [], recentTrades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.endsWith("/history")) return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.endsWith("/stats")) return new Response(JSON.stringify({ source: "polymarket", externalId: "POLY-RESTRICTED", volume24h: 100, liquidity: 1000, spread: 0.03, closeTime: null, lastUpdatedAt: "2099-05-01T01:00:00.000Z", stale: false }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        market: makePolymarketRecord({
+          id: "restricted",
+          externalId: "POLY-RESTRICTED",
+          slug: "poly-restricted",
+          title: "Restricted market still renders",
+          sourceProvenance: { statusFlags: { active: true, closed: false, archived: false, restricted: true }, stale: false },
+          outcomes: [{ externalOutcomeId: "yes-token", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.4, bestAsk: 0.43, lastPrice: 0.42, volume: null }],
+        }),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-restricted" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /Restricted market still renders/);
+  assert.match(markup, /市場暫時不可交易/);
+  assert.match(markup, /active \/ closed \/ archived \/ restricted<\/span><span class="kv-value">是 \/ 否 \/ 否 \/ 是/);
+  assert.doesNotMatch(markup, /暫時未有市場資料/);
+  assert.match(markup, /disabled=""/);
+});
+
+test("Polymarket detail page uses source externalId query when feed provides it", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(JSON.stringify({ source: "polymarket", externalId: "POLY-QUERY-ID", volume24h: 500, liquidity: 10000, spread: 0.03, closeTime: null, lastUpdatedAt: "2099-05-01T01:00:00.000Z", stale: false }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.includes("/external/markets/polymarket/POLY-QUERY-ID")) {
+      return new Response(JSON.stringify({ market: makePolymarketRecord({ externalId: "POLY-QUERY-ID", slug: "different-feed-slug", title: "Will query external id resolve?" }) }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ market: null }), { status: 404, headers: { "content-type": "application/json" } });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "feed-slug-that-moved" }),
+    searchParams: Promise.resolve({ source: "polymarket", externalId: "POLY-QUERY-ID" }),
+  }));
+
+  assert.match(markup, /Will query external id resolve/);
+  assert.equal(calls[0]?.endsWith("/api/external/markets/polymarket/POLY-QUERY-ID"), true);
+});
+
 test("Polymarket detail page shows localized primary title and original source question", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -613,7 +823,7 @@ test("cancelled Polymarket detail page renders safely with disabled trade CTA", 
 
   assert.match(markup, /Cancelled market detail remains browsable/);
   assert.match(markup, /已取消/);
-  assert.match(markup, /此市場目前不可交易。/);
+  assert.match(markup, /市場暫時不可交易/);
   assert.match(markup, /透過 Polymarket 交易/);
   assert.match(markup, /disabled=""/);
 });
@@ -741,7 +951,7 @@ test("Polymarket detail page renders chart panels and keeps trade shell disabled
   assert.match(markup, /價格走勢/);
   assert.match(markup, /成交量/);
   assert.match(markup, /流動性/);
-  assert.match(markup, /訂單簿深度/);
+  assert.match(markup, /買賣盤深度/);
   assert.match(markup, /近期成交/);
   assert.match(markup, /<svg class="line-chart"/);
   assert.match(markup, /disabled=""/);
@@ -945,6 +1155,39 @@ test("Polymarket page renders synced rows when markets exist", async (t) => {
   assert.doesNotMatch(markup, /暫時未有市場資料/);
 });
 
+test("Polymarket diagnostics reports fallback usage from API envelope", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        ok: true,
+        source: "polymarket_gamma_fallback",
+        fallbackUsed: true,
+        stale: false,
+        lastUpdatedAt: "2099-05-01T01:00:00.000Z",
+        markets: [
+          makePolymarketRecord({
+            id: "fallback-row",
+            externalId: "POLY-FALLBACK-DIAG",
+            slug: "poly-fallback-diag",
+            title: "Will diagnostics reflect fallback?",
+          }),
+        ],
+        diagnostics: { fallbackUsedLastRequest: true },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /Will diagnostics reflect fallback/);
+  assert.match(markup, /fallback used on last request<\/span><span class="kv-value">yes/);
+});
+
 test("Polymarket referral code survives navigation into market detail", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -986,7 +1229,7 @@ test("Polymarket referral code survives navigation into market detail", async (t
     searchParams: Promise.resolve({ ref: "hkref001" }),
   }));
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
-  assert.match(markup, /href="\/polymarket\/polyref-1\?ref=HKREF001"/);
+  assert.match(markup, /href="\/polymarket\/polyref-1\?source=polymarket&amp;externalId=POLYREF-1&amp;ref=HKREF001"/);
 });
 
 test("Polymarket feed localizes safe World Cup titles and outcomes", async (t) => {

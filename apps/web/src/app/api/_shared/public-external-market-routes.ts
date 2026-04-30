@@ -5,11 +5,18 @@ import {
   readExternalMarketByIdFromCache,
   readExternalMarketBySlugFromCache,
   readExternalMarketsFromCache,
+  upsertExternalMarketsCache,
   type ExternalMarketCacheDiagnostics,
 } from "./external-market-cache";
 import { applyMarketTranslations, resolveMarketLocale } from "./market-translation";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "./external-market-read";
-import { readPolymarketGammaFallbackMarkets } from "./polymarket-gamma-fallback";
+import {
+  normalizeLiquidityHistory,
+  normalizeOrderbookDepth,
+  normalizeRecentTrades,
+} from "./chart-history";
+import { readPolymarketGammaFallbackMarketBySlugOrId, readPolymarketGammaFallbackMarkets, type PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
+import { resolvePolymarketDetailSlug } from "./polymarket-detail-slug";
 
 const getAdminSupabase = () => createSupabaseAdminClient();
 
@@ -99,6 +106,124 @@ const marketsEnvelope = (input: {
     errorCode: input.diagnostics.errorCode,
   },
 });
+
+const detailEnvelope = (input: {
+  market: unknown | null;
+  source: "supabase_cache" | "polymarket_gamma_detail_fallback" | "not_found";
+  detailFallbackAvailable: boolean;
+  detailFallbackUsed: boolean;
+  lookupSlug: string;
+  canonicalSlug: string;
+  cacheAvailable: boolean;
+  serviceApiReachable: boolean;
+  staleCache: boolean;
+}) => ({
+  market: input.market,
+  diagnostics: {
+    feedCacheAvailable: input.cacheAvailable,
+    detailFallbackAvailable: input.detailFallbackAvailable,
+    serviceApiReachable: input.serviceApiReachable,
+    gammaFallbackEnabled: input.detailFallbackAvailable,
+    gammaFallbackUsed: input.detailFallbackUsed,
+    staleCache: input.staleCache,
+    detailNotFound: input.market === null,
+    source: input.source,
+    lookupSlug: input.lookupSlug,
+    canonicalSlug: input.canonicalSlug,
+  },
+});
+
+const toCacheInput = (market: PublicExternalMarketRecord) => ({
+  market: {
+    source: market.source,
+    externalId: market.externalId,
+    slug: market.slug,
+    title: market.title,
+    description: market.description,
+    url: market.marketUrl,
+    status: market.status,
+    closeTime: market.closeTime,
+    endTime: market.endTime,
+    resolvedAt: market.resolvedAt,
+    bestBid: market.bestBid,
+    bestAsk: market.bestAsk,
+    lastTradePrice: market.lastTradePrice,
+    volume24h: market.volume24h,
+    volumeTotal: market.volumeTotal,
+    outcomes: market.outcomes.map((outcome) => ({
+      externalOutcomeId: outcome.externalOutcomeId,
+      title: outcome.title,
+      slug: outcome.slug,
+      outcomeIndex: outcome.index,
+      yesNo: outcome.yesNo,
+      bestBid: outcome.bestBid,
+      bestAsk: outcome.bestAsk,
+      lastPrice: outcome.lastPrice,
+      volume: outcome.volume,
+    })),
+    recentTrades: market.recentTrades
+      .filter((trade) => trade.price !== null)
+      .map((trade) => ({
+        tradeId: trade.externalTradeId,
+        outcomeExternalId: trade.externalOutcomeId,
+        side: trade.side,
+        price: trade.price ?? 0,
+        size: trade.size,
+        tradedAt: trade.tradedAt,
+      })),
+    rawPayload: {
+      market,
+      provenance: market.sourceProvenance ?? market.provenance,
+    },
+  },
+  rawJson: {
+    market,
+    provenance: market.sourceProvenance ?? market.provenance,
+  },
+  sourceProvenance: market.sourceProvenance ?? market.provenance,
+  staleAfter: new Date(Date.now() + 60_000).toISOString(),
+});
+
+const tryUpsertDetailFallback = async (supabase: ReturnType<SupabaseAdminFactory>, market: PublicExternalMarketRecord): Promise<void> => {
+  try {
+    await upsertExternalMarketsCache(supabase, [toCacheInput(market)]);
+  } catch (error) {
+    console.warn("polymarket detail fallback cache upsert failed; continuing with fetched detail", {
+      message: safeMessage(error),
+      externalId: market.externalId,
+    });
+  }
+};
+
+const findPolymarketFallbackMarket = (
+  markets: PublicExternalMarketRecord[],
+  candidates: string[],
+): PublicExternalMarketRecord | null => {
+  const normalizedCandidates = new Set(candidates.map((candidate) => candidate.toLowerCase()));
+  return markets.find((market) =>
+    normalizedCandidates.has(market.slug.toLowerCase()) ||
+    normalizedCandidates.has(market.externalId.toLowerCase()) ||
+    normalizedCandidates.has(market.id.toLowerCase())
+  ) ?? null;
+};
+
+const readPolymarketDetailFallback = async (
+  candidates: string[],
+): Promise<PublicExternalMarketRecord | null> => {
+  for (const candidate of candidates) {
+    const market = await readPolymarketGammaFallbackMarketBySlugOrId(candidate).catch((error) => {
+      console.warn("polymarket detail Gamma direct lookup failed; trying next candidate", {
+        message: safeMessage(error),
+        candidate,
+      });
+      return null;
+    });
+    if (market) return market;
+  }
+
+  const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
+  return findPolymarketFallbackMarket(fallbackMarkets, candidates);
+};
 
 export async function externalMarketsResponse(request?: Request, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
@@ -235,18 +360,88 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
 }
 
 export async function externalMarketDetailResponse(source: string, externalId: string, request?: Request, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
+  const slugResolution = resolvePolymarketDetailSlug(externalId);
   try {
     const supabase = adminSupabase();
     const locale = resolveMarketLocale(request ? new URL(request.url).searchParams.get("locale") : null);
-    const market = source === "polymarket"
-      ? await readExternalMarketByIdFromCache(supabase, decodeURIComponent(externalId))
-        ?? await readExternalMarketBySlugFromCache(supabase, decodeURIComponent(externalId))
-      : await readExternalMarketBySourceAndId(supabase, source, externalId);
+    const cacheCandidates = slugResolution.candidates;
+    let market: PublicExternalMarketRecord | null = null;
+    let detailFallbackUsed = false;
+
+    if (source === "polymarket") {
+      for (const candidate of cacheCandidates) {
+        market = await readExternalMarketBySlugFromCache(supabase, candidate);
+        if (market) break;
+      }
+      if (!market) {
+        for (const candidate of cacheCandidates) {
+          market = await readExternalMarketByIdFromCache(supabase, candidate);
+          if (market) break;
+        }
+      }
+      if (!market) {
+        market = await readPolymarketDetailFallback(cacheCandidates);
+        if (market) {
+          detailFallbackUsed = true;
+          await tryUpsertDetailFallback(supabase, market);
+        }
+      }
+    } else {
+      market = await readExternalMarketBySourceAndId(supabase, source, externalId);
+    }
+    const provenance = market?.sourceProvenance ?? market?.provenance;
+    const provenanceRecord = provenance && typeof provenance === "object" ? provenance as Record<string, unknown> : {};
     const [localized] = market ? await applyMarketTranslations(supabase, [market], locale) : [null];
-    return NextResponse.json({ market: localized }, { status: localized ? 200 : 404 });
+    return NextResponse.json(detailEnvelope({
+      market: localized,
+      source: localized ? detailFallbackUsed ? "polymarket_gamma_detail_fallback" : "supabase_cache" : "not_found",
+      detailFallbackAvailable: source === "polymarket",
+      detailFallbackUsed,
+      lookupSlug: slugResolution.decodedSlug,
+      canonicalSlug: slugResolution.canonicalSlug,
+      cacheAvailable: true,
+      serviceApiReachable: true,
+      staleCache: provenanceRecord.stale === true,
+    }), {
+      status: localized ? 200 : 404,
+      headers: detailFallbackUsed ? { "x-market-source": "polymarket_gamma_detail_fallback" } : undefined,
+    });
   } catch (error) {
+    if (source === "polymarket") {
+      try {
+        const fallbackMarket = await readPolymarketDetailFallback(slugResolution.candidates);
+        if (fallbackMarket) {
+          return NextResponse.json(detailEnvelope({
+            market: fallbackMarket,
+            source: "polymarket_gamma_detail_fallback",
+            detailFallbackAvailable: true,
+            detailFallbackUsed: true,
+            lookupSlug: slugResolution.decodedSlug,
+            canonicalSlug: slugResolution.canonicalSlug,
+            cacheAvailable: false,
+            serviceApiReachable: false,
+            staleCache: false,
+          }), {
+            status: 200,
+            headers: { "x-market-source": "polymarket_gamma_detail_fallback" },
+          });
+        }
+      } catch (fallbackError) {
+        console.warn("public external market detail fallback unavailable; serving null", fallbackError);
+      }
+    }
     console.warn("public external market detail unavailable; serving null", error);
-    return NextResponse.json({ market: null }, { status: 404 });
+    return NextResponse.json(detailEnvelope({
+      market: null,
+      source: "not_found",
+      detailFallbackAvailable: source === "polymarket",
+      detailFallbackUsed: false,
+      lookupSlug: slugResolution.decodedSlug,
+      canonicalSlug: slugResolution.canonicalSlug,
+      cacheAvailable: false,
+      serviceApiReachable: false,
+      staleCache: false,
+    }), { status: 404 });
   }
 }
 
@@ -269,6 +464,7 @@ const buildDepth = (orderbook: Array<{ bids: unknown; asks: unknown }>) => {
         const record = level && typeof level === "object" ? level as Record<string, unknown> : {};
         const price = toNumber(record.price);
         const size = toNumber(record.size);
+        if (price === null || price < 0 || price > 1 || size === null || size < 0) continue;
         if (size !== null) cumulativeSize += size;
         depth.push({ side, price, size, cumulativeSize: size === null ? null : cumulativeSize });
       }
@@ -281,39 +477,86 @@ export async function externalMarketOrderbookResponse(source: string, externalId
   try {
     const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
     const orderbook = market?.latestOrderbook ?? [];
-    return NextResponse.json({ orderbook, depth: buildDepth(orderbook) });
+    const orderbookDepth = market?.orderbookDepth ?? (
+      orderbook[0]
+        ? normalizeOrderbookDepth({ bids: orderbook[0].bids, asks: orderbook[0].asks, capturedAt: orderbook[0].capturedAt, source: "clob" })
+        : { bids: [], asks: [] }
+    );
+    return NextResponse.json({ orderbook, orderbookDepth, depth: buildDepth(orderbook) });
   } catch (error) {
     console.warn("public external market orderbook unavailable; serving safe empty state", error);
-    return NextResponse.json({ orderbook: [], depth: [] });
+    return NextResponse.json({ orderbook: [], orderbookDepth: { bids: [], asks: [] }, depth: [] });
   }
 }
 
 export async function externalMarketTradesResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
     const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
-    return NextResponse.json({ source, externalId, trades: market?.recentTrades ?? [] });
+    const recentTrades = market?.normalizedRecentTrades?.length
+      ? market.normalizedRecentTrades
+      : normalizeRecentTrades({ recentTrades: market?.recentTrades ?? [] }, "cache", 100);
+    return NextResponse.json({ source, externalId, trades: market?.recentTrades ?? [], recentTrades });
   } catch (error) {
     console.warn("public external market trades unavailable; serving safe empty state", error);
-    return NextResponse.json({ source, externalId, trades: [] });
+    return NextResponse.json({ source, externalId, trades: [], recentTrades: [] });
   }
 }
 
 export async function externalMarketHistoryResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
     const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
-    const history = (market?.recentTrades ?? []).map((trade) => ({
-      timestamp: trade.tradedAt,
-      outcome: trade.externalOutcomeId,
-      price: trade.price,
-      volume: trade.size,
-      liquidity: market?.liquidity ?? market?.volumeTotal ?? null,
-      source: market?.source ?? source,
-      provenance: { source: market?.source ?? source, upstream: "external_trade_ticks" },
-    })).reverse();
-    return NextResponse.json({ source, externalId, history });
+    const recentTradeHistory = normalizeRecentTrades({ recentTrades: market?.recentTrades ?? [] }, "cache", 100)
+      .map((trade) => ({
+        timestamp: trade.timestamp,
+        outcome: trade.outcome ?? null,
+        price: trade.price,
+        volume: trade.size ?? null,
+        liquidity: null,
+        source: source === "polymarket" ? "cache" : source,
+        provenance: { source: market?.source ?? source, upstream: "external_trades" },
+      }));
+    const priceHistory = market?.priceHistory?.length
+      ? market.priceHistory
+      : recentTradeHistory.flatMap((trade) => trade.price === null ? [] : [{
+        timestamp: trade.timestamp,
+        ...(trade.outcome ? { outcome: trade.outcome } : {}),
+        price: trade.price,
+        source: "cache" as const,
+      }]);
+    const volumeHistory = market?.volumeHistory?.length
+      ? market.volumeHistory
+      : recentTradeHistory.flatMap((trade) => trade.volume === null ? [] : [{
+        timestamp: trade.timestamp,
+        volume: trade.volume,
+        source: "cache" as const,
+      }]);
+    const liquidityHistory = market?.liquidityHistory?.length
+      ? market.liquidityHistory
+      : normalizeLiquidityHistory([], "cache", 100);
+    const history = priceHistory.length
+      ? priceHistory.map((point) => ({
+        timestamp: point.timestamp,
+        outcome: point.outcome ?? null,
+        price: point.price,
+        volume: volumeHistory.find((volume) => volume.timestamp === point.timestamp)?.volume ?? null,
+        liquidity: liquidityHistory.find((liquidity) => liquidity.timestamp === point.timestamp)?.liquidity ?? null,
+        source: point.source ?? "cache",
+        provenance: { source: market?.source ?? source, upstream: "external_market_prices" },
+      }))
+      : recentTradeHistory;
+    return NextResponse.json({
+      source,
+      externalId,
+      history,
+      priceHistory,
+      volumeHistory,
+      liquidityHistory,
+      chartUpdatedAt: market?.chartUpdatedAt ?? history.at(-1)?.timestamp ?? null,
+      chartSource: market?.chartSource ?? (history.length ? "cache" : null),
+    });
   } catch (error) {
     console.warn("public external market history unavailable; serving safe empty state", error);
-    return NextResponse.json({ source, externalId, history: [] });
+    return NextResponse.json({ source, externalId, history: [], priceHistory: [], volumeHistory: [], liquidityHistory: [] });
   }
 }
 

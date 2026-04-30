@@ -2,6 +2,12 @@ import type { NormalizedExternalMarket } from "@bet/integrations";
 import { resolvePolymarketMarketStatus } from "@bet/integrations";
 
 import { normalizeApiPayload } from "./api-serialization";
+import {
+  normalizeLiquidityHistory,
+  normalizePriceHistory,
+  normalizeRecentTrades,
+  normalizeVolumeHistory,
+} from "./chart-history";
 import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
 
 type SupabaseLike = {
@@ -37,6 +43,22 @@ interface ExternalMarketCacheRow {
   is_tradable: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+interface ExternalMarketLookupRow {
+  id: string;
+  external_id: string;
+}
+
+interface ExternalMarketPriceRow {
+  market_id: string;
+  source: "polymarket";
+  observed_at: string;
+  outcome_prices: unknown;
+  last_trade_price: string | number | null;
+  volume: string | number | null;
+  liquidity: string | number | null;
+  source_provenance?: unknown;
 }
 
 export interface ExternalMarketCacheDiagnostics {
@@ -140,6 +162,17 @@ const mapCacheRow = (row: ExternalMarketCacheRow): PublicExternalMarketRecord =>
     stale,
     staleAfter: row.stale_after,
   };
+  const rawRecord = row.raw_json && typeof row.raw_json === "object" ? row.raw_json : {};
+  const priceHistory = normalizePriceHistory(rawRecord, "cache", 50);
+  const volumeHistory = normalizeVolumeHistory(rawRecord, "cache", 50);
+  const liquidityHistory = normalizeLiquidityHistory(rawRecord, "cache", 50);
+  const normalizedRecentTrades = normalizeRecentTrades(rawRecord, "cache", 50);
+  const chartUpdatedAt = [
+    priceHistory.at(-1)?.timestamp,
+    volumeHistory.at(-1)?.timestamp,
+    liquidityHistory.at(-1)?.timestamp,
+    normalizedRecentTrades.at(-1)?.timestamp,
+  ].filter(Boolean).sort().at(-1);
 
   return {
     id: row.id,
@@ -168,6 +201,14 @@ const mapCacheRow = (row: ExternalMarketCacheRow): PublicExternalMarketRecord =>
     updatedAt: row.updated_at ?? lastUpdatedAt,
     outcomes,
     recentTrades: [],
+    ...(priceHistory.length ? { priceHistory } : {}),
+    ...(volumeHistory.length ? { volumeHistory } : {}),
+    ...(liquidityHistory.length ? { liquidityHistory } : {}),
+    ...(normalizedRecentTrades.length ? { normalizedRecentTrades } : {}),
+    ...(chartUpdatedAt ? { chartUpdatedAt, chartSource: "cache" } : {}),
+    spread: toNumber(row.best_bid) !== null && toNumber(row.best_ask) !== null
+      ? Math.max(0, toNumber(row.best_ask)! - toNumber(row.best_bid)!)
+      : null,
     latestOrderbook: [],
   };
 };
@@ -198,6 +239,95 @@ const readLastSyncStatus = async (supabase: SupabaseLike): Promise<string | null
   }
 };
 
+const readCachedPriceRows = async (
+  supabase: SupabaseLike,
+  markets: PublicExternalMarketRecord[],
+): Promise<Map<string, ExternalMarketPriceRow[]>> => {
+  try {
+    const externalIds = markets.map((market) => market.externalId);
+    if (externalIds.length === 0) return new Map();
+
+    const marketResult = await (supabase.from("external_markets") as {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          in: (column: string, values: string[]) => Promise<{ data: ExternalMarketLookupRow[] | null; error: Error | null }>;
+        };
+      };
+    })
+      .select("id, external_id")
+      .eq("source", "polymarket")
+      .in("external_id", externalIds);
+
+    if (marketResult.error || !marketResult.data?.length) return new Map();
+
+    const externalIdByMarketId = new Map(marketResult.data.map((row) => [row.id, row.external_id]));
+    const priceResult = await (supabase.from("external_market_prices") as {
+      select: (columns: string) => {
+        in: (column: string, values: string[]) => {
+          order: (column: string, options?: Record<string, unknown>) => {
+            limit: (count: number) => Promise<{ data: ExternalMarketPriceRow[] | null; error: Error | null }>;
+          };
+        };
+      };
+    })
+      .select("market_id, source, observed_at, outcome_prices, last_trade_price, volume, liquidity, source_provenance")
+      .in("market_id", [...externalIdByMarketId.keys()])
+      .order("observed_at", { ascending: false })
+      .limit(externalIds.length * 100);
+
+    if (priceResult.error) return new Map();
+
+    const byExternalId = new Map<string, ExternalMarketPriceRow[]>();
+    for (const row of priceResult.data ?? []) {
+      const externalId = externalIdByMarketId.get(row.market_id);
+      if (!externalId) continue;
+      const rows = byExternalId.get(externalId) ?? [];
+      rows.push(row);
+      byExternalId.set(externalId, rows);
+    }
+    return byExternalId;
+  } catch (error) {
+    console.warn("external_market_prices read failed; continuing without cached chart history", error);
+    return new Map();
+  }
+};
+
+const mergeCachedPriceHistory = (
+  markets: PublicExternalMarketRecord[],
+  priceRowsByExternalId: Map<string, ExternalMarketPriceRow[]>,
+): void => {
+  for (const market of markets) {
+    const rows = priceRowsByExternalId.get(market.externalId) ?? [];
+    if (rows.length === 0) continue;
+
+    const rawRows = rows.map((row) => ({
+      timestamp: row.observed_at,
+      outcomePrices: row.outcome_prices,
+      lastTradePrice: row.last_trade_price,
+      volume: row.volume,
+      liquidity: row.liquidity,
+      source: "cache",
+    }));
+    const priceHistory = normalizePriceHistory(rawRows, "cache", 50);
+    const volumeHistory = normalizeVolumeHistory(rawRows, "cache", 50);
+    const liquidityHistory = normalizeLiquidityHistory(rawRows, "cache", 50);
+    if (priceHistory.length > 0) market.priceHistory = priceHistory;
+    if (volumeHistory.length > 0) market.volumeHistory = volumeHistory;
+    if (liquidityHistory.length > 0) market.liquidityHistory = liquidityHistory;
+
+    const chartUpdatedAt = [
+      market.chartUpdatedAt,
+      priceHistory.at(-1)?.timestamp,
+      volumeHistory.at(-1)?.timestamp,
+      liquidityHistory.at(-1)?.timestamp,
+    ].filter(Boolean).sort().at(-1);
+    if (chartUpdatedAt) {
+      market.chartUpdatedAt = chartUpdatedAt;
+      market.chartSource = "cache";
+    }
+  }
+};
+
 export async function readExternalMarketsFromCache(supabase: SupabaseLike): Promise<ExternalMarketCacheReadResult> {
   const diagnostics = baseDiagnostics();
   const { data, error } = await (supabase.from("external_market_cache") as {
@@ -225,6 +355,7 @@ export async function readExternalMarketsFromCache(supabase: SupabaseLike): Prom
   const rows = data ?? [];
   const now = Date.now();
   const markets = normalizeApiPayload(rows.map(mapCacheRow)) as PublicExternalMarketRecord[];
+  mergeCachedPriceHistory(markets, await readCachedPriceRows(supabase, markets));
   diagnostics.supabaseCacheReachable = true;
   diagnostics.marketCacheRowCount = rows.length;
   diagnostics.newestLastSyncedAt = rows.map((row) => row.last_synced_at).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
@@ -244,7 +375,10 @@ export async function readExternalMarketBySlugFromCache(supabase: SupabaseLike, 
     select: (columns: string) => { eq: (column: string, value: string) => { maybeSingle: () => Promise<{ data: ExternalMarketCacheRow | null; error: Error | null }> } };
   }).select(CACHE_COLUMNS).eq("slug", slug).maybeSingle();
   if (error) throw error;
-  return data ? mapCacheRow(data) : null;
+  if (!data) return null;
+  const market = mapCacheRow(data);
+  mergeCachedPriceHistory([market], await readCachedPriceRows(supabase, [market]));
+  return market;
 }
 
 export async function readExternalMarketByIdFromCache(supabase: SupabaseLike, externalId: string): Promise<PublicExternalMarketRecord | null> {
@@ -252,7 +386,10 @@ export async function readExternalMarketByIdFromCache(supabase: SupabaseLike, ex
     select: (columns: string) => { eq: (column: string, value: string) => { eq: (column: string, value: string) => { maybeSingle: () => Promise<{ data: ExternalMarketCacheRow | null; error: Error | null }> } } };
   }).select(CACHE_COLUMNS).eq("source", "polymarket").eq("external_id", externalId).maybeSingle();
   if (error) throw error;
-  return data ? mapCacheRow(data) : null;
+  if (!data) return null;
+  const market = mapCacheRow(data);
+  mergeCachedPriceHistory([market], await readCachedPriceRows(supabase, [market]));
+  return market;
 }
 
 export async function upsertExternalMarketsCache(supabase: SupabaseLike, inputs: ExternalMarketCacheUpsertInput[]): Promise<number> {
