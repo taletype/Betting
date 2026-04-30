@@ -7,6 +7,7 @@ import {
   getPolymarketReadinessChecklist,
   getPolymarketRoutingReadiness,
   getPolymarketTopBlockingReason,
+  getPolymarketTradingReadiness,
   type PolymarketGeoblockStatus,
   type PolymarketReadinessChecklistStatus,
 } from "./polymarket-routing-readiness";
@@ -27,6 +28,7 @@ interface Props {
   loggedIn?: boolean;
   hasBuilderCode: boolean;
   featureEnabled: boolean;
+  betaUserAllowlisted?: boolean;
   submitModeEnabled?: boolean;
   walletConnected: boolean;
   geoblockAllowed?: boolean;
@@ -37,6 +39,8 @@ interface Props {
   submitterAvailable: boolean;
   userSigned?: boolean;
   submitted?: boolean;
+  balanceAllowanceReady?: boolean;
+  attributionRecordingReady?: boolean;
   locale: AppLocale;
 }
 
@@ -110,9 +114,11 @@ export function PolymarketTradeTicket(props: Props) {
     orderValid,
   };
   const readiness = getPolymarketRoutingReadiness(readinessInput);
+  const tradingReadiness = getPolymarketTradingReadiness(readinessInput);
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
   const disabled = readiness !== "ready_to_submit" || !finalConfirmation;
+  const tradeButtonLabel = disabled ? tradingReadiness.disabledReason : "透過 Polymarket 交易";
   const publicTradingReady = Boolean(
     props.featureEnabled &&
     props.hasBuilderCode &&
@@ -335,14 +341,14 @@ export function PolymarketTradeTicket(props: Props) {
         type="button"
         className="primary-cta"
         disabled={disabled}
-        title={readinessLabel}
+        title={tradeButtonLabel}
         onClick={() => {
           trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
           trackFunnelEvent("routed_trade_attempted", { market: props.marketTitle, readiness });
           trackFunnelEvent("user_order_signature_requested", { market: props.marketTitle, readiness });
         }}
       >
-        {disabled ? `${copy.tradeViaPolymarket} · ${readinessLabel}` : copy.submitUserSignedOrder}
+        {tradeButtonLabel}
       </button>
     </div>
   );

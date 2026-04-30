@@ -65,6 +65,15 @@ const getVersionPayload = () => ({
 const safeErrorMessage = (error: unknown): string =>
   process.env.NODE_ENV === "production" ? "Request failed" : error instanceof Error ? error.message : "Failed to fetch data";
 
+const isPolymarketBetaAllowlisted = (userId: string | null): boolean => {
+  if (!userId) return false;
+  return (process.env.POLYMARKET_ROUTED_TRADING_ALLOWLIST ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(userId.toLowerCase());
+};
+
 const rateLimitState = new Map<string, { windowStartedAtMs: number; count: number }>();
 
 const checkLocalRateLimit = (
@@ -199,6 +208,9 @@ async function handleRequest(
       const country = (request.headers.get("x-vercel-ip-country") ?? request.headers.get("cf-ipcountry") ?? "").toUpperCase();
       const restricted = new Set((process.env.POLYMARKET_RESTRICTED_COUNTRIES ?? "US").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean));
       const regionState = !country ? "region_unknown" : restricted.has(country) ? "region_blocked" : null;
+      const globallyEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+      const betaEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
+      const betaAllowlisted = globallyEnabled || (betaEnabled && isPolymarketBetaAllowlisted(userId));
       const preview = await previewPolymarketOrder(
         {
           ...body,
@@ -212,8 +224,8 @@ async function handleRequest(
         markets,
       );
       const disabledReasons = [
-        ...(process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true" ? [] : ["routed_trading_disabled"]),
-        ...(process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY !== "false" ? ["canary_not_allowed"] : []),
+        ...(globallyEnabled || betaEnabled ? [] : ["routed_trading_disabled"]),
+        ...(betaAllowlisted ? [] : ["beta_user_not_allowlisted"]),
         ...(regionState ? [regionState] : []),
         ...preview.disabledReasonCodes,
       ];
@@ -221,8 +233,10 @@ async function handleRequest(
         ok: disabledReasons.length === 0,
         state: disabledReasons[0] ?? "ready_for_user_signature",
         disabledReasons,
-        canaryOnly: process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY !== "false",
-        routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true",
+        canaryOnly: !globallyEnabled,
+        betaEnabled,
+        betaUserAllowlisted: betaAllowlisted,
+        routedTradingEnabled: globallyEnabled || betaEnabled,
         region: { status: regionState === null ? "allowed" : regionState === "region_blocked" ? "blocked" : "unknown", country: country || null },
         preview,
       });

@@ -474,7 +474,7 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /mobile-trade-sheet/);
   assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>交易功能尚未啟用<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
-  assert.match(markup, /透過 Polymarket 交易 · 交易功能尚未啟用/);
+  assert.match(markup, /<button[^>]*>交易功能尚未啟用<\/button>/);
   assert.match(markup, /複製市場推薦連結/);
 });
 

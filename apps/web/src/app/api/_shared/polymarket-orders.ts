@@ -8,6 +8,7 @@ export type PolymarketPreviewDisabledCode =
   | "auth_required"
   | "wallet_not_connected"
   | "canary_not_allowed"
+  | "beta_user_not_allowlisted"
   | "region_unknown"
   | "geoblocked"
   | "credentials_missing"
@@ -21,7 +22,8 @@ export type PolymarketPreviewDisabledCode =
 export const polymarketDisabledReasonZh: Record<PolymarketPreviewDisabledCode, string> = {
   auth_required: "尚未登入",
   wallet_not_connected: "尚未連接錢包",
-  canary_not_allowed: "目前只開放私人 canary 名單用戶",
+  canary_not_allowed: "測試交易功能只限指定用戶",
+  beta_user_not_allowlisted: "測試交易功能只限指定用戶",
   region_unknown: "暫時未能確認所在地區支援狀態",
   geoblocked: "你目前所在地區暫不支援 Polymarket 下單",
   credentials_missing: "需要 Polymarket 憑證",
@@ -162,7 +164,9 @@ export const previewPolymarketOrder = async (
   const slippageBps = toFiniteNumber(input.slippageBps) ?? 0;
   const expiration = toFiniteNumber(input.expiration);
   const builderCodeConfigured = getPolymarketBuilderCode() !== null;
-  const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+  const routedTradingEnabled =
+    process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true" ||
+    process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
   const market = marketSource === "polymarket" && marketExternalId
     ? markets.find((candidate) => marketMatches(candidate, marketExternalId)) ?? null
     : null;

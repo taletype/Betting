@@ -3,6 +3,7 @@ export type PolymarketRoutingReadiness =
   | "submit_mode_disabled"
   | "builder_code_missing"
   | "feature_disabled"
+  | "beta_user_not_allowlisted"
   | "wallet_not_connected"
   | "wallet_funds_insufficient"
   | "geoblock_checking"
@@ -15,6 +16,25 @@ export type PolymarketRoutingReadiness =
   | "signature_required"
   | "ready_to_submit"
   | "submitted";
+
+export type PolymarketTradingReadinessCheck =
+  | "routedTradingEnabled"
+  | "betaUserAllowlisted"
+  | "builderCodeConfigured"
+  | "walletConnected"
+  | "polymarketCredentialsReady"
+  | "userCanSignOrder"
+  | "marketTradable"
+  | "balanceAllowanceReady"
+  | "submitterReady"
+  | "attributionRecordingReady";
+
+export interface PolymarketTradingReadiness {
+  enabled: boolean;
+  disabledReason: string;
+  missingChecks: PolymarketTradingReadinessCheck[];
+  safeToSubmit: boolean;
+}
 
 export type PolymarketGeoblockStatus = "unknown" | "checking" | "allowed" | "blocked" | "error" | "stale";
 
@@ -44,6 +64,7 @@ export interface PolymarketRoutingReadinessInput {
   loggedIn?: boolean;
   hasBuilderCode: boolean;
   featureEnabled: boolean;
+  betaUserAllowlisted?: boolean;
   submitModeEnabled?: boolean;
   walletConnected: boolean;
   walletAddressKnown?: boolean;
@@ -58,7 +79,48 @@ export interface PolymarketRoutingReadinessInput {
   submitterAvailable: boolean;
   userSigned?: boolean;
   submitted?: boolean;
+  balanceAllowanceReady?: boolean;
+  attributionRecordingReady?: boolean;
 }
+
+const tradingDisabledReasonZh: Record<PolymarketTradingReadinessCheck, string> = {
+  routedTradingEnabled: "交易功能尚未啟用",
+  betaUserAllowlisted: "測試交易功能只限指定用戶",
+  builderCodeConfigured: "Builder Code 未設定",
+  walletConnected: "尚未連接錢包",
+  polymarketCredentialsReady: "需要 Polymarket 憑證",
+  userCanSignOrder: "需要用戶自行簽署訂單",
+  marketTradable: "市場暫時不可交易",
+  balanceAllowanceReady: "餘額或授權不足",
+  submitterReady: "交易提交器未準備好",
+  attributionRecordingReady: "交易提交器未準備好",
+};
+
+export const getPolymarketTradingReadiness = (
+  input: PolymarketRoutingReadinessInput,
+): PolymarketTradingReadiness => {
+  const checks: Record<PolymarketTradingReadinessCheck, boolean> = {
+    routedTradingEnabled: input.featureEnabled,
+    betaUserAllowlisted: input.betaUserAllowlisted !== false,
+    builderCodeConfigured: input.hasBuilderCode,
+    walletConnected: input.walletConnected && input.walletAddressKnown !== false,
+    polymarketCredentialsReady: input.hasCredentials,
+    userCanSignOrder: input.userSigningAvailable !== false && input.userSigned === true,
+    marketTradable: input.marketTradable && input.orderValid !== false,
+    balanceAllowanceReady: input.balanceAllowanceReady !== false && input.walletFundsSufficient !== false,
+    submitterReady: input.submitModeEnabled !== false && input.submitterAvailable,
+    attributionRecordingReady: input.attributionRecordingReady !== false,
+  };
+  const missingChecks = (Object.keys(checks) as PolymarketTradingReadinessCheck[]).filter((check) => !checks[check]);
+  const safeToSubmit = missingChecks.length === 0;
+
+  return {
+    enabled: safeToSubmit,
+    disabledReason: safeToSubmit ? "透過 Polymarket 交易" : tradingDisabledReasonZh[missingChecks[0] ?? "routedTradingEnabled"],
+    missingChecks,
+    safeToSubmit,
+  };
+};
 
 const resolveGeoblockStatus = (input: PolymarketRoutingReadinessInput): PolymarketGeoblockStatus | undefined => {
   if (input.geoblockStatus) return input.geoblockStatus;
@@ -82,6 +144,7 @@ export const getPolymarketRoutingReadiness = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness => {
   if (!input.featureEnabled) return "feature_disabled";
+  if (input.betaUserAllowlisted === false) return "beta_user_not_allowlisted";
   if (input.loggedIn === false) return "auth_required";
   if (!input.walletConnected) return "wallet_not_connected";
   if (input.walletAddressKnown === false) return "wallet_not_connected";
@@ -107,6 +170,7 @@ export const getPolymarketRoutingDisabledReasons = (
   const geoblockReadiness = getGeoblockReadiness(input);
 
   if (!input.featureEnabled) reasons.push("feature_disabled");
+  if (input.betaUserAllowlisted === false) reasons.push("beta_user_not_allowlisted");
   if (input.loggedIn === false) reasons.push("auth_required");
   if (!input.walletConnected) reasons.push("wallet_not_connected");
   if (input.walletConnected && input.walletAddressKnown === false) reasons.push("wallet_not_connected");

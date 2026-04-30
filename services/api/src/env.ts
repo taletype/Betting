@@ -49,6 +49,8 @@ export const validateApiEnvironment = (): void => {
 
   readOptionalBytes32Hex("POLY_BUILDER_CODE");
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_BETA_ENABLED", { defaultValue: false });
+  readStringList("POLYMARKET_ROUTED_TRADING_ALLOWLIST", { defaultValue: [] });
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_CANARY_ONLY", { defaultValue: true });
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_KILL_SWITCH", { defaultValue: false });
   readBooleanFlag("POLYMARKET_ORDER_SUBMIT_KILL_SWITCH", { defaultValue: false });

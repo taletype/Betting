@@ -219,6 +219,15 @@ const buildDetailHref = (locale: AppLocale, market: ExternalMarketApiRecord, ref
   return `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(routeKey)}`)}?${search.toString()}`;
 };
 
+const isAllowlistedPolymarketBetaUser = (user: { id: string; email: string | null } | null): boolean => {
+  if (!user) return false;
+  const allowlist = (process.env.POLYMARKET_ROUTED_TRADING_ALLOWLIST ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return allowlist.includes(user.id.toLowerCase()) || Boolean(user.email && allowlist.includes(user.email.toLowerCase()));
+};
+
 export async function renderExternalMarketsPage(locale: AppLocale, params?: MarketFeedSearchParams) {
   const copy = getLocaleCopy(locale).research;
   let markets: ExternalMarketApiRecord[] = [];
@@ -227,20 +236,20 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   let failedSources: string[] = [];
   let fallbackUsed = false;
   const hasBuilderCode = hasPolymarketBuilderCode();
-  const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+  const globallyRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+  const betaRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" ? "enabled" : "disabled";
   const submitterAvailable = submitterMode === "enabled";
-  const publicSubmitEnabled = routedTradingEnabled &&
-    hasBuilderCode &&
-    submitterAvailable &&
-    process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY === "false";
+  const refCode = normalizeReferralCode(params?.ref);
+  const currentUser = await getCurrentWebUser();
+  const betaUserAllowlisted = globallyRoutedTradingEnabled || (betaRoutedTradingEnabled && isAllowlistedPolymarketBetaUser(currentUser));
+  const routedTradingEnabled = globallyRoutedTradingEnabled || betaRoutedTradingEnabled;
+  const publicSubmitEnabled = globallyRoutedTradingEnabled && hasBuilderCode && submitterAvailable;
   const publicTradingStatusLabel = publicSubmitEnabled
     ? "實盤提交已啟用"
     : routedTradingEnabled
       ? "交易介面預覽已啟用；實盤提交仍然停用"
       : "交易介面預覽；實盤提交停用";
-  const refCode = normalizeReferralCode(params?.ref);
-  const currentUser = await getCurrentWebUser();
   const normalizedParams: MarketFeedSearchParams = { ...params, ref: refCode ?? params?.ref ?? undefined };
   const dataReadiness = getPublicExternalMarketsReadiness();
   const selectedStatus = params?.status?.trim();
@@ -272,6 +281,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const statusInput: PolymarketRoutingReadinessInput = {
     hasBuilderCode,
     featureEnabled: routedTradingEnabled,
+    betaUserAllowlisted,
     submitModeEnabled: submitterMode === "enabled",
     loggedIn: Boolean(currentUser),
     walletConnected: false,

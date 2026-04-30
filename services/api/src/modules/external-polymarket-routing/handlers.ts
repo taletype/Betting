@@ -24,6 +24,7 @@ export type ExternalPolymarketOrderType = "GTC" | "GTD" | "FOK" | "FAK";
 export type ExternalPolymarketCanaryReadinessState =
   | "routed_trading_disabled"
   | "canary_not_allowed"
+  | "beta_user_not_allowlisted"
   | "region_blocked"
   | "region_unknown"
   | "wallet_not_connected"
@@ -41,6 +42,25 @@ export type ExternalPolymarketCanaryReadinessState =
   | "submitter_unavailable"
   | "ready_for_user_signature"
   | "ready_to_submit_signed_order";
+
+export type PolymarketTradingReadinessCheck =
+  | "routedTradingEnabled"
+  | "betaUserAllowlisted"
+  | "builderCodeConfigured"
+  | "walletConnected"
+  | "polymarketCredentialsReady"
+  | "userCanSignOrder"
+  | "marketTradable"
+  | "balanceAllowanceReady"
+  | "submitterReady"
+  | "attributionRecordingReady";
+
+export interface PolymarketTradingReadiness {
+  enabled: boolean;
+  disabledReason: string;
+  missingChecks: PolymarketTradingReadinessCheck[];
+  safeToSubmit: boolean;
+}
 
 export interface ExternalPolymarketUserAuthBoundary {
   userId: string;
@@ -196,13 +216,19 @@ const splitEnvList = (name: string): string[] =>
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
 
+const isGlobalRoutedTradingEnabled = (): boolean =>
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
+
+const isBetaRoutedTradingEnabled = (): boolean =>
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_BETA_ENABLED", { defaultValue: false });
+
 const isCanaryOnly = (): boolean => readBooleanFlag("POLYMARKET_ROUTED_TRADING_CANARY_ONLY", { defaultValue: true });
 const isKillSwitchActive = (): boolean =>
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_KILL_SWITCH", { defaultValue: false }) ||
   readBooleanFlag("POLYMARKET_ORDER_SUBMIT_KILL_SWITCH", { defaultValue: false });
 
-const isCanaryAllowed = (input: { userId?: string; email?: string | null; walletAddress?: string | null }): boolean => {
-  if (!isCanaryOnly()) return false;
+const isBetaAllowlisted = (input: { userId?: string; email?: string | null; walletAddress?: string | null }): boolean => {
+  const allowlist = splitEnvList("POLYMARKET_ROUTED_TRADING_ALLOWLIST");
   const ids = splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS");
   const emails = splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_EMAILS");
   const wallets = splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_WALLETS");
@@ -210,15 +236,23 @@ const isCanaryAllowed = (input: { userId?: string; email?: string | null; wallet
   const email = input.email?.toLowerCase() ?? null;
   const wallet = input.walletAddress?.toLowerCase() ?? null;
   return Boolean(
-    (userId && ids.includes(userId)) ||
-    (email && emails.includes(email)) ||
+    (userId && (allowlist.includes(userId) || ids.includes(userId))) ||
+    (email && (allowlist.includes(email) || emails.includes(email))) ||
     (wallet && wallets.includes(wallet)),
   );
 };
 
+const isBetaUserAllowed = (input: { userId?: string; email?: string | null; walletAddress?: string | null }): boolean =>
+  isGlobalRoutedTradingEnabled() || (isBetaRoutedTradingEnabled() && isBetaAllowlisted(input));
+
+const isRoutedTradingGateOpen = (): boolean =>
+  (isGlobalRoutedTradingEnabled() || isBetaRoutedTradingEnabled()) && !isKillSwitchActive();
+
 export const getPolymarketCanaryConfig = () => ({
-  canaryOnly: isCanaryOnly(),
+  canaryOnly: !isGlobalRoutedTradingEnabled(),
+  betaEnabled: isBetaRoutedTradingEnabled(),
   allowedUsersCount: new Set([
+    ...splitEnvList("POLYMARKET_ROUTED_TRADING_ALLOWLIST"),
     ...splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS"),
     ...splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_EMAILS"),
     ...splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_WALLETS"),
@@ -324,16 +358,40 @@ const isProductionLikeRuntime = (): boolean => {
   return runtime === "production" || runtime === "staging";
 };
 
-const isExternalPolymarketRoutingEnabled = (): boolean =>
-  readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
+const isExternalPolymarketRoutingEnabled = isRoutedTradingGateOpen;
 
 export const getExternalPolymarketRoutingReadiness = () => ({
   builderCodeConfigured: getPolymarketBuilderCode() !== null,
   routedTradingEnabled: isExternalPolymarketRoutingEnabled() && !isKillSwitchActive(),
-  canaryOnly: isCanaryOnly(),
+  canaryOnly: !isGlobalRoutedTradingEnabled(),
+  betaEnabled: isBetaRoutedTradingEnabled(),
   killSwitchActive: isKillSwitchActive(),
   submitterMode: process.env.POLYMARKET_CLOB_SUBMITTER === "real" ? "real" : "disabled",
 });
+
+const zhReasonByCheck: Record<PolymarketTradingReadinessCheck, string> = {
+  routedTradingEnabled: "交易功能尚未啟用",
+  betaUserAllowlisted: "測試交易功能只限指定用戶",
+  builderCodeConfigured: "Builder Code 未設定",
+  walletConnected: "尚未連接錢包",
+  polymarketCredentialsReady: "需要 Polymarket 憑證",
+  userCanSignOrder: "需要用戶自行簽署訂單",
+  marketTradable: "市場暫時不可交易",
+  balanceAllowanceReady: "餘額或授權不足",
+  submitterReady: "交易提交器未準備好",
+  attributionRecordingReady: "交易提交器未準備好",
+};
+
+const toTradingReadiness = (checks: Record<PolymarketTradingReadinessCheck, boolean>): PolymarketTradingReadiness => {
+  const missingChecks = (Object.keys(checks) as PolymarketTradingReadinessCheck[]).filter((key) => !checks[key]);
+  const safeToSubmit = missingChecks.length === 0;
+  return {
+    enabled: safeToSubmit,
+    disabledReason: safeToSubmit ? "透過 Polymarket 交易" : zhReasonByCheck[missingChecks[0] ?? "routedTradingEnabled"],
+    missingChecks,
+    safeToSubmit,
+  };
+};
 
 export interface ExternalPolymarketOrderReadinessResult {
   ok: boolean;
@@ -365,6 +423,7 @@ export interface ExternalPolymarketOrderReadinessResult {
   };
   warnings: string[];
   checkedAt: string;
+  readiness: PolymarketTradingReadiness;
 }
 
 const defaultServerRegionCheck = (now: Date): ExternalPolymarketServerRegionCheck => ({
@@ -444,12 +503,12 @@ export const evaluateExternalPolymarketOrderReadiness = async (
   const requestedWalletAddress = typeof input.userWalletAddress === "string" && input.userWalletAddress.trim()
     ? normalizeAddress(input.userWalletAddress)
     : linkedWalletAddress;
-  const canaryAllowed = isCanaryAllowed({
+  const betaUserAllowlisted = isBetaUserAllowed({
     userId,
     email: dependencies.requestUserEmail,
     walletAddress: requestedWalletAddress,
   });
-  if (!canaryAllowed) appendReason(reasons, "canary_not_allowed");
+  if (!betaUserAllowlisted) appendReason(reasons, "beta_user_not_allowlisted");
   if (!linkedWalletAddress) appendReason(reasons, "wallet_not_connected");
   if (linkedWallet && "verifiedAt" in linkedWallet && !linkedWallet.verifiedAt) appendReason(reasons, "wallet_not_verified");
 
@@ -480,6 +539,8 @@ export const evaluateExternalPolymarketOrderReadiness = async (
     appendReason(reasons, "insufficient_allowance");
   }
 
+  const attributionRecordingReady = process.env.POLYMARKET_ROUTED_ORDER_AUDIT_DISABLED !== "true";
+  if (!attributionRecordingReady) appendReason(reasons, "submitter_unavailable");
   const submitterAvailable = !reasons.includes("submitter_unavailable");
   const readyWithoutSignature = reasons.length === 1 && reasons[0] === "user_signature_required";
   const state: ExternalPolymarketCanaryReadinessState = reasons.length === 0
@@ -488,12 +549,25 @@ export const evaluateExternalPolymarketOrderReadiness = async (
       ? "ready_for_user_signature"
       : reasons[0] ?? "routed_trading_disabled";
 
+  const readinessObject = toTradingReadiness({
+    routedTradingEnabled: readiness.routedTradingEnabled,
+    betaUserAllowlisted,
+    builderCodeConfigured: readiness.builderCodeConfigured,
+    walletConnected: Boolean(linkedWalletAddress),
+    polymarketCredentialsReady: l2Lookup.status === "present",
+    userCanSignOrder: Boolean(input.signedOrder),
+    marketTradable: !reasons.includes("market_not_tradable") && !reasons.includes("market_stale") && !reasons.includes("token_missing") && !reasons.includes("price_invalid") && !reasons.includes("size_invalid"),
+    balanceAllowanceReady: !reasons.includes("insufficient_balance") && !reasons.includes("insufficient_allowance"),
+    submitterReady: submitter.mode === "real",
+    attributionRecordingReady,
+  });
+
   return {
     ok: state === "ready_for_user_signature" || state === "ready_to_submit_signed_order",
     state,
     disabledReasons: reasons,
     canaryOnly: readiness.canaryOnly,
-    canaryAllowed,
+    canaryAllowed: betaUserAllowlisted,
     routedTradingEnabled: readiness.routedTradingEnabled,
     killSwitchActive: readiness.killSwitchActive,
     builderCodeConfigured: readiness.builderCodeConfigured,
@@ -511,6 +585,7 @@ export const evaluateExternalPolymarketOrderReadiness = async (
     },
     warnings,
     checkedAt,
+    readiness: readinessObject,
   };
 };
 
@@ -739,8 +814,8 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   if ("verifiedAt" in linkedWallet && !linkedWallet.verifiedAt) {
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_WALLET_NOT_VERIFIED", "linked wallet must be verified");
   }
-  if (!dependencies.allowNonProductionSubmissionForTests && !isCanaryAllowed({ userId, email: dependencies.requestUserEmail, walletAddress: linkedWalletAddress })) {
-    throw new ExternalPolymarketRoutingError(403, "POLYMARKET_CANARY_NOT_ALLOWED", "live routed trading is limited to private canary users");
+  if (!dependencies.allowNonProductionSubmissionForTests && !isBetaUserAllowed({ userId, email: dependencies.requestUserEmail, walletAddress: linkedWalletAddress })) {
+    throw new ExternalPolymarketRoutingError(403, "POLYMARKET_BETA_USER_NOT_ALLOWLISTED", "測試交易功能只限指定用戶");
   }
   if (linkedWalletAddress !== userWalletAddress || normalizeAddress(signedOrder.signer) !== linkedWalletAddress) {
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_SIGNER_MISMATCH", "signed order signer must match the linked user wallet");
@@ -833,6 +908,10 @@ export const routeExternalPolymarketOrder = async (
     if (!health.ok) {
       incrementCounter("routed_trade_disabled_reason", { reason: "submitter_health_failed" });
       throw new ExternalPolymarketRoutingError(503, "POLYMARKET_SUBMITTER_UNHEALTHY", "Polymarket submitter health check failed");
+    }
+    if (process.env.POLYMARKET_ROUTED_ORDER_AUDIT_DISABLED === "true") {
+      incrementCounter("routed_trade_disabled_reason", { reason: "attribution_recording_unavailable" });
+      throw new ExternalPolymarketRoutingError(503, "POLYMARKET_ATTRIBUTION_RECORDING_UNAVAILABLE", "Polymarket attribution recording is not ready");
     }
 
     const payload = await prepareExternalPolymarketOrderRoutePayload(input, { ...dependencies, submitter });

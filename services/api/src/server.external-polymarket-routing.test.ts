@@ -211,12 +211,12 @@ test("setting routed trading true without real submitter still fails", async () 
   });
 });
 
-test("global routed trading flag alone is not enough without canary allowlist", async () => {
+test("beta routed trading flag is not enough without allowlist", async () => {
   await withEnv({
     POLY_BUILDER_CODE: VALID_BUILDER_CODE,
-    POLYMARKET_ROUTED_TRADING_ENABLED: "true",
-    POLYMARKET_ROUTED_TRADING_CANARY_ONLY: "true",
-    POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS: undefined,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: undefined,
     POLYMARKET_CLOB_SUBMITTER: "real",
   }, async () => {
     await withMarket(baseMarket(), async () => {
@@ -226,18 +226,19 @@ test("global routed trading flag alone is not enough without canary allowlist", 
         serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
         balanceAllowanceLookup: async () => ({ balanceSufficient: true, allowanceSufficient: true }),
       });
-      assert.equal(preflight.state, "canary_not_allowed");
-      assert.ok(preflight.disabledReasons.includes("canary_not_allowed"));
+      assert.equal(preflight.state, "beta_user_not_allowlisted");
+      assert.ok(preflight.disabledReasons.includes("beta_user_not_allowlisted"));
+      assert.equal(preflight.readiness.disabledReason, "測試交易功能只限指定用戶");
     });
   });
 });
 
-test("canary user reaches ready-for-signature only when all non-signature gates pass", async () => {
+test("allowlisted beta user reaches ready-for-signature only when all non-signature gates pass", async () => {
   await withEnv({
     POLY_BUILDER_CODE: VALID_BUILDER_CODE,
-    POLYMARKET_ROUTED_TRADING_ENABLED: "true",
-    POLYMARKET_ROUTED_TRADING_CANARY_ONLY: "true",
-    POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS: USER_ID,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: USER_ID,
     POLYMARKET_CLOB_SUBMITTER: "real",
   }, async () => {
     await withMarket(baseMarket(), async () => {
@@ -249,6 +250,77 @@ test("canary user reaches ready-for-signature only when all non-signature gates 
       });
       assert.equal(preflight.state, "ready_for_user_signature");
       assert.equal(preflight.ok, true);
+      assert.equal(preflight.readiness.safeToSubmit, false);
+      assert.deepEqual(preflight.readiness.missingChecks, ["userCanSignOrder"]);
+    });
+  });
+});
+
+test("allowlisted beta user still cannot submit when any readiness check fails", async () => {
+  await withEnv({
+    POLY_BUILDER_CODE: VALID_BUILDER_CODE,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: USER_ID,
+    POLYMARKET_CLOB_SUBMITTER: "real",
+  }, async () => {
+    await withMarket(baseMarket(), async () => {
+      const preflight = await evaluateExternalPolymarketOrderReadiness(baseInput(), {
+        ...liveDeps(mockSubmitter()),
+        allowNonProductionSubmissionForTests: false,
+        serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
+        balanceAllowanceLookup: async () => ({ balanceSufficient: false, allowanceSufficient: true }),
+      });
+      assert.equal(preflight.readiness.safeToSubmit, false);
+      assert.ok(preflight.readiness.missingChecks.includes("balanceAllowanceReady"));
+      assert.equal(preflight.readiness.disabledReason, "餘額或授權不足");
+    });
+  });
+});
+
+test("non-allowlisted users cannot submit through beta gate", async () => {
+  await withEnv({
+    APP_ENV: "staging",
+    POLY_BUILDER_CODE: VALID_BUILDER_CODE,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: "someone-else@example.test",
+    POLYMARKET_CLOB_SUBMITTER: "real",
+  }, async () => {
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), {
+          ...liveDeps(mockSubmitter()),
+          allowNonProductionSubmissionForTests: false,
+          serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
+          balanceAllowanceLookup: async () => ({ balanceSufficient: true, allowanceSufficient: true }),
+        }),
+        /指定用戶/,
+      );
+    });
+  });
+});
+
+test("submit path blocks when attribution recording is disabled", async () => {
+  await withEnv({
+    APP_ENV: "staging",
+    POLY_BUILDER_CODE: VALID_BUILDER_CODE,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: USER_ID,
+    POLYMARKET_CLOB_SUBMITTER: "real",
+    POLYMARKET_ROUTED_ORDER_AUDIT_DISABLED: "true",
+  }, async () => {
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), {
+          ...liveDeps(mockSubmitter()),
+          allowNonProductionSubmissionForTests: false,
+          serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
+          balanceAllowanceLookup: async () => ({ balanceSufficient: true, allowanceSufficient: true }),
+        }),
+        /attribution recording is not ready/,
+      );
     });
   });
 });
@@ -270,10 +342,10 @@ test("restricted and unknown server regions block preflight", async () => {
   });
 });
 
-test("builderCode must be included before signing and is preserved through submission", async () => {
+test("builderCode is attached only in the safe signed submit path and is preserved through submission", async () => {
   let submittedPayload: ExternalPolymarketOrderRoutePayload | null = null;
   let auditedPayload: ExternalPolymarketOrderRoutePayload | null = null;
-  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "false", POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true", POLYMARKET_ROUTED_TRADING_ALLOWLIST: USER_ID }, async () => {
     await withMarket(baseMarket(), async () => {
       const result = await routeExternalPolymarketOrder(baseInput(), {
         ...liveDeps(mockSubmitter((payload) => { submittedPayload = payload; })),

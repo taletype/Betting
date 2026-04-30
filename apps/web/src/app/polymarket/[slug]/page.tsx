@@ -176,6 +176,15 @@ const getStatusFlags = (market: ExternalMarketApiRecord): {
 
 const yesNo = (value: boolean | null): string => value === null ? "未知" : value ? "是" : "否";
 
+const isAllowlistedPolymarketBetaUser = (user: { id: string; email: string | null } | null): boolean => {
+  if (!user) return false;
+  const allowlist = (process.env.POLYMARKET_ROUTED_TRADING_ALLOWLIST ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return allowlist.includes(user.id.toLowerCase()) || Boolean(user.email && allowlist.includes(user.email.toLowerCase()));
+};
+
 export async function renderPolymarketSlugPage(locale: AppLocale, { params, searchParams }: PolymarketSlugPageProps) {
   const { slug } = await params;
   const slugResolution = resolvePolymarketDetailSlug(slug);
@@ -184,10 +193,13 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const copy = getLocaleCopy(locale).research;
   const shortCopy = siteCopy[locale];
   const hasBuilderCode = hasPolymarketBuilderCode();
-  const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+  const globallyRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+  const betaRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
   const submitModeEnabled = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
   const submitterAvailable = submitModeEnabled;
   const currentUser = await getCurrentWebUser();
+  const betaUserAllowlisted = globallyRoutedTradingEnabled || (betaRoutedTradingEnabled && isAllowlistedPolymarketBetaUser(currentUser));
+  const routedTradingEnabled = globallyRoutedTradingEnabled || betaRoutedTradingEnabled;
   const { market, failed } = await resolvePolymarketDetailMarket(slug, locale, {
     source: query?.source,
     externalId: query?.externalId,
@@ -198,6 +210,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       locale,
       hasBuilderCode,
       featureEnabled: routedTradingEnabled,
+      betaUserAllowlisted,
       submitModeEnabled,
       loggedIn: Boolean(currentUser),
       walletConnected: false,
@@ -299,6 +312,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const routingInput: PolymarketRoutingReadinessInput = {
     hasBuilderCode,
     featureEnabled: routedTradingEnabled,
+    betaUserAllowlisted,
     submitModeEnabled,
     loggedIn: Boolean(currentUser),
     walletConnected: false,
@@ -312,10 +326,9 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
   const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
   const disabledReasons = getPolymarketRoutingDisabledReasons(routingInput);
-  const publicSubmitEnabled = routedTradingEnabled &&
+  const publicSubmitEnabled = globallyRoutedTradingEnabled &&
     hasBuilderCode &&
-    submitterAvailable &&
-    process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY === "false";
+    submitterAvailable;
   const publicTradingStatusLabel = publicSubmitEnabled
     ? "實盤提交已啟用"
     : routedTradingEnabled
@@ -327,6 +340,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     locale,
     hasBuilderCode,
     featureEnabled: routedTradingEnabled,
+    betaUserAllowlisted,
     submitModeEnabled,
     loggedIn: Boolean(currentUser),
     walletConnected: false,
