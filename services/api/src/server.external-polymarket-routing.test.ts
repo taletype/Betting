@@ -179,7 +179,9 @@ test("missing builder code disables routed trading but read-only external market
     const readOnlyResponse = await handleRequest(new Request("http://localhost/external/markets"));
     assert.equal(readOnlyResponse.status, 200);
     const unauthenticatedResponse = await handleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
-    assert.equal(unauthenticatedResponse.status, 401);
+    const unauthenticatedPayload = await unauthenticatedResponse.json() as { code: string };
+    assert.equal(unauthenticatedResponse.status, 503);
+    assert.equal(unauthenticatedPayload.code, "POLYMARKET_BUILDER_CODE_MISSING");
     await withRouteAuth(async (authenticatedHandleRequest) => {
       const routingResponse = await authenticatedHandleRequest(new Request("http://localhost/external/polymarket/orders/route", { method: "POST", body: JSON.stringify({ orderInput: { tokenID: "123" } }) }));
       const payload = await routingResponse.json() as { code: string };
@@ -517,7 +519,7 @@ test("missing L2 credentials block submission", async () => {
     await withMarket(baseMarket(), async () => {
       await assert.rejects(
         () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), l2CredentialLookup: async () => ({ status: "missing" }) }),
-        /Polymarket credentials required/,
+        /設定 Polymarket 憑證/,
       );
     });
   });

@@ -180,7 +180,6 @@ async function handleRequest(
           ...body,
           loggedIn: Boolean(userId),
           walletConnected: body.walletConnected === true,
-          geoblockAllowed: body.geoblockAllowed === true,
           l2CredentialsPresent: body.l2CredentialsPresent === true,
           userSigningAvailable: body.userSigningAvailable === true,
           submitterAvailable: process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true",
@@ -191,15 +190,9 @@ async function handleRequest(
     }
 
     if (apiPath === "polymarket/orders/preflight" && request.method === "POST") {
-      if (!userId) {
-        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-      }
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
       const markets = ((await readExternalMarkets(adminSupabase())) as ExternalMarketApiRecord[])
         .filter((market) => market.source === "polymarket");
-      const country = (request.headers.get("x-vercel-ip-country") ?? request.headers.get("cf-ipcountry") ?? "").toUpperCase();
-      const restricted = new Set((process.env.POLYMARKET_RESTRICTED_COUNTRIES ?? "US").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean));
-      const regionState = !country ? "region_unknown" : restricted.has(country) ? "region_blocked" : null;
       const globallyEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
       const betaEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
       const betaAllowlisted = globallyEnabled || (betaEnabled && isPolymarketRoutedTradingAllowlisted({ userId }));
@@ -208,7 +201,6 @@ async function handleRequest(
           ...body,
           loggedIn: Boolean(userId),
           walletConnected: body.walletConnected === true,
-          geoblockAllowed: regionState === null ? true : regionState === "region_blocked" ? false : undefined,
           l2CredentialsPresent: body.l2CredentialsPresent === true,
           userSigningAvailable: body.userSigningAvailable === true,
           submitterAvailable: process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true",
@@ -218,7 +210,6 @@ async function handleRequest(
       const disabledReasons = [
         ...(globallyEnabled || betaEnabled ? [] : ["routed_trading_disabled"]),
         ...(betaAllowlisted ? [] : ["beta_user_not_allowlisted"]),
-        ...(regionState ? [regionState] : []),
         ...preview.disabledReasonCodes,
       ];
       return NextResponse.json({
@@ -229,15 +220,12 @@ async function handleRequest(
         betaEnabled,
         betaUserAllowlisted: betaAllowlisted,
         routedTradingEnabled: globallyEnabled || betaEnabled,
-        region: { status: regionState === null ? "allowed" : regionState === "region_blocked" ? "blocked" : "unknown", country: country || null },
+        region: { status: "determined_by_polymarket" },
         preview,
       });
     }
 
     if (apiPath === "polymarket/orders/submit" && request.method === "POST") {
-      if (!userId) {
-        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-      }
       return NextResponse.json(
         {
           error: "Polymarket signed order submission is handled by the service API canary path and is disabled here by default",

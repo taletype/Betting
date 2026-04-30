@@ -1,14 +1,10 @@
 export type PolymarketRoutingReadiness =
-  | "auth_required"
   | "submit_mode_disabled"
   | "builder_code_missing"
   | "feature_disabled"
   | "beta_user_not_allowlisted"
   | "wallet_not_connected"
   | "wallet_funds_insufficient"
-  | "geoblock_checking"
-  | "geoblock_unconfirmed"
-  | "geoblocked"
   | "credentials_missing"
   | "market_not_tradable"
   | "invalid_order"
@@ -42,10 +38,7 @@ export type PolymarketReadinessChecklistStatus = "complete" | "missing" | "block
 
 export interface PolymarketReadinessChecklistItem {
   id:
-    | "login"
-    | "wallet"
     | "funding"
-    | "region"
     | "credentials"
     | "signature"
     | "builder_code"
@@ -88,7 +81,7 @@ const tradingDisabledReasonZh: Record<PolymarketTradingReadinessCheck, string> =
   betaUserAllowlisted: "測試交易功能只限指定用戶",
   builderCodeConfigured: "Builder Code 未設定",
   walletConnected: "尚未連接錢包",
-  polymarketCredentialsReady: "需要 Polymarket 憑證",
+  polymarketCredentialsReady: "設定 Polymarket 憑證",
   userCanSignOrder: "需要用戶自行簽署訂單",
   marketTradable: "市場暫時不可交易",
   balanceAllowanceReady: "餘額或授權不足",
@@ -122,24 +115,6 @@ export const getPolymarketTradingReadiness = (
   };
 };
 
-const resolveGeoblockStatus = (input: PolymarketRoutingReadinessInput): PolymarketGeoblockStatus | undefined => {
-  if (input.geoblockStatus) return input.geoblockStatus;
-  if (input.geoblockAllowed === true) return "allowed";
-  if (input.geoblockAllowed === false) return "blocked";
-  return undefined;
-};
-
-const getGeoblockReadiness = (
-  input: PolymarketRoutingReadinessInput,
-): Extract<PolymarketRoutingReadiness, "geoblock_checking" | "geoblock_unconfirmed" | "geoblocked"> | null => {
-  const status = resolveGeoblockStatus(input);
-
-  if (status === "blocked") return "geoblocked";
-  if (status === "unknown" || status === "checking") return "geoblock_checking";
-  if (status === "error" || status === "stale") return "geoblock_unconfirmed";
-  return null;
-};
-
 export const getPolymarketRoutingReadiness = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness => {
@@ -148,8 +123,6 @@ export const getPolymarketRoutingReadiness = (
   if (!input.walletConnected) return "wallet_not_connected";
   if (input.walletAddressKnown === false) return "wallet_not_connected";
   if (input.walletFundsSufficient === false) return "wallet_funds_insufficient";
-  const geoblockReadiness = getGeoblockReadiness(input);
-  if (geoblockReadiness) return geoblockReadiness;
   if (!input.hasCredentials) return "credentials_missing";
   if (input.userSigningAvailable === false) return "signature_required";
   if (!input.hasBuilderCode) return "builder_code_missing";
@@ -166,14 +139,12 @@ export const getPolymarketRoutingDisabledReasons = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketRoutingReadiness[] => {
   const reasons: PolymarketRoutingReadiness[] = [];
-  const geoblockReadiness = getGeoblockReadiness(input);
 
   if (!input.featureEnabled) reasons.push("feature_disabled");
   if (input.betaUserAllowlisted === false) reasons.push("beta_user_not_allowlisted");
   if (!input.walletConnected) reasons.push("wallet_not_connected");
   if (input.walletConnected && input.walletAddressKnown === false) reasons.push("wallet_not_connected");
   if (input.walletFundsSufficient === false) reasons.push("wallet_funds_insufficient");
-  if (geoblockReadiness) reasons.push(geoblockReadiness);
   if (!input.hasCredentials) reasons.push("credentials_missing");
   if (input.userSigningAvailable === false) reasons.push("signature_required");
   if (!input.hasBuilderCode) reasons.push("builder_code_missing");
@@ -199,69 +170,31 @@ export const getPolymarketTopBlockingReason = (
   if (!input.featureEnabled) return "feature_disabled";
   if (input.betaUserAllowlisted === false) return "beta_user_not_allowlisted";
   if (!input.hasBuilderCode) return "builder_code_missing";
-
-  const geoblockReadiness = getGeoblockReadiness(input);
-  if (geoblockReadiness) return geoblockReadiness;
   if (input.walletFundsSufficient === false) return "wallet_funds_insufficient";
   if (input.userSigningAvailable === false || !input.userSigned) return "signature_required";
   if (input.submitted) return null;
   return null;
 };
 
-export const getPolymarketGeoblockStatusLabel = (status: PolymarketGeoblockStatus): string => {
-  if (status === "allowed") return "所在地區支援狀態已確認";
-  if (status === "blocked") return "你目前所在地區暫不支援 Polymarket 下單";
-  if (status === "error" || status === "stale") return "暫時未能確認所在地區支援狀態";
-  return "正在檢查所在地區支援狀態";
-};
+export const getPolymarketGeoblockStatusLabel = (_status: PolymarketGeoblockStatus): string => "所在地區由 Polymarket 判斷";
 
 export const getPolymarketReadinessChecklist = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketReadinessChecklistItem[] => {
-  const geoblockStatus = resolveGeoblockStatus(input) ?? "unknown";
-  const regionStatus: PolymarketReadinessChecklistStatus =
-    geoblockStatus === "allowed"
-      ? "complete"
-      : geoblockStatus === "blocked"
-        ? "blocked"
-        : geoblockStatus === "error" || geoblockStatus === "stale"
-          ? "missing"
-          : "checking";
-
   return [
-    {
-      id: "login",
-      label: "登入",
-      explanation: input.loggedIn === false ? "登入以保存推薦獎勵。" : "已確認登入狀態。",
-      status: input.loggedIn === false ? "missing" : "complete",
-      actionHref: input.loggedIn === false ? "/login" : undefined,
-      actionLabel: input.loggedIn === false ? "登入以保存推薦獎勵" : undefined,
-    },
-    {
-      id: "wallet",
-      label: "連接錢包",
-      explanation: input.walletConnected && input.walletAddressKnown !== false ? "錢包已連接，可由用戶自行簽署。" : "需要連接用戶自己的錢包。",
-      status: input.walletConnected && input.walletAddressKnown !== false ? "complete" : "missing",
-      actionHref: input.walletConnected && input.walletAddressKnown !== false ? undefined : "/account",
-      actionLabel: input.walletConnected && input.walletAddressKnown !== false ? undefined : "查看錢包狀態",
-    },
     {
       id: "funding",
       label: "錢包資金 / 增值",
-      explanation: input.walletFundsSufficient === false
+      explanation: !input.walletConnected || input.walletAddressKnown === false
+        ? "需要連接用戶自己的錢包；平台不託管資金。"
+        : input.walletFundsSufficient === false
         ? "錢包資金不足；可透過第三方服務為自己的錢包增值。"
         : input.fundingAvailable === false
           ? "錢包增值服務暫時不可用。"
           : "可為用戶自己的錢包增值；平台不託管資金。",
-      status: input.walletFundsSufficient === false || input.fundingAvailable === false ? "missing" : "complete",
-      actionHref: input.walletFundsSufficient === false || input.fundingAvailable === false ? "/account" : undefined,
-      actionLabel: input.walletFundsSufficient === false || input.fundingAvailable === false ? "增值錢包" : undefined,
-    },
-    {
-      id: "region",
-      label: "所在地區支援",
-      explanation: getPolymarketGeoblockStatusLabel(geoblockStatus),
-      status: regionStatus,
+      status: !input.walletConnected || input.walletAddressKnown === false || input.walletFundsSufficient === false || input.fundingAvailable === false ? "missing" : "complete",
+      actionHref: !input.walletConnected || input.walletAddressKnown === false || input.walletFundsSufficient === false || input.fundingAvailable === false ? "/account" : undefined,
+      actionLabel: !input.walletConnected || input.walletAddressKnown === false ? "查看錢包狀態" : input.walletFundsSufficient === false || input.fundingAvailable === false ? "增值錢包" : undefined,
     },
     {
       id: "credentials",
@@ -287,7 +220,7 @@ export const getPolymarketReadinessChecklist = (
       id: "trading_feature",
       label: "交易功能",
       explanation: input.featureEnabled ? "交易介面預覽可用；實盤提交需另行啟用。" : "交易介面預覽；市場仍可瀏覽。",
-      status: input.featureEnabled ? "checking" : "missing",
+      status: input.featureEnabled ? "complete" : "blocked",
     },
     {
       id: "market_status",

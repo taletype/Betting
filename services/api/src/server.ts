@@ -299,8 +299,6 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/orders/preflight") {
-      const unauthorized = requireAuthenticatedUser(requestUserId);
-      if (unauthorized) return unauthorized;
       const body = await parseBody(request);
       try {
         const payload = await evaluateExternalPolymarketOrderReadiness(body, {
@@ -320,8 +318,6 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/orders/preview") {
-      const unauthorized = requireAuthenticatedUser(requestUserId);
-      if (unauthorized) return unauthorized;
       const body = await parseBody(request);
       try {
         const payload = await previewExternalPolymarketOrder(body, {
@@ -342,9 +338,6 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/orders/submit") {
-      const unauthorized = requireAuthenticatedUser(requestUserId);
-      if (unauthorized) return unauthorized;
-
       const rateLimit = checkRateLimit("polymarketRoutedTrade", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "polymarket_routed_trade" });
@@ -396,11 +389,6 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/external/polymarket/orders/route") {
-      const unauthorized = requireAuthenticatedUser(requestUserId);
-      if (unauthorized) {
-        return unauthorized;
-      }
-
       const rateLimit = checkRateLimit("polymarketRoutedTrade", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "polymarket_routed_trade" });

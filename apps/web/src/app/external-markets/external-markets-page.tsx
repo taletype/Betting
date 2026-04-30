@@ -306,7 +306,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     if (reason === "wallet_not_connected") return "連接錢包";
     if (reason === "wallet_funds_insufficient") return "增值錢包";
     if (reason === "credentials_missing") return "設定 Polymarket 憑證";
-    if (reason === "market_not_tradable" || reason === "invalid_order" || reason === "geoblocked") return "市場只供瀏覽";
+    if (reason === "market_not_tradable" || reason === "invalid_order") return "市場只供瀏覽";
     if (reason === "submit_mode_disabled" || reason === "submitter_unavailable") return "實盤提交已停用";
     if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
     if (reason === "feature_disabled") return "交易功能尚未啟用";

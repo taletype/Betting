@@ -211,7 +211,7 @@ test("Thirdweb connected wallet state is display-only and does not imply app log
     }),
   );
 
-  assert.match(tradeMarkup, /登入以保存推薦獎勵/);
+  assert.match(tradeMarkup, /data-testid="readiness-checklist"/);
   assert.doesNotMatch(tradeMarkup, /data-testid="top-blocking-reason">尚未登入/);
   assert.match(tradeMarkup, /disabled=""/);
 });
@@ -307,7 +307,9 @@ test("Trade via Polymarket ticket is disabled by default", () => {
     assert.match(markup, /本平台不會代用戶下注或交易/);
     assert.match(markup, /不託管用戶在 Polymarket 的資金/);
     assert.match(markup, /data-testid="readiness-checklist"/);
-    assert.match(markup, /正在檢查所在地區支援狀態/);
+    assert.match(markup, /所在地區由 Polymarket 判斷/);
+    assert.match(markup, /實際交易是否可提交，將由 Polymarket 的錢包、憑證、市場及合規檢查判斷。/);
+    assert.doesNotMatch(markup, /所在地區支援：檢查中|所在地區支援：受阻|正在檢查所在地區支援狀態/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /待生效 Maker 費率：0.5%/);
     assert.match(markup, /待生效 Taker 費率：1%/);
@@ -346,7 +348,7 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
   assert.match(walletMarkup, /連接錢包/);
 
   const credentialMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasCredentials: false }));
-  assert.match(credentialMarkup, /data-testid="top-blocking-reason">需要 Polymarket 憑證/);
+  assert.match(credentialMarkup, /data-testid="top-blocking-reason">設定 Polymarket 憑證/);
   assert.match(credentialMarkup, /設定 Polymarket 憑證/);
 
   const featureMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, featureEnabled: false }));
@@ -357,7 +359,8 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
   assert.match(builderMarkup, /只影響下單，不影響瀏覽市場/);
 
   const blockedMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, geoblockAllowed: false }));
-  assert.match(blockedMarkup, /你目前所在地區暫不支援 Polymarket 下單/);
+  assert.doesNotMatch(blockedMarkup, /你目前所在地區暫不支援 Polymarket 下單|所在地區支援.*受阻/);
+  assert.match(blockedMarkup, /所在地區由 Polymarket 判斷/);
 
   const submitterMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitterAvailable: false }));
   assert.match(submitterMarkup, /data-testid="top-blocking-reason">交易提交器未準備好/);
@@ -365,6 +368,18 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
   const submitDisabledMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitModeEnabled: false }));
   assert.match(submitDisabledMarkup, /data-testid="top-blocking-reason">實盤提交已停用/);
   assert.doesNotMatch(submitDisabledMarkup, /交易功能完成/);
+});
+
+test("Polymarket ticket and preview do not spoof or override geo restrictions", () => {
+  const files = [
+    "apps/web/src/app/external-markets/polymarket-routing-readiness.ts",
+    "apps/web/src/app/external-markets/polymarket-trade-ticket.tsx",
+    "apps/web/src/app/api/_shared/polymarket-orders.ts",
+    "apps/web/src/app/api/[...path]/route.ts",
+  ];
+  const source = files.map((file) => readFileSync(resolve(repoRoot, file), "utf8")).join("\n");
+
+  assert.doesNotMatch(source, /vpn|location spoof|geo spoof|proxy location|x-vercel-ip-country|cf-ipcountry|POLYMARKET_RESTRICTED_COUNTRIES/i);
 });
 
 test("rewards page presents rewards as manual approval accounting", async () => {

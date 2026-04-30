@@ -111,7 +111,7 @@ test("marketable order preview uses worst acceptable price as slippage protectio
   });
 });
 
-test("preview returns exact disabled reasons for missing wallet, credentials, geoblock, and feature flag", async (t) => {
+test("preview returns exact disabled reasons for missing wallet, credentials, and feature flag without region gate", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify({ tick_size: "0.01", min_order_size: "5", bids: [], asks: [] }))) as typeof globalThis.fetch;
   t.after(() => {
@@ -127,10 +127,11 @@ test("preview returns exact disabled reasons for missing wallet, credentials, ge
 
     assert.deepEqual(
       preview.disabledReasons.filter((reason) =>
-        ["尚未連接錢包", "你目前所在地區暫不支援 Polymarket 下單", "需要 Polymarket 憑證", "Builder Code 未設定", "交易功能尚未啟用"].includes(reason),
+        ["尚未連接錢包", "設定 Polymarket 憑證", "Builder Code 未設定", "交易功能尚未啟用"].includes(reason),
       ),
-      ["交易功能尚未啟用", "尚未連接錢包", "你目前所在地區暫不支援 Polymarket 下單", "需要 Polymarket 憑證", "Builder Code 未設定"],
+      ["交易功能尚未啟用", "尚未連接錢包", "設定 Polymarket 憑證", "Builder Code 未設定"],
     );
+    assert.doesNotMatch(preview.disabledReasonCodes.join(" "), /geo|region/);
   });
 });
 

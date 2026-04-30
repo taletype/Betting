@@ -30,7 +30,7 @@ test("readiness model enumerates disabled states", () => {
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: false, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "feature_disabled");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, betaUserAllowlisted: false, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "beta_user_not_allowlisted");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: false, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "wallet_not_connected");
-  assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: false, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "geoblocked");
+  assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: false, hasCredentials: true, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "signature_required");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: false, userSigningAvailable: true, marketTradable: true, orderValid: true, submitterAvailable: true }), "credentials_missing");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: false, marketTradable: true, orderValid: true, submitterAvailable: true }), "signature_required");
   assert.equal(getPolymarketRoutingReadiness({ hasBuilderCode: true, featureEnabled: true, walletConnected: true, geoblockAllowed: true, hasCredentials: true, userSigningAvailable: true, marketTradable: false, orderValid: true, submitterAvailable: true }), "market_not_tradable");
@@ -82,9 +82,27 @@ test("wallet trade intent is the top public launch blocker while other checklist
   ]);
 
   const checklist = getPolymarketReadinessChecklist(input);
-  assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
-  assert.equal(checklist.find((item) => item.id === "login")?.actionLabel, "登入以保存推薦獎勵");
+  assert.deepEqual(checklist.map((item) => item.label), [
+    "錢包資金 / 增值",
+    "Polymarket 憑證",
+    "用戶自行簽署",
+    "Builder Code",
+    "交易功能",
+    "市場狀態",
+    "價格及數量",
+    "提交器",
+  ]);
+  assert.equal(checklist.find((item) => item.id === "funding")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "trading_feature")?.status, "blocked");
+});
+
+test("region support is informational only and never disables trade intent", () => {
+  const input = { ...readyInput(), geoblockAllowed: false, geoblockStatus: "blocked" as const, userSigned: true };
+
+  assert.equal(getPolymarketRoutingReadiness(input), "ready_to_submit");
+  assert.equal(getPolymarketTopBlockingReason(input), null);
+  assert.doesNotMatch(getPolymarketRoutingDisabledReasons(input).join(" "), /geo|region/);
+  assert.equal(getPolymarketReadinessChecklist(input).some((item) => item.id === ("region" as string)), false);
 });

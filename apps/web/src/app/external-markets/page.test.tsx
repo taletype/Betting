@@ -1870,10 +1870,7 @@ test("Polymarket readiness prioritizes user blockers while preserving launch che
 
   const checklist = getPolymarketReadinessChecklist(input);
   assert.deepEqual(checklist.map((item) => item.id), [
-    "login",
-    "wallet",
     "funding",
-    "region",
     "credentials",
     "signature",
     "builder_code",
@@ -1882,7 +1879,7 @@ test("Polymarket readiness prioritizes user blockers while preserving launch che
     "order_values",
     "submitter",
   ]);
-  assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
+  assert.equal(checklist.find((item) => item.id === "funding")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "credentials")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "signature")?.status, "missing");
 });

@@ -47,7 +47,7 @@ export const evaluatePolymarketPreflight = () => {
     check("runtime_production_like", "Production or staging runtime", isProductionLikeRuntime(), "Live submission is blocked outside production-like runtimes.", "Use staging for final dry-run readiness only."),
     check("submitter_real", "Real submitter mode", submitterMode === "real", "The CLOB submitter is not in live submission mode.", "POLYMARKET_CLOB_SUBMITTER must remain disabled until readiness is approved."),
     check("submitter_health", "Submitter health check available", submitterMode === "real" && flag("POLYMARKET_SUBMITTER_HEALTH_READY", false), "Submitter health is not proven ready.", "Implement and monitor a real CLOB health check before staging."),
-    check("user_auth_required", "Authenticated user required", true, "Routed order endpoints require a verified Supabase user.", "Do not accept user ids from request bodies or headers."),
+    check("wallet_first_flow", "Wallet-first flow", true, "Routed order readiness does not require app login.", "Use the user's wallet, signed order, and user-owned L2 credentials for trading readiness."),
     check("linked_wallet_required", "Linked wallet required", true, "Routed orders require a wallet linked through the challenge flow.", "Wallet ownership must be verified before credentials or signatures are used."),
     check("wallet_link_challenges", "Wallet-link challenge model", true, "Wallet linking uses nonce challenges and replay protection.", "Keep user:self and loose substring messages rejected."),
     check("signature_verifier", "User signature verifier", signatureVerifierImplemented, "No production user-owned Polymarket signature verifier is registered.", "Implement real order signature verification; do not add a fake verifier."),

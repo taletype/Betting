@@ -7,7 +7,6 @@ import {
   getPolymarketReadinessChecklist,
   getPolymarketRoutingReadiness,
   getPolymarketTopBlockingReason,
-  type PolymarketGeoblockStatus,
   type PolymarketReadinessChecklistStatus,
   type PolymarketRoutingReadinessInput,
 } from "./polymarket-routing-readiness";
@@ -60,9 +59,6 @@ const statusLabel = (status: PolymarketReadinessChecklistStatus): string => {
   return "待處理";
 };
 
-const initialGeoblockStatus = (allowed: boolean | undefined): PolymarketGeoblockStatus =>
-  allowed === true ? "allowed" : allowed === false ? "blocked" : "unknown";
-
 const getTradeTicketActionLabel = (
   input: PolymarketRoutingReadinessInput,
   readiness: ReturnType<typeof getPolymarketRoutingReadiness>,
@@ -92,9 +88,6 @@ export function PolymarketTradeTicket(props: Props) {
   const [slippageBps, setSlippageBps] = useState("100");
   const [expiration, setExpiration] = useState("");
   const [finalConfirmation, setFinalConfirmation] = useState(false);
-  const [geoblockStatus, setGeoblockStatus] = useState<PolymarketGeoblockStatus>(
-    initialGeoblockStatus(props.geoblockAllowed),
-  );
   const selectedOutcome = props.outcomes?.find((outcome) => outcome.tokenId === selectedTokenId);
   const parsedPrice = Number(priceValue);
   const parsedSize = Number(sizeValue);
@@ -123,8 +116,6 @@ export function PolymarketTradeTicket(props: Props) {
     walletConnected,
     walletAddressKnown,
     fundingAvailable: thirdweb.configured,
-    geoblockStatus,
-    geoblockAllowed: geoblockStatus === "allowed" ? true : geoblockStatus === "blocked" ? false : undefined,
     userSigningAvailable: props.userSigningAvailable,
     orderValid,
   };
@@ -163,11 +154,10 @@ export function PolymarketTradeTicket(props: Props) {
       market: props.marketTitle,
       tokenId: selectedTokenId || null,
     });
-  }, [props.geoblockAllowed, props.marketTitle, selectedTokenId]);
+  }, [props.marketTitle, selectedTokenId]);
 
   useEffect(() => {
     trackFunnelEvent("order_preview_requested", { market: props.marketTitle, tokenId: selectedTokenId || null });
-    setGeoblockStatus(initialGeoblockStatus(props.geoblockAllowed));
   }, [props.marketTitle, selectedTokenId]);
 
   useEffect(() => {
@@ -266,7 +256,14 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">Polymarket 憑證</span><span className="kv-value">{props.hasCredentials ? "已就緒" : "需要"}</span></div>
         <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "暫時不可交易"}</span></div>
         <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>
-        <div className="kv"><span className="kv-key">{copy.geoblockStatus}</span><span className="kv-value">{getPolymarketGeoblockStatusLabel(geoblockStatus)}</span></div>
+        <div className="kv">
+          <span className="kv-key">{getPolymarketGeoblockStatusLabel("unknown")}</span>
+          <span className="kv-value">實際交易是否可提交，將由 Polymarket 的錢包、憑證、市場及合規檢查判斷。</span>
+        </div>
+        <div className="kv">
+          <span className="kv-key">非託管交易</span>
+          <span className="kv-value">本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</span>
+        </div>
       </div>
 
       <label className="stack">

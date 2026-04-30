@@ -5,12 +5,9 @@ import type { ExternalMarketApiRecord } from "../../../lib/api";
 export type PolymarketPreviewSide = "BUY" | "SELL";
 export type PolymarketPreviewOrderType = "GTC" | "GTD" | "FOK" | "FAK";
 export type PolymarketPreviewDisabledCode =
-  | "auth_required"
   | "wallet_not_connected"
   | "canary_not_allowed"
   | "beta_user_not_allowlisted"
-  | "region_unknown"
-  | "geoblocked"
   | "credentials_missing"
   | "signature_required"
   | "builder_code_missing"
@@ -20,13 +17,10 @@ export type PolymarketPreviewDisabledCode =
   | "submitter_unavailable";
 
 export const polymarketDisabledReasonZh: Record<PolymarketPreviewDisabledCode, string> = {
-  auth_required: "尚未登入",
   wallet_not_connected: "尚未連接錢包",
   canary_not_allowed: "測試交易功能只限指定用戶",
   beta_user_not_allowlisted: "測試交易功能只限指定用戶",
-  region_unknown: "暫時未能確認所在地區支援狀態",
-  geoblocked: "你目前所在地區暫不支援 Polymarket 下單",
-  credentials_missing: "需要 Polymarket 憑證",
+  credentials_missing: "設定 Polymarket 憑證",
   signature_required: "需要用戶自行簽署訂單",
   builder_code_missing: "Builder Code 未設定",
   feature_disabled: "交易功能尚未啟用",
@@ -190,10 +184,7 @@ export const previewPolymarketOrder = async (
   const disabledReasonCodes: PolymarketPreviewDisabledCode[] = [];
 
   if (!routedTradingEnabled) disabledReasonCodes.push("feature_disabled");
-  if (!input.loggedIn) disabledReasonCodes.push("auth_required");
   if (!input.walletConnected) disabledReasonCodes.push("wallet_not_connected");
-  if (input.geoblockAllowed === false) disabledReasonCodes.push("geoblocked");
-  if (input.geoblockAllowed === undefined) disabledReasonCodes.push("region_unknown");
   if (!input.l2CredentialsPresent) disabledReasonCodes.push("credentials_missing");
   if (!input.userSigningAvailable) disabledReasonCodes.push("signature_required");
   if (!builderCodeConfigured) disabledReasonCodes.push("builder_code_missing");

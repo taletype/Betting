@@ -382,7 +382,7 @@ const zhReasonByCheck: Record<PolymarketTradingReadinessCheck, string> = {
   betaUserAllowlisted: "測試交易功能只限指定用戶",
   builderCodeConfigured: "Builder Code 未設定",
   walletConnected: "尚未連接錢包",
-  polymarketCredentialsReady: "需要 Polymarket 憑證",
+  polymarketCredentialsReady: "設定 Polymarket 憑證",
   userCanSignOrder: "需要用戶自行簽署訂單",
   marketTradable: "市場暫時不可交易",
   balanceAllowanceReady: "餘額或授權不足",
@@ -507,7 +507,11 @@ export const evaluateExternalPolymarketOrderReadiness = async (
   if (region.status === "unknown") appendReason(reasons, "region_unknown");
 
   const linkedWallet = userId ? await (dependencies.linkedWalletLookup ?? defaultLinkedWalletLookup)(userId) : null;
-  const linkedWalletAddress = linkedWallet?.walletAddress ? normalizeAddress(linkedWallet.walletAddress) : null;
+  const linkedWalletAddress = linkedWallet?.walletAddress
+    ? normalizeAddress(linkedWallet.walletAddress)
+    : typeof input.userWalletAddress === "string" && input.userWalletAddress.trim()
+      ? normalizeAddress(input.userWalletAddress)
+      : null;
   const requestedWalletAddress = typeof input.userWalletAddress === "string" && input.userWalletAddress.trim()
     ? normalizeAddress(input.userWalletAddress)
     : linkedWalletAddress;
@@ -791,7 +795,7 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   const userId = dependencies.requestUserId;
 
   if (!userId) {
-    throw new ExternalPolymarketRoutingError(401, "POLYMARKET_AUTH_REQUIRED", "authenticated user is required");
+    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 憑證");
   }
 
   const userWalletAddress = normalizeAddress(toTrimmedString(input.userWalletAddress, "userWalletAddress"));
@@ -839,7 +843,7 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_EXPIRED", "Polymarket credentials expired");
   }
   if (l2Lookup.status !== "present" || !l2Lookup.credentials) {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_MISSING", "Polymarket credentials required");
+    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 憑證");
   }
 
   const market = await getExternalMarketRecord(marketSource, marketExternalId);
