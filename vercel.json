@@ -7,15 +7,7 @@
     },
     {
       "path": "/api/jobs/sync-polymarket",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/candles",
-      "schedule": "15 0 * * *"
-    },
-    {
-      "path": "/api/cron/health",
-      "schedule": "25 0 * * *"
+      "schedule": "10 0 * * *"
     }
   ]
 }
