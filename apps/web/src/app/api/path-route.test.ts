@@ -31,7 +31,7 @@ const withEnv = async (values: Record<string, string | undefined>, run: () => Pr
   }
 };
 
-const makeExternalMarketsSupabase = (options: { staleAfter?: string } = {}) => ({
+const makeExternalMarketsSupabase = (options: { staleAfter?: string; translatedTitle?: string; translationLocale?: string } = {}) => ({
   from(table: string) {
     if (table === "external_market_cache") {
       const row = {
@@ -140,6 +140,32 @@ const makeExternalMarketsSupabase = (options: { staleAfter?: string } = {}) => (
         }),
         update: () => ({
           eq: async () => ({ error: null }),
+        }),
+      };
+    }
+
+    if (table === "external_market_translations") {
+      return {
+        select: () => ({
+          eq: () => ({
+            in: () => ({
+              in: async () => ({
+                data: options.translatedTitle ? [{
+                  source: "polymarket",
+                  external_id: "POLY-ROUTE-1",
+                  locale: options.translationLocale ?? "zh-HK",
+                  title_translated: options.translatedTitle,
+                  description_translated: "已翻譯描述",
+                  outcomes_translated: ["會"],
+                  status: "translated",
+                  source_content_hash: "56bd0d74d907af9b6ec02b928f47338fbe850774a9f166f16bfbd8f9e5423503",
+                  translated_at: "2099-05-01T01:03:00.000Z",
+                  updated_at: "2099-05-01T01:03:00.000Z",
+                }] : [],
+                error: null,
+              }),
+            }),
+          }),
         }),
       };
     }
@@ -297,6 +323,38 @@ test("GET /api/external/markets returns stale cache while refresh stays server-s
   assert.equal(payload.fallbackUsed, false);
   assert.equal(payload.stale, true);
   assert.equal(payload.markets[0]?.externalId, "POLY-ROUTE-1");
+});
+
+test("GET /api/external/markets accepts locale and returns localized market content", async (t) => {
+  setSupabaseAdminClientFactoryForTests(() => makeExternalMarketsSupabase({
+    translatedTitle: "Next API 會否提供 Polymarket 市場？",
+    translationLocale: "zh-HK",
+  }) as never);
+
+  t.after(() => {
+    setSupabaseAdminClientFactoryForTests(null);
+  });
+
+  const response = await GET(new NextRequest("http://localhost/api/external/markets?locale=zh-HK"), {
+    params: Promise.resolve({ path: ["external", "markets"] }),
+  });
+  const payload = await response.json() as {
+    markets: Array<{
+      title: string;
+      titleOriginal: string;
+      titleLocalized: string;
+      locale: string;
+      translationStatus: string;
+      outcomes: Array<{ title: string }>;
+    }>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.markets[0]?.title, "Next API 會否提供 Polymarket 市場？");
+  assert.equal(payload.markets[0]?.titleOriginal, "Will the Next API proxy serve Polymarket markets?");
+  assert.equal(payload.markets[0]?.locale, "zh-HK");
+  assert.equal(payload.markets[0]?.translationStatus, "translated");
+  assert.equal(payload.markets[0]?.outcomes[0]?.title, "會");
 });
 
 test("GET /api/external/markets does not call Polymarket when backend cache fails", async (t) => {

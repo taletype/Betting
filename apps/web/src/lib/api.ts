@@ -526,6 +526,8 @@ export interface ExternalMarketApiStats {
   stale: boolean;
 }
 
+export type ExternalMarketTranslationStatus = "pending" | "translated" | "reviewed" | "failed" | "stale" | "skipped" | "original";
+
 export interface ExternalMarketApiRecord {
   id: string;
   source: "polymarket" | "kalshi";
@@ -553,6 +555,14 @@ export interface ExternalMarketApiRecord {
   outcomes: ExternalMarketApiOutcome[];
   recentTrades: ExternalMarketApiTrade[];
   latestOrderbook?: ExternalMarketApiOrderbookSnapshot[];
+  titleOriginal?: string;
+  titleLocalized?: string;
+  descriptionOriginal?: string;
+  descriptionLocalized?: string;
+  outcomesOriginal?: ExternalMarketApiOutcome[];
+  outcomesLocalized?: ExternalMarketApiOutcome[];
+  locale?: "zh-HK" | "zh-TW" | "zh-CN" | "en";
+  translationStatus?: ExternalMarketTranslationStatus;
 }
 
 export interface ExternalMarketsApiEnvelope {
@@ -592,7 +602,7 @@ export const getPublicExternalMarketsReadiness = () => {
   };
 };
 
-export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
+export const listExternalMarkets = async (locale?: string): Promise<ExternalMarketApiRecord[]> => {
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
   if (!getConfiguredPublicApiBaseUrl()) {
@@ -603,7 +613,8 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
   }
 
   try {
-    const payload = await executeApiRequest<unknown>(getLocalApiUrl("/external/markets"));
+    const path = `/external/markets${locale && locale !== "zh-HK" ? `?locale=${encodeURIComponent(locale)}` : ""}`;
+    const payload = await executeApiRequest<unknown>(getLocalApiUrl(path));
     if (Array.isArray(payload)) return payload as ExternalMarketApiRecord[];
     if (payload && typeof payload === "object" && Array.isArray((payload as ExternalMarketsApiEnvelope).markets)) {
       return (payload as ExternalMarketsApiEnvelope).markets;
@@ -646,9 +657,11 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
 export const getExternalMarket = async (
   source: string,
   externalId: string,
+  locale?: string,
 ): Promise<ExternalMarketApiRecord | null> => {
+  const query = locale && locale !== "zh-HK" ? `?locale=${encodeURIComponent(locale)}` : "";
   const payload = await executePublicRouteRequest<{ market: ExternalMarketApiRecord | null }>(
-    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`,
+    `/external/markets/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}${query}`,
     { allowNotFound: true },
   );
 

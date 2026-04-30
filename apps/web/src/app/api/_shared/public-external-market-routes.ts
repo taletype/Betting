@@ -7,6 +7,7 @@ import {
   readExternalMarketsFromCache,
   type ExternalMarketCacheDiagnostics,
 } from "./external-market-cache";
+import { applyMarketTranslations, resolveMarketLocale } from "./market-translation";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "./external-market-read";
 
 const getAdminSupabase = () => createSupabaseAdminClient();
@@ -64,17 +65,19 @@ const marketsEnvelope = (input: {
   },
 });
 
-export async function externalMarketsResponse(adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
+export async function externalMarketsResponse(request?: Request, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
     const supabase = adminSupabase();
+    const locale = resolveMarketLocale(request ? new URL(request.url).searchParams.get("locale") : null);
     const cached = await readExternalMarketsFromCache(supabase);
     if (cached.markets.length > 0) {
+      const markets = await applyMarketTranslations(supabase, cached.markets, locale);
       return NextResponse.json(marketsEnvelope({
         source: "supabase_cache",
         fallbackUsed: false,
         stale: cached.stale,
         lastUpdatedAt: cached.lastUpdatedAt,
-        markets: cached.markets,
+        markets,
         diagnostics: cached.diagnostics,
       }), {
         headers: { "x-market-source": "supabase_cache" },
@@ -120,14 +123,16 @@ export async function externalMarketsResponse(adminSupabase: SupabaseAdminFactor
   }
 }
 
-export async function externalMarketDetailResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
+export async function externalMarketDetailResponse(source: string, externalId: string, request?: Request, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
     const supabase = adminSupabase();
+    const locale = resolveMarketLocale(request ? new URL(request.url).searchParams.get("locale") : null);
     const market = source === "polymarket"
       ? await readExternalMarketByIdFromCache(supabase, decodeURIComponent(externalId))
         ?? await readExternalMarketBySlugFromCache(supabase, decodeURIComponent(externalId))
       : await readExternalMarketBySourceAndId(supabase, source, externalId);
-    return NextResponse.json({ market }, { status: market ? 200 : 404 });
+    const [localized] = market ? await applyMarketTranslations(supabase, [market], locale) : [null];
+    return NextResponse.json({ market: localized }, { status: localized ? 200 : 404 });
   } catch (error) {
     console.warn("public external market detail unavailable; serving null", error);
     return NextResponse.json({ market: null }, { status: 404 });

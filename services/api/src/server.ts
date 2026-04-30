@@ -17,8 +17,11 @@ import {
   listExternalMarkets,
 } from "./modules/external-markets/handlers";
 import {
+  evaluateExternalPolymarketOrderReadiness,
   mapExternalPolymarketRoutingError,
+  previewExternalPolymarketOrder,
   routeExternalPolymarketOrder,
+  type ExternalPolymarketServerRegionCheck,
 } from "./modules/external-polymarket-routing/handlers";
 import { evaluatePolymarketPreflight } from "./modules/external-polymarket-routing/preflight";
 import { getHealth } from "./modules/health/handlers";
@@ -102,6 +105,24 @@ const parseBody = async (request: Request): Promise<Record<string, unknown>> => 
   } catch {
     throw new ApiRequestBodyError("invalid JSON body");
   }
+};
+
+const getServerRegionCheck = (request: Request): ExternalPolymarketServerRegionCheck => {
+  const country = (
+    request.headers.get("x-vercel-ip-country") ??
+    request.headers.get("cf-ipcountry") ??
+    request.headers.get("x-country-code") ??
+    ""
+  ).trim().toUpperCase();
+  const region = (request.headers.get("x-vercel-ip-country-region") ?? request.headers.get("x-region-code") ?? "").trim() || null;
+  const restricted = new Set((process.env.POLYMARKET_RESTRICTED_COUNTRIES ?? "US").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean));
+
+  return {
+    status: !country ? "unknown" : restricted.has(country) ? "blocked" : "allowed",
+    country: country || null,
+    region,
+    checkedAt: new Date().toISOString(),
+  };
 };
 
 const readIncomingMessage = async (request: NodeJS.ReadableStream): Promise<string> => {
@@ -277,6 +298,88 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return Response.json(await getAdminPolymarketStatus());
     }
 
+    if (request.method === "POST" && url.pathname === "/polymarket/orders/preflight") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const body = await parseBody(request);
+      try {
+        const payload = await evaluateExternalPolymarketOrderReadiness(body, {
+          requestUserId,
+          requestUserEmail: requestUser?.email ?? null,
+          serverRegionCheck: getServerRegionCheck(request),
+        });
+        return Response.json(payload);
+      } catch {
+        return Response.json({
+          ok: false,
+          state: "routed_trading_disabled",
+          disabledReasons: ["routed_trading_disabled"],
+          error: "Polymarket order preflight failed safely",
+        }, { status: 200 });
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/polymarket/orders/preview") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const body = await parseBody(request);
+      try {
+        const payload = await previewExternalPolymarketOrder(body, {
+          requestUserId,
+          requestUserEmail: requestUser?.email ?? null,
+          serverRegionCheck: getServerRegionCheck(request),
+        });
+        return Response.json(payload);
+      } catch {
+        return Response.json({
+          ok: false,
+          disabledReason: "routed_trading_disabled",
+          userMustSignWarning: "用戶自行簽署訂單",
+          nonCustodialWarning: "本平台不託管用戶在 Polymarket 的資金",
+          platformNoTradeWarning: "本平台不會代用戶下注或交易",
+        }, { status: 200 });
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/polymarket/orders/submit") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+
+      const rateLimit = checkRateLimit("polymarketRoutedTrade", actorIdentity);
+      if (!rateLimit.allowed) {
+        incrementCounter("rate_limited_total", { scope: "polymarket_routed_trade" });
+        return Response.json(
+          { error: "rate limit exceeded" },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
+        );
+      }
+
+      const body = await parseBody(request);
+      const region = getServerRegionCheck(request);
+      const serverGeoblock = region.status === "allowed"
+        ? { blocked: false as const, checkedAt: region.checkedAt, country: region.country, region: region.region }
+        : body.geoblock;
+
+      try {
+        const payload = await routeExternalPolymarketOrder(
+          { ...body, geoblock: serverGeoblock },
+          {
+            requestUserId,
+            requestUserEmail: requestUser?.email ?? null,
+            serverRegionCheck: region,
+            geoblockProofVerifier: async () => region.status === "allowed",
+          },
+        );
+        return new Response(toJson(payload), {
+          headers: { "content-type": "application/json" },
+          status: 202,
+        });
+      } catch (error) {
+        const mapped = mapExternalPolymarketRoutingError(error);
+        return Response.json(mapped.payload, { status: mapped.status });
+      }
+    }
+
     if (request.method === "GET" && url.pathname === "/external/markets") {
       const payload = await listExternalMarkets();
       return new Response(toJson(payload), {
@@ -302,7 +405,10 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const body = await parseBody(request);
 
       try {
-        const payload = await routeExternalPolymarketOrder(body, { requestUserId });
+        const payload = await routeExternalPolymarketOrder(body, {
+          requestUserId,
+          requestUserEmail: requestUser?.email ?? null,
+        });
         return new Response(toJson(payload), {
           headers: { "content-type": "application/json" },
           status: 202,

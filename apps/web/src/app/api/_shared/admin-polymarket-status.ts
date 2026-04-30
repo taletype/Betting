@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from "@bet/supabase";
 
 import { evaluateAdminAccess, getAuthenticatedUser } from "../auth";
 import { getSafeLaunchStatus } from "./launch-status";
+import { getMarketTranslationConfig } from "./market-translation";
 
 type SupabaseAdminFactory = typeof createSupabaseAdminClient;
 
@@ -24,6 +25,13 @@ interface ExternalMarketSyncRunRow {
   markets_upserted?: number | string | null;
   error_message?: string | null;
   diagnostics?: unknown;
+}
+
+interface TranslationStatusRow {
+  locale: string;
+  status: string;
+  translated_at: string | null;
+  updated_at: string | null;
 }
 
 const getAdminSupabase = () => createSupabaseAdminClient();
@@ -80,16 +88,48 @@ const readRecentRuns = async (supabase: SupabaseLike): Promise<ExternalMarketSyn
   return data ?? [];
 };
 
+const readTranslationRows = async (supabase: SupabaseLike): Promise<TranslationStatusRow[]> => {
+  try {
+    const { data, error } = await (supabase.from("external_market_translations") as {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => Promise<{ data: TranslationStatusRow[] | null; error: Error | null }>;
+      };
+    })
+      .select("locale, status, translated_at, updated_at")
+      .eq("source", "polymarket");
+    if (error) return [];
+    return data ?? [];
+  } catch {
+    return [];
+  }
+};
+
 export const getAdminPolymarketStatusPayload = async (
   adminSupabase: SupabaseAdminFactory = getAdminSupabase,
 ) => {
   const supabase = adminSupabase() as unknown as SupabaseLike;
   const now = Date.now();
-  const [cacheRows, recentRuns] = await Promise.all([
+  const [cacheRows, recentRuns, translationRows] = await Promise.all([
     readCacheRows(supabase),
     readRecentRuns(supabase),
+    readTranslationRows(supabase),
   ]);
   const preflight = getSafeLaunchStatus();
+  const translationConfig = getMarketTranslationConfig();
+  const byLocale = Object.fromEntries(translationConfig.locales.map((locale) => {
+    const rows = translationRows.filter((row) => row.locale === locale);
+    return [locale, {
+      translated: rows.filter((row) => row.status === "translated" || row.status === "reviewed").length,
+      failed: rows.filter((row) => row.status === "failed").length,
+      stale: rows.filter((row) => row.status === "stale").length,
+      pending: rows.filter((row) => row.status === "pending" || row.status === "skipped").length,
+    }];
+  }));
+  const lastTranslationSync = translationRows
+    .map((row) => row.translated_at ?? row.updated_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
 
   return {
     source: "polymarket",
@@ -106,6 +146,15 @@ export const getAdminPolymarketStatusPayload = async (
       orderbookSnapshots: "30-120 seconds for hot/detail markets",
       recentTrades: "1-5 minutes",
       staleness: "1-5 minutes",
+    },
+    translation: {
+      defaultLocale: translationConfig.defaultLocale,
+      supportedLocales: translationConfig.locales,
+      enabled: translationConfig.enabled,
+      provider: translationConfig.provider,
+      model: translationConfig.model,
+      coverageByLocale: byLocale,
+      lastTranslationSync: toIsoOrNull(lastTranslationSync),
     },
     recentRuns: recentRuns.map((run) => ({
       syncKind: run.sync_kind ?? "unknown",

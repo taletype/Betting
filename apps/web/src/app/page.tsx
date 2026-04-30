@@ -7,7 +7,7 @@ import { FunnelEventTracker } from "./funnel-analytics";
 import { PendingReferralNotice } from "./pending-referral-notice";
 import { TrackedCopyButton } from "./tracked-copy-button";
 import { listExternalMarkets, type ExternalMarketApiRecord } from "../lib/api";
-import { formatDateTime, defaultLocale } from "../lib/locale";
+import { formatDateTime, defaultLocale, getLocaleHref, type AppLocale } from "../lib/locale";
 import { normalizeReferralCode } from "../lib/referral-capture";
 
 interface HomePageProps {
@@ -19,9 +19,9 @@ const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:300
 const numberOrDash = (value: number | null): string =>
   value === null ? "—" : value.toLocaleString(defaultLocale, { maximumFractionDigits: 2 });
 
-const getTrendingMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
+const getTrendingMarkets = async (locale: AppLocale): Promise<ExternalMarketApiRecord[]> => {
   try {
-    return [...(await listExternalMarkets()).filter((market) => market.source === "polymarket")]
+    return [...(await listExternalMarkets(locale)).filter((market) => market.source === "polymarket")]
       .sort((a: ExternalMarketApiRecord, b: ExternalMarketApiRecord) =>
         (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0)
       )
@@ -32,12 +32,12 @@ const getTrendingMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
   }
 };
 
-export default async function HomePage({ searchParams }: HomePageProps) {
+export async function renderHomePage(locale: AppLocale, searchParams?: HomePageProps["searchParams"]) {
   const params = await searchParams;
   const refCode = normalizeReferralCode(params?.ref);
-  const markets = await getTrendingMarkets();
+  const markets = await getTrendingMarkets(locale);
   const inviteUrl = refCode ? `${siteUrl()}/?ref=${encodeURIComponent(refCode)}` : siteUrl();
-  const marketHref = refCode ? `/polymarket?ref=${encodeURIComponent(refCode)}` : "/polymarket";
+  const marketHref = `${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
 
   return (
     <main className="stack">
@@ -100,8 +100,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   label="價格走勢"
                 />
                 <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{numberOrDash(market.volume24h ?? market.volumeTotal)}</span></div>
-                <div className="muted">更新：{market.lastSyncedAt ? formatDateTime(defaultLocale, market.lastSyncedAt, "UTC") : "—"}</div>
-                <Link className="button-link secondary" href={`/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>
+                {market.titleOriginal && market.titleOriginal !== market.title ? <div className="muted">原文：{market.titleOriginal}</div> : null}
+                <div className="muted">更新：{market.lastSyncedAt ? formatDateTime(locale, market.lastSyncedAt, "UTC") : "—"}</div>
+                <Link className="button-link secondary" href={`${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>
                   市場詳情
                 </Link>
               </article>
@@ -123,4 +124,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       </section>
     </main>
   );
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  return renderHomePage(defaultLocale, searchParams);
 }

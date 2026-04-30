@@ -83,7 +83,7 @@ async function handleRequest(
     const adminSupabase = () => supabaseAdminClientFactory();
 
     if (apiPath === "external/markets" && request.method === "GET") {
-      return externalMarketsResponse(adminSupabase);
+      return externalMarketsResponse(request, adminSupabase);
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/orderbook$/) && request.method === "GET") {
@@ -108,7 +108,7 @@ async function handleRequest(
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      return externalMarketDetailResponse(source ?? "", externalId ?? "", adminSupabase);
+      return externalMarketDetailResponse(source ?? "", externalId ?? "", request, adminSupabase);
     }
 
     const user = await getAuthenticatedUser(request);
@@ -131,6 +131,58 @@ async function handleRequest(
         markets,
       );
       return NextResponse.json(preview);
+    }
+
+    if (apiPath === "polymarket/orders/preflight" && request.method === "POST") {
+      if (!userId) {
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      }
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+      const markets = ((await readExternalMarkets(adminSupabase())) as ExternalMarketApiRecord[])
+        .filter((market) => market.source === "polymarket");
+      const country = (request.headers.get("x-vercel-ip-country") ?? request.headers.get("cf-ipcountry") ?? "").toUpperCase();
+      const restricted = new Set((process.env.POLYMARKET_RESTRICTED_COUNTRIES ?? "US").split(",").map((value) => value.trim().toUpperCase()).filter(Boolean));
+      const regionState = !country ? "region_unknown" : restricted.has(country) ? "region_blocked" : null;
+      const preview = await previewPolymarketOrder(
+        {
+          ...body,
+          loggedIn: Boolean(userId),
+          walletConnected: body.walletConnected === true,
+          geoblockAllowed: regionState === null ? true : regionState === "region_blocked" ? false : undefined,
+          l2CredentialsPresent: body.l2CredentialsPresent === true,
+          userSigningAvailable: body.userSigningAvailable === true,
+          submitterAvailable: process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true",
+        },
+        markets,
+      );
+      const disabledReasons = [
+        ...(process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true" ? [] : ["routed_trading_disabled"]),
+        ...(process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY !== "false" ? ["canary_not_allowed"] : []),
+        ...(regionState ? [regionState] : []),
+        ...preview.disabledReasonCodes,
+      ];
+      return NextResponse.json({
+        ok: disabledReasons.length === 0,
+        state: disabledReasons[0] ?? "ready_for_user_signature",
+        disabledReasons,
+        canaryOnly: process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY !== "false",
+        routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true",
+        region: { status: regionState === null ? "allowed" : regionState === "region_blocked" ? "blocked" : "unknown", country: country || null },
+        preview,
+      });
+    }
+
+    if (apiPath === "polymarket/orders/submit" && request.method === "POST") {
+      if (!userId) {
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      }
+      return NextResponse.json(
+        {
+          error: "Polymarket signed order submission is handled by the service API canary path and is disabled here by default",
+          code: "POLYMARKET_SUBMITTER_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
     }
 
     if (!userId) {

@@ -7,6 +7,8 @@ export type PolymarketPreviewOrderType = "GTC" | "GTD" | "FOK" | "FAK";
 export type PolymarketPreviewDisabledCode =
   | "auth_required"
   | "wallet_not_connected"
+  | "canary_not_allowed"
+  | "region_unknown"
   | "geoblocked"
   | "credentials_missing"
   | "signature_required"
@@ -19,6 +21,8 @@ export type PolymarketPreviewDisabledCode =
 export const polymarketDisabledReasonZh: Record<PolymarketPreviewDisabledCode, string> = {
   auth_required: "尚未登入",
   wallet_not_connected: "尚未連接錢包",
+  canary_not_allowed: "目前只開放私人 canary 名單用戶",
+  region_unknown: "暫時未能確認所在地區支援狀態",
   geoblocked: "你目前所在地區暫不支援 Polymarket 下單",
   credentials_missing: "需要 Polymarket 憑證",
   signature_required: "需要用戶自行簽署訂單",
@@ -184,7 +188,8 @@ export const previewPolymarketOrder = async (
   if (!routedTradingEnabled) disabledReasonCodes.push("feature_disabled");
   if (!input.loggedIn) disabledReasonCodes.push("auth_required");
   if (!input.walletConnected) disabledReasonCodes.push("wallet_not_connected");
-  if (input.geoblockAllowed !== true) disabledReasonCodes.push("geoblocked");
+  if (input.geoblockAllowed === false) disabledReasonCodes.push("geoblocked");
+  if (input.geoblockAllowed === undefined) disabledReasonCodes.push("region_unknown");
   if (!input.l2CredentialsPresent) disabledReasonCodes.push("credentials_missing");
   if (!input.userSigningAvailable) disabledReasonCodes.push("signature_required");
   if (!builderCodeConfigured) disabledReasonCodes.push("builder_code_missing");

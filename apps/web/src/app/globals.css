@@ -38,6 +38,7 @@ body {
   min-height: 100vh;
   font-size: 15px;
   line-height: 1.55;
+  overflow-x: clip;
 }
 
 .sr-only {
@@ -159,6 +160,8 @@ button:disabled:hover {
   max-width: 1240px;
   margin: 0 auto;
   padding: 22px 20px 82px;
+  width: 100%;
+  overflow-x: clip;
 }
 
 .topbar {
@@ -174,11 +177,20 @@ button:disabled:hover {
   backdrop-filter: blur(16px);
 }
 
+.brand-link {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
 .nav {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   color: var(--muted);
+}
+
+.mobile-nav {
+  display: none;
 }
 
 .nav a {
@@ -196,6 +208,32 @@ button:disabled:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+}
+
+.locale-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.locale-switcher a {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: inherit;
+  font-size: 0.82rem;
+  padding: 0.25rem 0.55rem;
+  text-decoration: none;
+}
+
+.locale-switcher a[aria-current="true"] {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.original-copy {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75rem;
 }
 
 .auth-state-button {
@@ -210,6 +248,34 @@ button:disabled:hover {
   color: #ccfbf1;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.locale-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.locale-switcher a {
+  border: 1px solid rgba(168, 179, 199, 0.24);
+  border-radius: 999px;
+  background: rgba(168, 179, 199, 0.06);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.locale-switcher a:hover,
+.locale-switcher a[aria-current="true"] {
+  border-color: rgba(45, 212, 191, 0.34);
+  background: rgba(45, 212, 191, 0.12);
+  color: #ccfbf1;
 }
 
 .footer-disclosure {
@@ -240,12 +306,15 @@ button:disabled:hover {
   line-height: 1.02;
   font-size: clamp(38px, 7vw, 76px);
   letter-spacing: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .hero p,
 .muted {
   color: var(--muted);
   max-width: 70ch;
+  overflow-wrap: anywhere;
 }
 
 .status-bad {
@@ -294,6 +363,20 @@ button:disabled:hover {
   background: linear-gradient(135deg, rgba(245, 196, 81, 0.12), rgba(45, 212, 191, 0.06));
   padding: 14px;
   border-radius: var(--radius);
+}
+
+.feed-support {
+  margin-top: 12px;
+}
+
+.technical-disclosure summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.technical-disclosure[open] summary {
+  margin-bottom: 12px;
 }
 
 .trade-ticket {
@@ -385,6 +468,7 @@ button:disabled:hover {
 .stack {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .market-actions {
@@ -644,6 +728,7 @@ button:disabled:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .tab-link {
@@ -920,13 +1005,19 @@ button:disabled:hover {
     border-bottom: 1px solid rgba(180, 199, 224, 0.12);
   }
 
-  .nav {
+  .desktop-nav {
+    display: none;
+  }
+
+  .mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     position: fixed;
     left: 8px;
     right: 8px;
     bottom: 8px;
     z-index: 35;
-    justify-content: space-around;
+    gap: 4px;
     border: 1px solid rgba(180, 199, 224, 0.2);
     background: rgba(5, 10, 18, 0.97);
     border-radius: 14px;
@@ -935,28 +1026,45 @@ button:disabled:hover {
     backdrop-filter: blur(18px);
   }
 
-  .nav a {
+  .mobile-nav a {
     font-size: 12px;
-    padding: 8px 7px;
+    padding: 8px 4px;
     min-height: 42px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    border-radius: 10px;
+    color: var(--muted);
+    font-weight: 750;
+    white-space: nowrap;
   }
 
-  .nav a[href="/"],
-  .nav a[href="/admin"] {
-    display: none;
+  .mobile-nav a:hover {
+    background: rgba(168, 179, 199, 0.11);
+    color: var(--text);
+  }
+
+  .topbar .brand-link {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .topbar-actions {
-    min-width: 0;
+    justify-content: flex-end;
+    gap: 7px;
+    flex: 1 1 auto;
   }
 
   .auth-state-button {
     min-height: 36px;
     padding: 7px 10px;
     font-size: 13px;
+  }
+
+  .locale-switcher {
+    display: none;
   }
 
   .footer-disclosure {
@@ -976,8 +1084,21 @@ button:disabled:hover {
 
   .hero h1,
   .hero h2 {
-    font-size: clamp(32px, 11vw, 44px);
+    font-size: clamp(30px, 9.7vw, 38px);
     line-height: 1.06;
+    word-break: break-word;
+  }
+
+  .hero p,
+  .muted,
+  .badge {
+    max-width: 100%;
+    word-break: break-word;
+  }
+
+  .badge {
+    max-width: 100%;
+    white-space: normal;
   }
 
   .panel,
@@ -1019,6 +1140,18 @@ button:disabled:hover {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .disclosure-card .kv,
+  .market-card-stats .kv {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .disclosure-card .kv-value,
+  .market-card-stats .kv-value {
+    text-align: right;
   }
 
   .ticket-form-grid,

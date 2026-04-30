@@ -125,6 +125,25 @@ export const readBooleanFlag = (
   throw new Error(`${name} must be true or false. Received: ${raw}`);
 };
 
+export const readStringList = (
+  name: string,
+  options?: { defaultValue?: readonly string[]; allowed?: readonly string[] },
+): string[] => {
+  const raw = readOptionalString(name);
+  const values = raw
+    ? raw.split(",").map((value) => value.trim()).filter(Boolean)
+    : [...(options?.defaultValue ?? [])];
+
+  if (options?.allowed) {
+    const invalid = values.filter((value) => !options.allowed?.includes(value));
+    if (invalid.length > 0) {
+      throw new Error(`${name} contains unsupported value(s): ${invalid.join(", ")}`);
+    }
+  }
+
+  return [...new Set(values)];
+};
+
 export const readChainId = (
   name: string,
   options?: { defaultInLocal?: number; defaultValue?: number; supported?: readonly number[] },

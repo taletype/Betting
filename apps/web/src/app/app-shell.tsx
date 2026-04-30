@@ -1,5 +1,7 @@
 import React from "react";
 import { getLocaleCopy, getLocaleHref, type AppLocale } from "../lib/locale";
+import { siteCopy } from "../lib/i18n";
+import { LanguageSwitcher } from "./language-switcher";
 
 export function AppShell({
   locale,
@@ -13,32 +15,44 @@ export function AppShell({
   authenticated?: boolean;
 }>) {
   const copy = getLocaleCopy(locale);
+  const shortCopy = siteCopy[locale];
+  const navItems = [
+    { href: "/", label: copy.shell.nav.home, mobileLabel: copy.shell.nav.home, showMobile: false },
+    { href: "/polymarket", label: copy.shell.nav.research, mobileLabel: "市場", showMobile: true },
+    { href: "/ambassador", label: copy.shell.nav.invite, mobileLabel: "邀請", showMobile: true },
+    { href: "/rewards", label: copy.shell.nav.rewards, mobileLabel: "獎勵", showMobile: true },
+    { href: "/guides", label: copy.shell.nav.guides, mobileLabel: "指南", showMobile: true },
+    { href: "/account", label: copy.shell.nav.account, mobileLabel: "帳戶", showMobile: false },
+    ...(showAdmin ? [{ href: "/admin", label: copy.shell.nav.admin, mobileLabel: "管理", showMobile: true }] : []),
+  ];
 
   return (
     <div className="shell">
       <header className="topbar">
-        <a href={getLocaleHref(locale, "/")}><strong>{copy.shell.brand}</strong></a>
+        <a className="brand-link" href={getLocaleHref(locale, "/")}><strong>{copy.shell.brand}</strong></a>
         <div className="topbar-actions">
-          <nav className="nav" aria-label="主導覽">
-            <a href={getLocaleHref(locale, "/")}>{copy.shell.nav.home}</a>
-            <a href={getLocaleHref(locale, "/polymarket")}>{copy.shell.nav.research}</a>
-            <a href={getLocaleHref(locale, "/ambassador")}>{copy.shell.nav.invite}</a>
-            <a href={getLocaleHref(locale, "/rewards")}>{copy.shell.nav.rewards}</a>
-            <a href={getLocaleHref(locale, "/guides")}>{copy.shell.nav.guides}</a>
-            <a href={getLocaleHref(locale, "/account")}>{copy.shell.nav.account}</a>
-            {showAdmin ? <a href="/admin">{copy.shell.nav.admin}</a> : null}
+          <nav className="nav desktop-nav" aria-label="主導覽">
+            {navItems.map((item) => (
+              <a key={item.href} href={item.href === "/admin" ? item.href : getLocaleHref(locale, item.href)}>{item.label}</a>
+            ))}
           </nav>
           <a className="auth-state-button" href={getLocaleHref(locale, authenticated ? "/account" : "/login")}>
             {authenticated ? copy.shell.nav.account : copy.auth.login}
           </a>
+          <LanguageSwitcher currentLocale={locale} />
         </div>
       </header>
+      <nav className="mobile-nav" aria-label="主導覽">
+        {navItems.filter((item) => item.showMobile).map((item) => (
+          <a key={item.href} href={item.href === "/admin" ? item.href : getLocaleHref(locale, item.href)}>{item.mobileLabel}</a>
+        ))}
+      </nav>
       {children}
       <footer className="footer-disclosure">
-        <span>非託管</span>
-        <span>用戶自行簽署</span>
-        <span>交易尚未啟用</span>
-        <span>支付需人手審批</span>
+        <span>{shortCopy.nonCustodial}</span>
+        <span>{shortCopy.userSignedOrder}</span>
+        <span>{copy.research.disabled}</span>
+        <span>{locale === "zh-HK" ? "支付需人手審批" : shortCopy.manualApproval}</span>
       </footer>
     </div>
   );

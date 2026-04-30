@@ -2,6 +2,6 @@ import { externalMarketsResponse } from "../../_shared/public-external-market-ro
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  return externalMarketsResponse();
+export async function GET(request?: Request) {
+  return externalMarketsResponse(request);
 }

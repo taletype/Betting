@@ -1,14 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { chineseLocale, defaultLocale, localeHeaderName } from "./lib/locale";
+import { defaultLocale, localeCookieName, localeHeaderName, normalizeLocale, pathSegmentToLocale } from "./lib/locale";
 import { protectRoute } from "./lib/supabase/middleware";
 
 export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
-  const locale = request.nextUrl.pathname === `/${chineseLocale}` || request.nextUrl.pathname.startsWith(`/${chineseLocale}/`)
-    ? chineseLocale
-    : defaultLocale;
+  const firstSegment = request.nextUrl.pathname.split("/").filter(Boolean)[0];
+  const cookieLocale = request.cookies.get(localeCookieName)?.value;
+  const acceptLanguage = request.headers.get("accept-language")?.split(",")[0];
+  const locale = pathSegmentToLocale(firstSegment) ?? (cookieLocale ? normalizeLocale(cookieLocale) : acceptLanguage ? normalizeLocale(acceptLanguage) : defaultLocale);
 
   requestHeaders.set(localeHeaderName, locale);
 
@@ -17,6 +18,7 @@ export async function proxy(request: NextRequest) {
       headers: requestHeaders,
     },
   });
+  response.cookies.set(localeCookieName, locale, { path: "/", sameSite: "lax", maxAge: 31_536_000 });
 
   return protectRoute(request, response);
 }

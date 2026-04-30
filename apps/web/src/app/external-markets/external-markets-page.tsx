@@ -23,7 +23,8 @@ import {
   type ExternalMarketApiRecord,
   type ExternalMarketsLoadErrorCode,
 } from "../../lib/api";
-import { formatDateTime, getLocaleCopy, type AppLocale } from "../../lib/locale";
+import { formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
+import { siteCopy } from "../../lib/i18n";
 import { normalizeReferralCode } from "../../lib/referral-capture";
 
 const toDisplay = (value: number | null, locale: AppLocale): string =>
@@ -197,6 +198,21 @@ const buildFeedHref = (params: MarketFeedSearchParams | undefined, next: MarketF
   return query ? `/polymarket?${query}` : "/polymarket";
 };
 
+const buildLocalizedFeedHref = (locale: AppLocale, params: MarketFeedSearchParams | undefined, next: MarketFeedSearchParams): string => {
+  const href = buildFeedHref(params, next);
+  const [pathname, query] = href.split("?");
+  const localized = getLocaleHref(locale, pathname ?? "/polymarket");
+  return query ? `${localized}?${query}` : localized;
+};
+
+const translationBadge = (market: ExternalMarketApiRecord, locale: AppLocale): string | null => {
+  const copy = siteCopy[locale];
+  if (market.translationStatus === "pending" || market.translationStatus === "failed" || market.translationStatus === "skipped") return copy.translationPending;
+  if (market.translationStatus === "stale") return copy.translationStale;
+  if (market.locale === "en" && locale !== "en") return copy.showingOriginal;
+  return null;
+};
+
 const sanitizeSourceName = (source: string): string | null => {
   const trimmed = source.trim();
   if (!trimmed || /[?#@=]/.test(trimmed)) return null;
@@ -219,7 +235,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const dataReadiness = getPublicExternalMarketsReadiness();
 
   try {
-    markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
+    markets = (await listExternalMarkets(locale)).filter((market) => market.source === "polymarket");
   } catch (error) {
     loadFailed = true;
     if (error instanceof ExternalMarketsLoadError) {
@@ -271,32 +287,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           />
         </div>
       </section>
-      <BuilderFeeDisclosureCard
-        locale={locale}
-        hasBuilderCode={hasBuilderCode}
-        routedTradingEnabled={routedTradingEnabled}
-      />
-      <section className="panel disclosure-card stack">
-        <strong>Builder / 交易安全狀態</strong>
-        <p className="muted">單純瀏覽市場不會產生 Builder 費用。只適用於合資格並成功成交的 Polymarket 路由訂單；實際訂單提交預設停用。</p>
-      </section>
-      <section className="panel disclosure-card stack" aria-label="Polymarket data readiness">
-        <strong>市場資料連線狀態</strong>
-        <div className="grid">
-          <div className="kv"><span className="kv-key">資料 URL</span><span className="kv-value mono">{dataReadiness.dataUrl}</span></div>
-          <div className="kv"><span className="kv-key">API base URL configured</span><span className="kv-value">{dataReadiness.apiBaseUrlConfigured ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">same-origin API reachable</span><span className="kv-value">{sameOriginApiReachable ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">no</span></div>
-          <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{routedTradingEnabled ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{hasBuilderCode ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
-        </div>
-      </section>
-      <ThirdwebWalletFundingCard surface="polymarket_feed" walletConnected={false} />
-      <form className="panel filters market-feed-controls" action="/polymarket">
+      <form className="panel filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
         {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
         <label className="stack">
           搜尋
@@ -322,7 +313,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </select>
         </label>
         <button type="submit">套用</button>
-        <Link className="button-link secondary" href={buildFeedHref(normalizedParams, {})}>刷新</Link>
+        <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>刷新</Link>
       </form>
       <nav className="chip-row" aria-label="Polymarket 類別">
         {[
@@ -335,7 +326,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           <Link
             key={status}
             className={`chip ${((defaultFeed ? "open" : selectedStatus) === status) ? "active" : ""}`}
-            href={buildFeedHref(normalizedParams, { status })}
+            href={buildLocalizedFeedHref(locale, normalizedParams, { status })}
           >
             {label}
           </Link>
@@ -351,7 +342,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           <Link
             key={sort}
             className={`tab-link ${((params?.sort ?? "trending") === sort) ? "active" : ""}`}
-            href={buildFeedHref(normalizedParams, { sort })}
+            href={buildLocalizedFeedHref(locale, normalizedParams, { sort })}
           >
             {label}
           </Link>
@@ -383,7 +374,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           <div className="panel empty-state">
             <p>{defaultFeed ? "暫時未有活躍市場資料" : copy.empty}</p>
             {defaultFeed ? (
-              <Link className="button-link secondary" href={buildFeedHref(normalizedParams, { status: "all" })}>查看全部市場</Link>
+              <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>查看全部市場</Link>
             ) : (
               <ul>
                 <li>{copy.emptyDetails.externalMarketsEmpty}</li>
@@ -393,7 +384,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : (
           visibleMarkets.map((market) => {
-            const detailPath = `/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+            const detailBase = getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`);
+            const detailPath = `${detailBase}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
             const marketTopReason = getPolymarketTopBlockingReason({
               ...statusInput,
               marketTradable: market.status === "open",
@@ -415,8 +407,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
                     {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
                     {noTradeData ? <div className="badge badge-warning">暫無成交資料</div> : null}
+                    {translationBadge(market, locale) ? <div className="badge badge-warning">{translationBadge(market, locale)}</div> : null}
                   </div>
                   <strong className="market-card-title">{market.title}</strong>
+                  {market.titleOriginal && market.titleOriginal !== market.title ? (
+                    <details className="original-copy">
+                      <summary>{locale === "en" ? "Original" : "原文"}</summary>
+                      <p className="muted">{market.titleOriginal}</p>
+                    </details>
+                  ) : null}
                   <div className="outcome-pill-row">
                     {market.outcomes.length > 0 ? (
                       market.outcomes.slice(0, 4).map((outcome) => (
@@ -489,6 +488,33 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             );
           })
         )}
+      </section>
+      <section className="feed-support stack" aria-label="安全及營運資訊">
+        <BuilderFeeDisclosureCard
+          locale={locale}
+          hasBuilderCode={hasBuilderCode}
+          routedTradingEnabled={routedTradingEnabled}
+        />
+        <section className="panel disclosure-card stack">
+          <strong>Builder / 交易安全狀態</strong>
+          <p className="muted">單純瀏覽市場不會產生 Builder 費用。只適用於合資格並成功成交的 Polymarket 路由訂單；實際訂單提交預設停用。</p>
+        </section>
+        <details className="panel disclosure-card stack technical-disclosure">
+          <summary>市場資料連線狀態</summary>
+          <div className="grid">
+            <div className="kv"><span className="kv-key">資料 URL</span><span className="kv-value mono">{dataReadiness.dataUrl}</span></div>
+            <div className="kv"><span className="kv-key">API base URL configured</span><span className="kv-value">{dataReadiness.apiBaseUrlConfigured ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">same-origin API reachable</span><span className="kv-value">{sameOriginApiReachable ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">no</span></div>
+            <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{routedTradingEnabled ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{hasBuilderCode ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
+          </div>
+        </details>
+        <ThirdwebWalletFundingCard surface="polymarket_feed" walletConnected={false} />
       </section>
     </main>
   );

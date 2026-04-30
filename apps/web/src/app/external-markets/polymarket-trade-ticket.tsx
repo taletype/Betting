@@ -72,6 +72,7 @@ export function PolymarketTradeTicket(props: Props) {
   const [sizeValue, setSizeValue] = useState(props.size?.toString() ?? "10");
   const [slippageBps, setSlippageBps] = useState("100");
   const [expiration, setExpiration] = useState("");
+  const [finalConfirmation, setFinalConfirmation] = useState(false);
   const [geoblockStatus, setGeoblockStatus] = useState<PolymarketGeoblockStatus>(
     initialGeoblockStatus(props.geoblockAllowed),
   );
@@ -111,7 +112,7 @@ export function PolymarketTradeTicket(props: Props) {
   const readiness = getPolymarketRoutingReadiness(readinessInput);
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
-  const disabled = readiness !== "ready_to_submit";
+  const disabled = readiness !== "ready_to_submit" || !finalConfirmation;
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
@@ -176,7 +177,9 @@ export function PolymarketTradeTicket(props: Props) {
         </div>
         <span className="badge badge-warning">{props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : "實際訂單提交已停用"}</span>
       </div>
+      <div className="badge badge-warning">Canary-only · 非公開實盤交易</div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
+      <div className="warning-card">用戶自行簽署訂單。本平台不會代用戶下注或交易。本平台不託管用戶在 Polymarket 的資金。</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
       <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={walletConnected} />
       <BuilderFeeDisclosureCard
@@ -292,10 +295,21 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">{copy.size}</span><span className="kv-value">{formatNum(Number.isFinite(parsedSize) ? parsedSize : null)}</span></div>
         <div className="kv"><span className="kv-key">{copy.estimatedCostProceeds}</span><span className="kv-value">{formatNum(estimated)}</span></div>
         <div className="kv"><span className="kv-key">{copy.estimatedMaxFees}</span><span className="kv-value">{formatNum(estimatedMaxFees)}</span></div>
+        <div className="kv"><span className="kv-key">Builder maker/taker fee</span><span className="kv-value">0.5% / 1%</span></div>
+        <div className="kv"><span className="kv-key">Polymarket/platform fee</span><span className="kv-value">以市場回傳資料為準</span></div>
       </section>
 
       <div className="muted">{copy.builderAttributionNotice}</div>
       <div className="muted">{copy.feeNotice}</div>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={finalConfirmation}
+          disabled={readiness !== "ready_to_submit"}
+          onChange={(event) => setFinalConfirmation(event.target.checked)}
+        />
+        <span>我確認以上費用、非託管安排，並準備自行簽署此 Polymarket 訂單。</span>
+      </label>
       {topBlockingReason ? (
         <div className="ticket-disabled-reason" data-testid="top-blocking-reason">
           {readinessLabel}

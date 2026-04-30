@@ -10,6 +10,7 @@ import {
   readPositiveInteger,
   readRequiredUrl,
   readSecret,
+  readStringList,
 } from "@bet/config";
 
 import { getAmbassadorRewardsConfig } from "./modules/ambassador/repository";
@@ -48,5 +49,21 @@ export const validateApiEnvironment = (): void => {
 
   readOptionalBytes32Hex("POLY_BUILDER_CODE");
   readBooleanFlag("POLYMARKET_ROUTED_TRADING_ENABLED", { defaultValue: false });
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_CANARY_ONLY", { defaultValue: true });
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_KILL_SWITCH", { defaultValue: false });
+  readBooleanFlag("POLYMARKET_ORDER_SUBMIT_KILL_SWITCH", { defaultValue: false });
+  readBooleanFlag("MARKET_TRANSLATION_ENABLED", { defaultValue: true });
+  readRequiredStringLike("GROQ_TRANSLATION_MODEL", "qwen/qwen3-32b");
+  readRequiredStringLike("MARKET_TRANSLATION_DEFAULT_LOCALE", "zh-HK");
+  readStringList("MARKET_TRANSLATION_LOCALES", {
+    defaultValue: ["zh-HK", "zh-TW", "zh-CN"],
+    allowed: ["zh-HK", "zh-TW", "zh-CN"],
+  });
   getAmbassadorRewardsConfig();
+};
+
+const readRequiredStringLike = (name: string, defaultValue: string): string => {
+  const value = process.env[name]?.trim() || defaultValue;
+  if (!value) throw new Error(`${name} must not be empty`);
+  return value;
 };

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
+  evaluateExternalPolymarketOrderReadiness,
   routeExternalPolymarketOrder,
   type ExternalPolymarketOrderRouteInput,
   type ExternalPolymarketOrderRoutePayload,
@@ -206,6 +207,65 @@ test("setting routed trading true without real submitter still fails", async () 
       const payload = await response.json() as { code: string };
       assert.equal(response.status, 503);
       assert.equal(payload.code, "POLYMARKET_SUBMITTER_UNAVAILABLE");
+    });
+  });
+});
+
+test("global routed trading flag alone is not enough without canary allowlist", async () => {
+  await withEnv({
+    POLY_BUILDER_CODE: VALID_BUILDER_CODE,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_CANARY_ONLY: "true",
+    POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS: undefined,
+    POLYMARKET_CLOB_SUBMITTER: "real",
+  }, async () => {
+    await withMarket(baseMarket(), async () => {
+      const preflight = await evaluateExternalPolymarketOrderReadiness(baseInput({ signedOrder: undefined }), {
+        ...liveDeps(mockSubmitter()),
+        allowNonProductionSubmissionForTests: false,
+        serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
+        balanceAllowanceLookup: async () => ({ balanceSufficient: true, allowanceSufficient: true }),
+      });
+      assert.equal(preflight.state, "canary_not_allowed");
+      assert.ok(preflight.disabledReasons.includes("canary_not_allowed"));
+    });
+  });
+});
+
+test("canary user reaches ready-for-signature only when all non-signature gates pass", async () => {
+  await withEnv({
+    POLY_BUILDER_CODE: VALID_BUILDER_CODE,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_CANARY_ONLY: "true",
+    POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS: USER_ID,
+    POLYMARKET_CLOB_SUBMITTER: "real",
+  }, async () => {
+    await withMarket(baseMarket(), async () => {
+      const preflight = await evaluateExternalPolymarketOrderReadiness(baseInput({ signedOrder: undefined }), {
+        ...liveDeps(mockSubmitter()),
+        allowNonProductionSubmissionForTests: false,
+        serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
+        balanceAllowanceLookup: async () => ({ balanceSufficient: true, allowanceSufficient: true }),
+      });
+      assert.equal(preflight.state, "ready_for_user_signature");
+      assert.equal(preflight.ok, true);
+    });
+  });
+});
+
+test("restricted and unknown server regions block preflight", async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true", POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS: USER_ID, POLYMARKET_CLOB_SUBMITTER: "real" }, async () => {
+    await withMarket(baseMarket(), async () => {
+      const restricted = await evaluateExternalPolymarketOrderReadiness(baseInput(), {
+        ...liveDeps(mockSubmitter()),
+        serverRegionCheck: { status: "blocked", country: "US", region: null, checkedAt: NOW.toISOString() },
+      });
+      assert.ok(restricted.disabledReasons.includes("region_blocked"));
+      const unknown = await evaluateExternalPolymarketOrderReadiness(baseInput(), {
+        ...liveDeps(mockSubmitter()),
+        serverRegionCheck: { status: "unknown", country: null, region: null, checkedAt: NOW.toISOString() },
+      });
+      assert.ok(unknown.disabledReasons.includes("region_unknown"));
     });
   });
 });

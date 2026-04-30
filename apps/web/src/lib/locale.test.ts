@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatDateTime, getLocaleCopy, getLocaleHref, isSupportedLocale, resolveLocale } from "./locale";
+import { formatDateTime, getLocaleCopy, getLocaleHref, isSupportedLocale, localeToDisplayName, localeToHtmlLang, normalizeLocale, resolveLocale } from "./locale";
 
 test("locale helpers validate and resolve locales", () => {
   assert.equal(isSupportedLocale("en"), true);
   assert.equal(isSupportedLocale("zh-HK"), true);
-  assert.equal(isSupportedLocale("zh-TW"), false);
+  assert.equal(isSupportedLocale("zh-TW"), true);
+  assert.equal(isSupportedLocale("zh-CN"), true);
   assert.equal(resolveLocale("zh-HK"), "zh-HK");
+  assert.equal(normalizeLocale("zh-cn"), "zh-CN");
+  assert.equal(localeToHtmlLang("zh-TW"), "zh-TW");
+  assert.equal(localeToDisplayName("zh-CN"), "简中");
   assert.equal(resolveLocale("unknown"), "zh-HK");
 });
 

@@ -56,6 +56,14 @@ export interface PublicExternalMarketRecord {
     bestBid: number | null;
     bestAsk: number | null;
   }>;
+  titleOriginal?: string;
+  titleLocalized?: string;
+  descriptionOriginal?: string;
+  descriptionLocalized?: string;
+  outcomesOriginal?: PublicExternalMarketRecord["outcomes"];
+  outcomesLocalized?: PublicExternalMarketRecord["outcomes"];
+  locale?: "zh-HK" | "zh-TW" | "zh-CN" | "en";
+  translationStatus?: "pending" | "translated" | "reviewed" | "failed" | "stale" | "skipped" | "original";
 }
 
 const mapGammaMarket = (

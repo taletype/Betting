@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getLocaleCopy } from "./locale";
+import { siteCopy } from "./i18n";
 import { thirdwebDisclosure } from "../app/thirdweb-wallet-funding-card";
 
 const forbiddenChineseTerms = [
@@ -24,7 +25,7 @@ const forbiddenChineseTerms = [
   "managed betting",
 ];
 
-const approvedReferralSafetyCopy = "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。";
+const approvedReferralSafetyCopy = "參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。";
 
 const stripApprovedCopy = (value: string): string =>
   value.replaceAll(approvedReferralSafetyCopy, "");
@@ -37,6 +38,27 @@ test("key zh-HK ambassador copy avoids forbidden terms", () => {
   }));
   for (const term of forbiddenChineseTerms) {
     assert.doesNotMatch(ambassadorCopy, new RegExp(term));
+  }
+});
+
+test("all locale dictionaries avoid forbidden wording and keep Groq server-only", () => {
+  const copy = JSON.stringify(siteCopy);
+  for (const term of [
+    ...forbiddenChineseTerms,
+    "传销",
+    "下线收益",
+    "上线收益",
+    "发展下线",
+    "被动收入",
+    "躺赚",
+    "包赚",
+    "保证回报",
+    "代客下注",
+    "代客交易",
+    "入会费",
+    "NEXT_PUBLIC_GROQ_API_KEY",
+  ]) {
+    assert.doesNotMatch(copy, new RegExp(term));
   }
 });
 

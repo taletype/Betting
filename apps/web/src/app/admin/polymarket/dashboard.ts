@@ -34,10 +34,18 @@ export interface PolymarketOperationsDashboard {
   readiness: {
     builderCodeConfigured: boolean;
     routedTradingEnabled: boolean;
+    canaryOnly: boolean;
+    allowedUsersCount: number;
+    killSwitchActive: boolean;
     clobSubmitterMode: "disabled" | "real";
     signatureVerifierImplemented: boolean;
     l2CredentialLookupImplemented: boolean;
     serverGeoblockVerifierImplemented: boolean;
+    l2CredentialReadyCount: number | null;
+    regionCheckStatus: "implemented" | "missing";
+    lastPreflightFailures: string[];
+    lastSubmitAttempts: number | null;
+    lastBuilderAttributionSync: string | null;
     preflightStatus: PreflightStatus;
   };
   rewards: {
@@ -180,7 +188,7 @@ const getPublicPages = async (
   };
 };
 
-const getReadiness = (): PolymarketOperationsDashboard["readiness"] => {
+const getReadiness = (overview: AmbassadorOverview | null): PolymarketOperationsDashboard["readiness"] => {
   const launchStatus = getSafeLaunchStatus();
   const clobSubmitterMode = launchStatus.clobSubmitterMode === "real" ? "real" : "disabled";
   const signatureVerifierImplemented = readBoolean("POLYMARKET_USER_SIGNATURE_VERIFIER_IMPLEMENTED", false);
@@ -190,6 +198,8 @@ const getReadiness = (): PolymarketOperationsDashboard["readiness"] => {
   const ready =
     launchStatus.builderCodeConfigured &&
     launchStatus.routedTradingEnabled &&
+    launchStatus.routedTradingCanaryOnly &&
+    !launchStatus.routedTradingKillSwitch &&
     clobSubmitterMode === "real" &&
     signatureVerifierImplemented &&
     l2CredentialLookupImplemented &&
@@ -198,10 +208,26 @@ const getReadiness = (): PolymarketOperationsDashboard["readiness"] => {
   return {
     builderCodeConfigured: launchStatus.builderCodeConfigured,
     routedTradingEnabled: launchStatus.routedTradingEnabled,
+    canaryOnly: launchStatus.routedTradingCanaryOnly,
+    allowedUsersCount: launchStatus.routedTradingCanaryAllowlistCount,
+    killSwitchActive: launchStatus.routedTradingKillSwitch,
     clobSubmitterMode,
     signatureVerifierImplemented,
     l2CredentialLookupImplemented,
     serverGeoblockVerifierImplemented,
+    l2CredentialReadyCount: null,
+    regionCheckStatus: serverGeoblockVerifierImplemented ? "implemented" : "missing",
+    lastPreflightFailures: ready ? [] : [
+      !launchStatus.routedTradingEnabled ? "routed_trading_disabled" : null,
+      !launchStatus.routedTradingCanaryOnly ? "canary_mode_required" : null,
+      launchStatus.routedTradingKillSwitch ? "kill_switch_active" : null,
+      launchStatus.routedTradingCanaryAllowlistCount === 0 ? "canary_allowlist_empty" : null,
+      clobSubmitterMode !== "real" ? "submitter_unavailable" : null,
+      !serverGeoblockVerifierImplemented ? "region_unknown" : null,
+      !l2CredentialLookupImplemented ? "polymarket_l2_credentials_missing" : null,
+    ].filter((value): value is string => Boolean(value)),
+    lastSubmitAttempts: null,
+    lastBuilderAttributionSync: overview?.tradeAttributions[0]?.observedAt ?? null,
     preflightStatus: ready ? (runtime === "staging" ? "ready_for_staging" : "ready_for_live") : "blocked",
   };
 };
@@ -265,7 +291,7 @@ export const getPolymarketOperationsDashboard = async (
           fallbackUsedLastRequest: null,
           diagnosis: "unavailable",
         },
-    readiness: getReadiness(),
+    readiness: getReadiness(overviewResult.status === "fulfilled" ? overviewResult.value : null),
     rewards: getRewards(overviewResult.status === "fulfilled" ? overviewResult.value : null),
   };
 };

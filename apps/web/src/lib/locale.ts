@@ -1,4 +1,4 @@
-export const supportedLocales = ["zh-HK", "en"] as const;
+export const supportedLocales = ["zh-HK", "zh-TW", "zh-CN", "en"] as const;
 
 export type AppLocale = (typeof supportedLocales)[number];
 
@@ -7,12 +7,45 @@ export const chineseLocale: AppLocale = "zh-HK";
 export const englishLocale: AppLocale = "en";
 export const localeHeaderName = "x-bet-locale";
 export const localeTimeZone = "Asia/Hong_Kong";
+export const localeCookieName = "bet_locale";
+
+const localeAliases: Record<string, AppLocale> = {
+  "zh-hk": "zh-HK",
+  "zh_hk": "zh-HK",
+  "zhhk": "zh-HK",
+  "zh-tw": "zh-TW",
+  "zh_tw": "zh-TW",
+  "zhtw": "zh-TW",
+  "zh-cn": "zh-CN",
+  "zh_cn": "zh-CN",
+  "zhcn": "zh-CN",
+  en: "en",
+};
 
 export const isSupportedLocale = (value: string | null | undefined): value is AppLocale =>
   typeof value === "string" && supportedLocales.includes(value as AppLocale);
 
-export const resolveLocale = (value: string | null | undefined): AppLocale =>
-  isSupportedLocale(value) ? value : defaultLocale;
+export const normalizeLocale = (value: string | null | undefined): AppLocale =>
+  isSupportedLocale(value) ? value : localeAliases[value?.trim().toLowerCase() ?? ""] ?? defaultLocale;
+
+export const resolveLocale = normalizeLocale;
+
+export const localeToHtmlLang = (locale: AppLocale): string => locale;
+
+export const localeToDisplayName = (locale: AppLocale): string => ({
+  "zh-HK": "繁中 HK",
+  "zh-TW": "繁中 TW",
+  "zh-CN": "简中",
+  en: "English",
+})[locale];
+
+export const localeToPathSegment = (locale: AppLocale): string => locale.toLowerCase();
+
+export const pathSegmentToLocale = (segment: string | null | undefined): AppLocale | null => {
+  if (!segment) return null;
+  const normalized = normalizeLocale(segment);
+  return segment.trim().toLowerCase() in localeAliases || isSupportedLocale(segment) ? normalized : null;
+};
 
 export const getLocaleHref = (locale: AppLocale, pathname: string): string => {
   const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
@@ -22,10 +55,10 @@ export const getLocaleHref = (locale: AppLocale, pathname: string): string => {
   }
 
   if (normalizedPath === "/") {
-    return `/${locale}`;
+    return `/${localeToPathSegment(locale)}`;
   }
 
-  return `/${locale}${normalizedPath}`;
+  return `/${localeToPathSegment(locale)}${normalizedPath}`;
 };
 
 export const formatDateTime = (locale: AppLocale, value: string, timeZone = localeTimeZone): string =>
@@ -975,7 +1008,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
   ambassador: {
     title: "大使推薦獎勵",
     subtitle: "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。",
-    safeNotice: "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。",
+    safeNotice: "參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。",
     approvalNotice: "獎勵計算可自動記錄，但實際支付需要管理員審批。",
     code: "推薦碼",
     link: "推薦連結",
@@ -1198,6 +1231,8 @@ const mergeLocaleCopy = <T>(fallback: T, override: DeepPartial<T> | undefined): 
 const localizedCopy: Record<AppLocale, DeepPartial<LocaleCopy>> = {
   en,
   "zh-HK": zhHK,
+  "zh-TW": zhHK,
+  "zh-CN": zhHK,
 };
 
 export const getLocaleCopy = (locale: AppLocale): LocaleCopy => mergeLocaleCopy(en, localizedCopy[locale]);
@@ -1205,6 +1240,8 @@ export const getLocaleCopy = (locale: AppLocale): LocaleCopy => mergeLocaleCopy(
 export const localeCopy: Record<AppLocale, LocaleCopy> = {
   en: getLocaleCopy("en"),
   "zh-HK": getLocaleCopy("zh-HK"),
+  "zh-TW": getLocaleCopy("zh-TW"),
+  "zh-CN": getLocaleCopy("zh-CN"),
 };
 
 export const interpolate = (template: string, values: Record<string, string>): string =>

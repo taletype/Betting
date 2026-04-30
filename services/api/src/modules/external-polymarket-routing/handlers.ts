@@ -9,6 +9,7 @@ import { incrementCounter, logger } from "@bet/observability";
 
 import { getExternalMarketRecord, type ExternalMarketView } from "../external-markets/repository";
 import { getLinkedWalletForUser, type LinkedWallet } from "../wallets/repository";
+import { lookupUserPolymarketL2Credentials } from "./l2-credentials";
 import {
   createPolymarketOrderSubmitterFromEnv,
   PolymarketSubmitterError,
@@ -20,6 +21,26 @@ import {
 export type PolymarketL2CredentialStatus = "present" | "missing" | "expired";
 export type ExternalPolymarketOrderSide = "BUY" | "SELL";
 export type ExternalPolymarketOrderType = "GTC" | "GTD" | "FOK" | "FAK";
+export type ExternalPolymarketCanaryReadinessState =
+  | "routed_trading_disabled"
+  | "canary_not_allowed"
+  | "region_blocked"
+  | "region_unknown"
+  | "wallet_not_connected"
+  | "wallet_not_verified"
+  | "polymarket_l2_credentials_missing"
+  | "user_signature_required"
+  | "market_not_tradable"
+  | "market_stale"
+  | "token_missing"
+  | "price_invalid"
+  | "size_invalid"
+  | "insufficient_balance"
+  | "insufficient_allowance"
+  | "builder_code_missing"
+  | "submitter_unavailable"
+  | "ready_for_user_signature"
+  | "ready_to_submit_signed_order";
 
 export interface ExternalPolymarketUserAuthBoundary {
   userId: string;
@@ -47,6 +68,15 @@ export interface ExternalPolymarketGeoblockProof {
   checkedAt: string;
   country?: string | null;
   region?: string | null;
+}
+
+export type ExternalPolymarketServerRegionStatus = "allowed" | "blocked" | "unknown";
+
+export interface ExternalPolymarketServerRegionCheck {
+  status: ExternalPolymarketServerRegionStatus;
+  country?: string | null;
+  region?: string | null;
+  checkedAt: string;
 }
 
 export interface ExternalPolymarketOrderRouteInput {
@@ -103,8 +133,9 @@ export interface PolymarketOrderSubmitter {
 
 export interface ExternalPolymarketOrderRouteDependencies {
   requestUserId?: string;
+  requestUserEmail?: string | null;
   submitter?: PolymarketOrderSubmitter;
-  linkedWalletLookup?: (userId: string) => Promise<Pick<LinkedWallet, "walletAddress"> | null>;
+  linkedWalletLookup?: (userId: string) => Promise<(Pick<LinkedWallet, "walletAddress"> & { verifiedAt?: string | null }) | null>;
   l2CredentialLookup?: (
     userId: string,
     walletAddress: string,
@@ -116,6 +147,16 @@ export interface ExternalPolymarketOrderRouteDependencies {
   }) => Promise<boolean>;
   geoblockProofVerifier?: (proof: ExternalPolymarketGeoblockProof) => Promise<boolean>;
   auditRecorder?: (payload: ExternalPolymarketOrderRoutePayload, upstream: PolymarketOrderSubmitterResponse) => Promise<void>;
+  routedOrderAttemptRecorder?: (payload: ExternalPolymarketOrderRoutePayload, upstream: PolymarketOrderSubmitterResponse) => Promise<void>;
+  serverRegionCheck?: ExternalPolymarketServerRegionCheck;
+  balanceAllowanceLookup?: (input: {
+    userId: string;
+    walletAddress: string;
+    tokenId: string;
+    side: ExternalPolymarketOrderSide;
+    price: number;
+    size: number;
+  }) => Promise<{ balanceSufficient: boolean; allowanceSufficient: boolean }>;
   now?: () => Date;
   allowNonProductionSubmissionForTests?: boolean;
 }
@@ -144,13 +185,46 @@ const ALLOWED_ORDER_TYPES = new Set<ExternalPolymarketOrderType>(["GTC", "GTD", 
 const defaultLinkedWalletLookup = async (userId: string) =>
   getLinkedWalletForUser(createDatabaseClient(), userId);
 
-const defaultL2CredentialLookup = async (): Promise<L2CredentialLookupResult> => ({
-  status: "missing",
-});
+const defaultL2CredentialLookup = lookupUserPolymarketL2Credentials;
 
 const defaultGeoblockProofVerifier = async (): Promise<boolean> => false;
 
 const normalizeAddress = (value: string): string => value.trim().toLowerCase();
+const splitEnvList = (name: string): string[] =>
+  (process.env[name] ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+const isCanaryOnly = (): boolean => readBooleanFlag("POLYMARKET_ROUTED_TRADING_CANARY_ONLY", { defaultValue: true });
+const isKillSwitchActive = (): boolean =>
+  readBooleanFlag("POLYMARKET_ROUTED_TRADING_KILL_SWITCH", { defaultValue: false }) ||
+  readBooleanFlag("POLYMARKET_ORDER_SUBMIT_KILL_SWITCH", { defaultValue: false });
+
+const isCanaryAllowed = (input: { userId?: string; email?: string | null; walletAddress?: string | null }): boolean => {
+  if (!isCanaryOnly()) return false;
+  const ids = splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS");
+  const emails = splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_EMAILS");
+  const wallets = splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_WALLETS");
+  const userId = input.userId?.toLowerCase();
+  const email = input.email?.toLowerCase() ?? null;
+  const wallet = input.walletAddress?.toLowerCase() ?? null;
+  return Boolean(
+    (userId && ids.includes(userId)) ||
+    (email && emails.includes(email)) ||
+    (wallet && wallets.includes(wallet)),
+  );
+};
+
+export const getPolymarketCanaryConfig = () => ({
+  canaryOnly: isCanaryOnly(),
+  allowedUsersCount: new Set([
+    ...splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS"),
+    ...splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_EMAILS"),
+    ...splitEnvList("POLYMARKET_ROUTED_TRADING_CANARY_WALLETS"),
+  ]).size,
+  killSwitchActive: isKillSwitchActive(),
+});
 
 const toObject = (value: unknown, label: string): Record<string, unknown> => {
   if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
@@ -255,9 +329,214 @@ const isExternalPolymarketRoutingEnabled = (): boolean =>
 
 export const getExternalPolymarketRoutingReadiness = () => ({
   builderCodeConfigured: getPolymarketBuilderCode() !== null,
-  routedTradingEnabled: isExternalPolymarketRoutingEnabled(),
+  routedTradingEnabled: isExternalPolymarketRoutingEnabled() && !isKillSwitchActive(),
+  canaryOnly: isCanaryOnly(),
+  killSwitchActive: isKillSwitchActive(),
   submitterMode: process.env.POLYMARKET_CLOB_SUBMITTER === "real" ? "real" : "disabled",
 });
+
+export interface ExternalPolymarketOrderReadinessResult {
+  ok: boolean;
+  state: ExternalPolymarketCanaryReadinessState;
+  disabledReasons: ExternalPolymarketCanaryReadinessState[];
+  canaryOnly: boolean;
+  canaryAllowed: boolean;
+  routedTradingEnabled: boolean;
+  killSwitchActive: boolean;
+  builderCodeConfigured: boolean;
+  submitterMode: "disabled" | "real";
+  submitterAvailable: boolean;
+  region: ExternalPolymarketServerRegionCheck;
+  market: { externalId: string; title: string; status: string; stale: boolean } | null;
+  order: {
+    tokenId: string | null;
+    outcomeExternalId: string | null;
+    side: ExternalPolymarketOrderSide | null;
+    price: number | null;
+    size: number | null;
+    estimatedNotional: number | null;
+  };
+  feeDisclosure: {
+    builderMakerFeeBps: number;
+    builderTakerFeeBps: number;
+    estimatedBuilderFee: number | null;
+    estimatedPlatformFee: number | null;
+    maxCost: number | null;
+  };
+  warnings: string[];
+  checkedAt: string;
+}
+
+const defaultServerRegionCheck = (now: Date): ExternalPolymarketServerRegionCheck => ({
+  status: "unknown",
+  country: null,
+  region: null,
+  checkedAt: now.toISOString(),
+});
+
+const isMarketStale = (market: ExternalMarketView, now: Date): boolean => {
+  const candidate = market.lastSyncedAt ?? market.updatedAt;
+  const parsed = candidate ? Date.parse(candidate) : Number.NaN;
+  return !Number.isFinite(parsed) || now.getTime() - parsed > 5 * 60_000;
+};
+
+const appendReason = (
+  reasons: ExternalPolymarketCanaryReadinessState[],
+  reason: ExternalPolymarketCanaryReadinessState,
+): void => {
+  if (!reasons.includes(reason)) reasons.push(reason);
+};
+
+const safeOptionalNumber = (value: unknown): number | null => {
+  try {
+    return toOptionalFiniteNumber(value, "value") ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const evaluateExternalPolymarketOrderReadiness = async (
+  input: ExternalPolymarketOrderRouteInput,
+  dependencies: ExternalPolymarketOrderRouteDependencies = {},
+): Promise<ExternalPolymarketOrderReadinessResult> => {
+  const now = dependencies.now?.() ?? new Date();
+  const checkedAt = now.toISOString();
+  const reasons: ExternalPolymarketCanaryReadinessState[] = [];
+  const readiness = getExternalPolymarketRoutingReadiness();
+  const submitter = getSubmitter(dependencies);
+  const region = dependencies.serverRegionCheck ?? defaultServerRegionCheck(now);
+  const warnings = [
+    "user_must_sign_order_payload",
+    "non_custodial_polymarket_funds",
+    "platform_does_not_place_user_trades_with_platform_credentials",
+  ];
+  const marketSource = typeof input.marketSource === "string" ? input.marketSource : "";
+  const marketExternalId = typeof input.marketExternalId === "string" ? input.marketExternalId : "";
+  const outcomeExternalId = typeof input.outcomeExternalId === "string" ? input.outcomeExternalId.trim() : "";
+  const rawOrderInput = input.orderInput && typeof input.orderInput === "object" && !Array.isArray(input.orderInput)
+    ? input.orderInput as Record<string, unknown>
+    : {};
+  const tokenId = typeof (rawOrderInput.tokenID ?? rawOrderInput.tokenId) === "string"
+    ? String(rawOrderInput.tokenID ?? rawOrderInput.tokenId).trim()
+    : typeof input.signedOrder === "object" && input.signedOrder && "tokenId" in input.signedOrder
+      ? String((input.signedOrder as Record<string, unknown>).tokenId ?? "").trim()
+      : null;
+  const side = (() => {
+    try {
+      return toSide(rawOrderInput.side, "orderInput.side");
+    } catch {
+      return null;
+    }
+  })();
+  const price = safeOptionalNumber(rawOrderInput.price);
+  const size = safeOptionalNumber(rawOrderInput.size ?? rawOrderInput.amount);
+  const estimatedNotional = price !== null && size !== null ? price * size : null;
+  const userId = dependencies.requestUserId;
+
+  if (!readiness.routedTradingEnabled) appendReason(reasons, "routed_trading_disabled");
+  if (!readiness.builderCodeConfigured) appendReason(reasons, "builder_code_missing");
+  if (submitter.mode !== "real") appendReason(reasons, "submitter_unavailable");
+  if (region.status === "blocked") appendReason(reasons, "region_blocked");
+  if (region.status === "unknown") appendReason(reasons, "region_unknown");
+
+  const linkedWallet = userId ? await (dependencies.linkedWalletLookup ?? defaultLinkedWalletLookup)(userId) : null;
+  const linkedWalletAddress = linkedWallet?.walletAddress ? normalizeAddress(linkedWallet.walletAddress) : null;
+  const requestedWalletAddress = typeof input.userWalletAddress === "string" && input.userWalletAddress.trim()
+    ? normalizeAddress(input.userWalletAddress)
+    : linkedWalletAddress;
+  const canaryAllowed = isCanaryAllowed({
+    userId,
+    email: dependencies.requestUserEmail,
+    walletAddress: requestedWalletAddress,
+  });
+  if (!canaryAllowed) appendReason(reasons, "canary_not_allowed");
+  if (!linkedWalletAddress) appendReason(reasons, "wallet_not_connected");
+  if (linkedWallet && "verifiedAt" in linkedWallet && !linkedWallet.verifiedAt) appendReason(reasons, "wallet_not_verified");
+
+  const l2Lookup = userId && linkedWalletAddress
+    ? await (dependencies.l2CredentialLookup ?? defaultL2CredentialLookup)(userId, linkedWalletAddress)
+    : { status: "missing" as const };
+  if (l2Lookup.status !== "present") appendReason(reasons, "polymarket_l2_credentials_missing");
+  if (!input.signedOrder) appendReason(reasons, "user_signature_required");
+
+  const market = marketSource && marketExternalId ? await getExternalMarketRecord(marketSource, marketExternalId) : null;
+  const stale = market ? isMarketStale(market, now) : false;
+  if (!market || market.source !== "polymarket" || market.status !== "open" || market.resolvedAt || (market.closeTime && Date.parse(market.closeTime) <= now.getTime())) {
+    appendReason(reasons, "market_not_tradable");
+  }
+  if (stale) appendReason(reasons, "market_stale");
+  if (!tokenId || !outcomeExternalId || !market?.outcomes.some((outcome) => outcome.externalOutcomeId === outcomeExternalId && outcome.externalOutcomeId === tokenId)) {
+    appendReason(reasons, "token_missing");
+  }
+  if (price === null || price <= 0 || price >= 1) appendReason(reasons, "price_invalid");
+  if (size === null || size <= 0) appendReason(reasons, "size_invalid");
+
+  if (userId && linkedWalletAddress && tokenId && side && price !== null && size !== null && dependencies.balanceAllowanceLookup) {
+    const balance = await dependencies.balanceAllowanceLookup({ userId, walletAddress: linkedWalletAddress, tokenId, side, price, size });
+    if (!balance.balanceSufficient) appendReason(reasons, "insufficient_balance");
+    if (!balance.allowanceSufficient) appendReason(reasons, "insufficient_allowance");
+  } else if (!dependencies.allowNonProductionSubmissionForTests) {
+    appendReason(reasons, "insufficient_balance");
+    appendReason(reasons, "insufficient_allowance");
+  }
+
+  const submitterAvailable = !reasons.includes("submitter_unavailable");
+  const readyWithoutSignature = reasons.length === 1 && reasons[0] === "user_signature_required";
+  const state: ExternalPolymarketCanaryReadinessState = reasons.length === 0
+    ? "ready_to_submit_signed_order"
+    : readyWithoutSignature
+      ? "ready_for_user_signature"
+      : reasons[0] ?? "routed_trading_disabled";
+
+  return {
+    ok: state === "ready_for_user_signature" || state === "ready_to_submit_signed_order",
+    state,
+    disabledReasons: reasons,
+    canaryOnly: readiness.canaryOnly,
+    canaryAllowed,
+    routedTradingEnabled: readiness.routedTradingEnabled,
+    killSwitchActive: readiness.killSwitchActive,
+    builderCodeConfigured: readiness.builderCodeConfigured,
+    submitterMode: readiness.submitterMode === "real" ? "real" : "disabled",
+    submitterAvailable,
+    region,
+    market: market ? { externalId: market.externalId, title: market.title, status: market.status, stale } : null,
+    order: { tokenId, outcomeExternalId: outcomeExternalId || null, side, price, size, estimatedNotional },
+    feeDisclosure: {
+      builderMakerFeeBps: Number(process.env.POLYMARKET_BUILDER_MAKER_FEE_BPS ?? 50),
+      builderTakerFeeBps: Number(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS ?? 100),
+      estimatedBuilderFee: estimatedNotional === null ? null : estimatedNotional * Number(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS ?? 100) / 10_000,
+      estimatedPlatformFee: null,
+      maxCost: side === "SELL" || estimatedNotional === null ? null : estimatedNotional + (estimatedNotional * Number(process.env.POLYMARKET_BUILDER_TAKER_FEE_BPS ?? 100) / 10_000),
+    },
+    warnings,
+    checkedAt,
+  };
+};
+
+export const previewExternalPolymarketOrder = async (
+  input: ExternalPolymarketOrderRouteInput,
+  dependencies: ExternalPolymarketOrderRouteDependencies = {},
+) => {
+  const readiness = await evaluateExternalPolymarketOrderReadiness(input, dependencies);
+  return {
+    ok: readiness.ok,
+    readiness,
+    marketTitle: readiness.market?.title ?? null,
+    outcome: readiness.order.outcomeExternalId,
+    side: readiness.order.side,
+    price: readiness.order.price,
+    size: readiness.order.size,
+    estimatedNotional: readiness.order.estimatedNotional,
+    estimatedBuilderFee: readiness.feeDisclosure.estimatedBuilderFee,
+    estimatedPlatformPolymarketFee: readiness.feeDisclosure.estimatedPlatformFee,
+    maxCostOrProceedsEstimate: readiness.feeDisclosure.maxCost,
+    userMustSignWarning: "用戶自行簽署訂單",
+    nonCustodialWarning: "本平台不託管用戶在 Polymarket 的資金",
+    platformNoTradeWarning: "本平台不會代用戶下注或交易",
+    disabledReason: readiness.state.startsWith("ready_") ? null : readiness.state,
+  };
+};
 
 const assertRecentIso = (value: string, label: string, maxAgeMs: number, now: Date): void => {
   const parsed = Date.parse(value);
@@ -457,6 +736,12 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_WALLET_NOT_CONNECTED", "linked wallet is required");
   }
   const linkedWalletAddress = normalizeAddress(linkedWallet.walletAddress);
+  if ("verifiedAt" in linkedWallet && !linkedWallet.verifiedAt) {
+    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_WALLET_NOT_VERIFIED", "linked wallet must be verified");
+  }
+  if (!dependencies.allowNonProductionSubmissionForTests && !isCanaryAllowed({ userId, email: dependencies.requestUserEmail, walletAddress: linkedWalletAddress })) {
+    throw new ExternalPolymarketRoutingError(403, "POLYMARKET_CANARY_NOT_ALLOWED", "live routed trading is limited to private canary users");
+  }
   if (linkedWalletAddress !== userWalletAddress || normalizeAddress(signedOrder.signer) !== linkedWalletAddress) {
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_SIGNER_MISMATCH", "signed order signer must match the linked user wallet");
   }
@@ -483,6 +768,26 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   const submitter = getSubmitter(dependencies);
   const constraints = await submitter.getMarketConstraints(market.externalId, tokenId);
   assertMarketConstraints(constraints, orderInput);
+
+  if (!dependencies.allowNonProductionSubmissionForTests) {
+    if (!dependencies.balanceAllowanceLookup) {
+      throw new ExternalPolymarketRoutingError(503, "POLYMARKET_BALANCE_ALLOWANCE_UNAVAILABLE", "Polymarket balance and allowance checks are unavailable");
+    }
+    const balance = await dependencies.balanceAllowanceLookup({
+      userId,
+      walletAddress: linkedWalletAddress,
+      tokenId,
+      side: confirmation.side,
+      price: confirmation.price,
+      size: confirmation.size ?? confirmation.amount ?? 0,
+    });
+    if (!balance.balanceSufficient) {
+      throw new ExternalPolymarketRoutingError(400, "POLYMARKET_INSUFFICIENT_BALANCE", "insufficient pUSD/USDC balance for Polymarket order");
+    }
+    if (!balance.allowanceSufficient) {
+      throw new ExternalPolymarketRoutingError(400, "POLYMARKET_INSUFFICIENT_ALLOWANCE", "insufficient Polymarket allowance for order");
+    }
+  }
 
   return {
     userId,
@@ -536,6 +841,7 @@ export const routeExternalPolymarketOrder = async (
     incrementCounter("user_order_signature_completed", { status: "verified" });
     const upstream = await submitter.submitOrder(payload);
     await (dependencies.auditRecorder ?? recordRoutedOrderAudit)(payload, upstream);
+    await dependencies.routedOrderAttemptRecorder?.(payload, upstream);
 
     incrementCounter("routed_trade_submitted", { status: upstream.status || "submitted" });
     incrementCounter("polymarket_builder_order_attribution_total", { status: "submitted" });

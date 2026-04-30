@@ -22,7 +22,8 @@ import { PendingReferralNotice } from "../../pending-referral-notice";
 import { ThirdwebWalletFundingCard } from "../../thirdweb-wallet-funding-card";
 import { TrackedCopyButton } from "../../tracked-copy-button";
 import { getExternalMarket, getExternalMarketHistory, getExternalMarketOrderbook, getExternalMarketStats, getExternalMarketTrades, listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
-import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
+import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../../lib/locale";
+import { siteCopy } from "../../../lib/i18n";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
 
 interface PolymarketSlugPageProps {
@@ -118,11 +119,12 @@ const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
 const isMarketTradable = (market: ExternalMarketApiRecord, stale: boolean): boolean =>
   market.status === "open" && !stale && hasValidTradeData(market);
 
-export default async function PolymarketSlugPage({ params, searchParams }: PolymarketSlugPageProps) {
+export async function renderPolymarketSlugPage(locale: AppLocale, { params, searchParams }: PolymarketSlugPageProps) {
   const { slug } = await params;
   const query = await searchParams;
   const refCode = normalizeReferralCode(query?.ref);
-  const copy = getLocaleCopy(defaultLocale).research;
+  const copy = getLocaleCopy(locale).research;
+  const shortCopy = siteCopy[locale];
   const hasBuilderCode = hasPolymarketBuilderCode();
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitModeEnabled = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
@@ -132,7 +134,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   let failed = false;
 
   try {
-    market = await getExternalMarket("polymarket", slug);
+    market = await getExternalMarket("polymarket", slug, locale);
     if (!market) {
       market = findMarket((await listExternalMarkets()).filter((item) => item.source === "polymarket"), slug);
     }
@@ -143,7 +145,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   if (failed) {
     const fallbackTitle = formatSlugTitle(slug);
     const unavailableTicketProps = {
-      locale: defaultLocale,
+      locale,
       hasBuilderCode,
       featureEnabled: routedTradingEnabled,
       submitModeEnabled,
@@ -193,7 +195,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
             </section>
           </aside>
         </section>
-        <Link href={refCode ? `/polymarket?ref=${encodeURIComponent(refCode)}` : "/polymarket"}>返回 Polymarket 市場</Link>
+        <Link href={`${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>返回 Polymarket 市場</Link>
       </main>
     );
   }
@@ -208,7 +210,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
           {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         </section>
         <div className="panel empty-state">{copy.empty}</div>
-        <Link href={refCode ? `/polymarket?ref=${encodeURIComponent(refCode)}` : "/polymarket"}>返回 Polymarket 市場</Link>
+        <Link href={`${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>返回 Polymarket 市場</Link>
       </main>
     );
   }
@@ -245,10 +247,10 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   };
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
   const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
-  const detailPath = `/polymarket/${encodeURIComponent(market.slug || market.externalId)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const marketShareUrl = `${siteUrl()}${detailPath}`;
   const tradeTicketProps = {
-    locale: defaultLocale,
+    locale,
     hasBuilderCode,
     featureEnabled: routedTradingEnabled,
     submitModeEnabled,
@@ -284,9 +286,18 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
           <div className={`badge badge-${market.status === "open" ? "success" : "warning"}`}>{copy.statuses[market.status] ?? market.status}</div>
           {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
           {!orderValid ? <div className="badge badge-warning">暫無成交資料</div> : null}
+          {market.translationStatus === "stale" ? <div className="badge badge-warning">{shortCopy.translationStale}</div> : null}
+          {market.locale === "en" && locale !== "en" ? <div className="badge badge-warning">{shortCopy.showingOriginal}</div> : null}
         </div>
         <h1>{market.title}</h1>
         <p>{market.description || copy.subtitle}</p>
+        {market.titleOriginal && market.titleOriginal !== market.title ? (
+          <details className="original-copy">
+            <summary>{locale === "en" ? "Original" : "原文"}</summary>
+            <p className="muted">{market.titleOriginal}</p>
+            {market.descriptionOriginal ? <p className="muted">{market.descriptionOriginal}</p> : null}
+          </details>
+        ) : null}
         <p>{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
@@ -300,7 +311,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         </div>
       </section>
 
-      <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
+      <BuilderFeeDisclosureCard locale={locale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
       {!marketTradable ? (
         <section className="panel disclosure-card stack">
@@ -332,8 +343,8 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         </article>
         <article className="panel stack">
           <strong>{copy.resolution}</strong>
-          <div className="kv"><span className="kv-key">{copy.statuses[market.status] ?? market.status}</span><span className="kv-value">{market.resolvedAt ? formatDateTime(defaultLocale, market.resolvedAt, "UTC") : "—"}</span></div>
-          <div className="kv"><span className="kv-key">{copy.closeTime}</span><span className="kv-value">{market.closeTime ? formatDateTime(defaultLocale, market.closeTime, "UTC") : "—"}</span></div>
+          <div className="kv"><span className="kv-key">{copy.statuses[market.status] ?? market.status}</span><span className="kv-value">{market.resolvedAt ? formatDateTime(locale, market.resolvedAt, "UTC") : "—"}</span></div>
+          <div className="kv"><span className="kv-key">{copy.closeTime}</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>
         </article>
       </section>
 
@@ -366,7 +377,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">{market.source}</span></div>
         <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
-        <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(defaultLocale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
+        <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
         {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
       </section>
 
@@ -395,7 +406,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
                     <td>{book.externalOutcomeId}</td>
                     <td>{toDisplay(book.bestBid)}</td>
                     <td>{toDisplay(book.bestAsk)}</td>
-                    <td>{formatDateTime(defaultLocale, book.capturedAt, "UTC")}</td>
+                    <td>{formatDateTime(locale, book.capturedAt, "UTC")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -413,7 +424,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
               <tbody>
                 {visibleTrades.map((trade) => (
                   <tr key={trade.externalTradeId}>
-                    <td>{formatDateTime(defaultLocale, trade.tradedAt, "UTC")}</td>
+                    <td>{formatDateTime(locale, trade.tradedAt, "UTC")}</td>
                     <td>{trade.side ? copy.sides[trade.side] ?? trade.side : "—"}</td>
                     <td>{toDisplay(trade.price)}</td>
                     <td>{toDisplay(trade.size)}</td>
@@ -446,4 +457,8 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       </details>
     </main>
   );
+}
+
+export default async function PolymarketSlugPage(props: PolymarketSlugPageProps) {
+  return renderPolymarketSlugPage(defaultLocale, props);
 }
