@@ -640,7 +640,8 @@ const en: LocaleCopy = {
     },
     loadError: "Unable to load Polymarket market data.",
     loadErrorDetails: {
-      missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL is not configured; the page tried the same-site /external/markets fallback.",
+      missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL is not configured; the page tried the same-site /api/external/markets fallback.",
+      configured_api_base_unreachable: "Production API_BASE_URL / NEXT_PUBLIC_API_BASE_URL points to an unreachable address. Check Vercel environment variables.",
       api_unreachable: "The configured API or same-site API route was unreachable.",
       backend_500: "The backend returned 500 for /external/markets.",
       external_markets_not_implemented: "The backend does not implement /external/markets.",
@@ -1038,7 +1039,8 @@ const zhHK: DeepPartial<LocaleCopy> = {
     },
     loadError: "市場資料暫時未能更新",
     loadErrorDetails: {
-      missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 未設定；頁面已嘗試同站 /external/markets fallback。",
+      missing_api_base_url: "API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 未設定；頁面已嘗試同站 /api/external/markets fallback。",
+      configured_api_base_unreachable: "正式環境的 API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 指向不可連線地址。請檢查 Vercel 環境變數。",
       api_unreachable: "已設定的 API 或同站 API route 無法連線。",
       backend_500: "後端 /external/markets 返回 500。",
       external_markets_not_implemented: "市場資料暫時未能更新。",

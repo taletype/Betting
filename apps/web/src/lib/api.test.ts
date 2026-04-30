@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ExternalMarketsLoadError, getAmbassadorDashboard, listExternalMarkets, listMarkets } from "./api";
+import {
+  ExternalMarketsLoadError,
+  getAmbassadorDashboard,
+  getExternalMarket,
+  getExternalMarketHistory,
+  getExternalMarketOrderbook,
+  getExternalMarketStats,
+  getExternalMarketTrades,
+  listExternalMarkets,
+  listMarkets,
+} from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
 
@@ -155,7 +165,80 @@ test("listExternalMarkets uses local Next API route when API base is not configu
   await listExternalMarkets();
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/external/markets");
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
+});
+
+test("public external market detail helpers use same-site Next API route when API base is not configured", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const calls: string[] = [];
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: [], depth: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(JSON.stringify({ source: "polymarket", externalId: "poly-1", volume24h: null, liquidity: null, spread: null, closeTime: null, lastUpdatedAt: null, stale: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ market: null }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await getExternalMarket("polymarket", "poly-1");
+  await getExternalMarketOrderbook("polymarket", "poly-1");
+  await getExternalMarketTrades("polymarket", "poly-1");
+  await getExternalMarketHistory("polymarket", "poly-1");
+  await getExternalMarketStats("polymarket", "poly-1");
+
+  assert.deepEqual(calls, [
+    "http://127.0.0.1:3000/api/external/markets/polymarket/poly-1",
+    "http://127.0.0.1:3000/api/external/markets/polymarket/poly-1/orderbook",
+    "http://127.0.0.1:3000/api/external/markets/polymarket/poly-1/trades",
+    "http://127.0.0.1:3000/api/external/markets/polymarket/poly-1/history",
+    "http://127.0.0.1:3000/api/external/markets/polymarket/poly-1/stats",
+  ]);
 });
 
 test("listExternalMarkets uses standalone API route when API base is configured", async (t) => {
@@ -259,7 +342,58 @@ test("listExternalMarkets uses same-site Next API route in production when API_B
   });
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/external/markets");
+  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/api/external/markets");
+});
+
+test("listExternalMarkets returns safe diagnostic for localhost API base in production", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalWarn = console.warn;
+  const calls: FetchCall[] = [];
+  const warnings: string[] = [];
+
+  process.env.API_BASE_URL = "http://localhost:4000";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  globalThis.fetch = (async (...args: FetchCall) => {
+    calls.push(args);
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+  };
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await withNodeEnv("production", async () => {
+    await assert.rejects(
+      () => listExternalMarkets(),
+      (error: unknown) =>
+        error instanceof ExternalMarketsLoadError &&
+        error.diagnostics.includes("configured_api_base_unreachable") &&
+        !error.message.includes("localhost"),
+    );
+  });
+
+  assert.equal(calls.length, 0);
+  assert.equal(warnings.length, 1);
+  assert.doesNotMatch(warnings[0] ?? "", /localhost:4000/);
 });
 
 test("listExternalMarkets classifies backend 500 and Supabase env errors", async (t) => {

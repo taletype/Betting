@@ -21,28 +21,33 @@ fail() {
 
 fetch() {
   local path="$1"
+  local allow_404="${2:-yes}"
   local out="$tmp_dir/$(echo "$path" | tr '/?=&:' '______').txt"
   local status
   status="$(curl -sS -L -o "$out" -w "%{http_code}" "$BASE_URL$path")" || fail "request failed: $path"
-  [[ "$status" =~ ^2|3|404$ ]] || fail "$path returned HTTP $status"
+  if [[ "$allow_404" == "yes" ]]; then
+    [[ "$status" =~ ^(2|3)[0-9][0-9]$|^404$ ]] || fail "$path returned HTTP $status"
+  else
+    [[ "$status" =~ ^(2|3)[0-9][0-9]$ ]] || fail "$path returned HTTP $status"
+  fi
   if grep -Eiq '(SUPABASE_SERVICE_ROLE_KEY|POLYMARKET_API_SECRET|PRIVATE_KEY|BEGIN PRIVATE KEY|authorization: bearer|passphrase|connection string)' "$out"; then
     fail "$path response appears to contain a secret"
   fi
   echo "$out"
 }
 
-root="$(fetch "/")"
+root="$(fetch "/" no)"
 grep -Eq 'Polymarket|預測|市場|推薦' "$root" || fail "/ did not include expected public portal copy"
 grep -Eiq 'automatic payout|auto payout|guaranteed earning|guaranteed income|保證收入|自動支付' "$root" && fail "/ includes prohibited payout or guarantee wording"
 
-poly="$(fetch "/polymarket")"
+poly="$(fetch "/polymarket" no)"
 grep -Eq 'Polymarket|預測|市場' "$poly" || fail "/polymarket did not include zh-HK Polymarket market copy"
 grep -Eiq 'live trading enabled|submit order now|automatic payout|auto payout|保證收入|自動支付' "$poly" && fail "/polymarket includes unsafe live-trading or payout wording"
 
-fetch "/polymarket?ref=$(printf '%s' "$REF_CODE" | sed 's/ /%20/g')" >/dev/null
-fetch "/api/health" >/dev/null
-fetch "/api/version" >/dev/null
-markets_json="$(fetch "/api/external/markets")"
+fetch "/polymarket?ref=$(printf '%s' "$REF_CODE" | sed 's/ /%20/g')" no >/dev/null
+fetch "/api/health" no >/dev/null
+fetch "/api/version" no >/dev/null
+markets_json="$(fetch "/api/external/markets" no)"
 
 if [[ -z "$MARKET_SLUG" ]]; then
   MARKET_SLUG="$(node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const m=Array.isArray(data)?data.find(x=>x&&x.source==="polymarket"):null; if(m) console.log(m.slug||m.externalId||m.id);' "$markets_json")"

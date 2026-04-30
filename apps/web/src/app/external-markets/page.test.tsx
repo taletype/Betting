@@ -134,21 +134,41 @@ test("external markets route remains a compatibility alias", async () => {
 
 test("Polymarket page renders empty-state when no synced rows exist", async (t) => {
   const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const calls: string[] = [];
 
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify([]), {
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify([]), {
       status: 200,
       headers: { "content-type": "application/json" },
-    })) as typeof globalThis.fetch;
+    });
+  }) as typeof globalThis.fetch;
 
   t.after(() => {
     globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /暫時未有市場資料/);
   assert.match(markup, /external_markets table 未返回任何 Polymarket row/);
   assert.match(markup, /外部同步尚未執行/);
+  assert.doesNotMatch(markup, /已設定的 API 或同站 API route 無法連線/);
+  assert.equal(calls[0], "http://127.0.0.1:3000/api/external/markets");
 });
 
 test("Polymarket page browsing works without builder code and shows disabled trade CTA only when configured", async (t) => {
@@ -748,12 +768,58 @@ test("Polymarket page renders operator-visible diagnostics when production API b
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /市場資料暫時未能更新/);
     assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL 未設定/);
-    assert.match(markup, /\/external\/markets fallback/);
+    assert.match(markup, /\/api\/external\/markets fallback/);
     assert.match(markup, /後端 \/external\/markets 返回 500/);
     assert.match(markup, /Supabase 環境變數缺失或無效/);
   });
 
-  assert.equal(calls[0], "https://bet.example.vercel.app/external/markets");
+  assert.equal(calls[0], "https://bet.example.vercel.app/api/external/markets");
+});
+
+test("Polymarket page renders safe diagnostic when production API base points to localhost", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const calls: string[] = [];
+
+  process.env.API_BASE_URL = "http://localhost:4000";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  globalThis.fetch = (async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+  console.warn = () => {};
+  console.error = () => {};
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.error = originalError;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await withNodeEnv("production", async () => {
+    const markup = renderToStaticMarkup(await PolymarketPage());
+    assert.match(markup, /市場資料暫時未能更新/);
+    assert.match(markup, /正式環境的 API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL 指向不可連線地址/);
+    assert.doesNotMatch(markup, /localhost:4000/);
+  });
+
+  assert.equal(calls.length, 0);
 });
 
 test("Polymarket page defaults routed trading disabled", async () => {

@@ -102,16 +102,44 @@ const getLocalApiUrl = (path: string): string => {
 
 const getPublicRouteUrl = (path: string): string => {
   const base = getConfiguredApiBaseUrl();
-  if (base) {
+  if (base && !hasUnreachableProductionApiBaseUrl()) {
     return `${base}${path}`;
   }
 
   const localBase = getLocalWebBaseUrl();
-  return localBase ? `${localBase}${path}` : path;
+  const localPath = path.startsWith("/api/") ? path : `/api${path}`;
+  return localBase ? `${localBase}${localPath}` : localPath;
 };
 
 const isProductionRuntime = (): boolean =>
   process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+
+const isLocalhostApiBaseUrl = (base: string): boolean => {
+  try {
+    const url = new URL(base);
+    return ["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname);
+  } catch {
+    return /\b(localhost|127\.0\.0\.1|0\.0\.0\.0)\b/i.test(base);
+  }
+};
+
+let warnedAboutProductionLocalApiBase = false;
+
+const hasUnreachableProductionApiBaseUrl = (): boolean => {
+  const base = getConfiguredApiBaseUrl();
+  if (!base || !isProductionRuntime() || !isLocalhostApiBaseUrl(base)) {
+    return false;
+  }
+
+  if (typeof window === "undefined" && !warnedAboutProductionLocalApiBase) {
+    warnedAboutProductionLocalApiBase = true;
+    console.warn(
+      "Ignoring configured API base for public market reads: localhost-style API base is unreachable in production. Check Vercel API_BASE_URL / NEXT_PUBLIC_API_BASE_URL.",
+    );
+  }
+
+  return true;
+};
 
 const getApiRequestTimeoutMs = (): number => {
   const parsed = Number(process.env.NEXT_PUBLIC_API_REQUEST_TIMEOUT_MS ?? process.env.API_REQUEST_TIMEOUT_MS ?? 4_500);
@@ -149,6 +177,7 @@ class ApiResponseError extends Error {
 
 export type ExternalMarketsLoadErrorCode =
   | "missing_api_base_url"
+  | "configured_api_base_unreachable"
   | "api_unreachable"
   | "backend_500"
   | "external_markets_not_implemented"
@@ -549,6 +578,12 @@ export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> 
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
   if (!getConfiguredApiBaseUrl()) {
     diagnostics.push("missing_api_base_url");
+  }
+  if (hasUnreachableProductionApiBaseUrl()) {
+    throw new ExternalMarketsLoadError(
+      "Configured API base is unreachable in production",
+      ["configured_api_base_unreachable"],
+    );
   }
 
   try {

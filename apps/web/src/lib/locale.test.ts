@@ -20,6 +20,10 @@ test("locale href helper keeps zh-HK default and prefixes english fallback route
 test("locale copy exposes translated labels", () => {
   assert.equal(getLocaleCopy("en").markets.statuses.open, "Active");
   assert.equal(getLocaleCopy("zh-HK").markets.statuses.open, "開放");
+  assert.equal(
+    getLocaleCopy("zh-HK").research.loadErrorDetails.configured_api_base_unreachable,
+    "正式環境的 API_BASE_URL / NEXT_PUBLIC_API_BASE_URL 指向不可連線地址。請檢查 Vercel 環境變數。",
+  );
 });
 
 test("locale copy falls back to English for missing nested keys", () => {
