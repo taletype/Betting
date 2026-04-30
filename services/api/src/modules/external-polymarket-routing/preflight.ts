@@ -15,6 +15,13 @@ export interface PolymarketPreflightCheck {
 const runtime = (): string => process.env.DEPLOY_ENV ?? process.env.APP_ENV ?? process.env.NODE_ENV ?? "development";
 const isProductionLikeRuntime = (): boolean => ["production", "staging"].includes(runtime());
 const flag = (name: string, defaultValue = false): boolean => readBooleanFlag(name, { defaultValue });
+const hasValidBuilderCode = (): boolean => {
+  try {
+    return getPolymarketBuilderCode() !== null;
+  } catch {
+    return false;
+  }
+};
 
 const check = (
   id: string,
@@ -28,7 +35,7 @@ const check = (
 export const evaluatePolymarketPreflight = () => {
   const liveTradingEnabled = flag("POLYMARKET_ROUTED_TRADING_ENABLED", false);
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" ? "real" : "disabled";
-  const builderCodeConfigured = getPolymarketBuilderCode() !== null;
+  const builderCodeConfigured = hasValidBuilderCode();
   const signatureVerifierImplemented = flag("POLYMARKET_USER_SIGNATURE_VERIFIER_IMPLEMENTED", false);
   const geoblockVerifierImplemented = flag("POLYMARKET_GEOBLOCK_PROOF_VERIFIER_IMPLEMENTED", false);
   const l2CredentialLookupImplemented = flag("POLYMARKET_L2_CREDENTIAL_LOOKUP_IMPLEMENTED", false);

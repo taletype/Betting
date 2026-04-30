@@ -57,9 +57,37 @@ test("Polymarket operations dashboard displays routed trading and auto payout di
     });
 
     assert.equal(dashboard.readiness.routedTradingEnabled, false);
+    assert.equal(dashboard.readiness.publicRoutedTradingEnabled, false);
+    assert.equal(dashboard.readiness.betaRoutedTradingEnabled, false);
     assert.equal(dashboard.readiness.clobSubmitterMode, "disabled");
+    assert.equal(dashboard.readiness.submitterReady, false);
+    assert.equal(dashboard.readiness.attributionRecordingReady, true);
     assert.equal(dashboard.readiness.preflightStatus, "blocked");
     assert.equal(dashboard.rewards.autoPayoutEnabled, false);
+  });
+});
+
+test("Polymarket operations dashboard reports beta allowlist status without revealing values", async () => {
+  await withEnv({
+    POLYMARKET_ROUTED_TRADING_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: "  admin@example.test , 22222222-2222-4222-8222-222222222222 ,, ",
+    POLYMARKET_ROUTED_ORDER_AUDIT_DISABLED: "true",
+  }, async () => {
+    const dashboard = await getPolymarketOperationsDashboard({
+      currentUser: { id: "11111111-1111-4111-8111-111111111111", email: "admin@example.test" },
+      countBackendMarkets: async () => 0,
+      readGammaFallbackMarkets: async () => [],
+      fetchPublicPath: async () => ({ status: 200, json: [] }),
+    });
+    const serialized = JSON.stringify(dashboard);
+
+    assert.equal(dashboard.readiness.publicRoutedTradingEnabled, false);
+    assert.equal(dashboard.readiness.betaRoutedTradingEnabled, true);
+    assert.equal(dashboard.readiness.currentUserAllowlisted, true);
+    assert.equal(dashboard.readiness.allowedUsersCount, 2);
+    assert.equal(dashboard.readiness.attributionRecordingReady, false);
+    assert.doesNotMatch(serialized, /admin@example\.test|22222222-2222-4222-8222-222222222222/);
   });
 });
 

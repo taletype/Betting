@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@bet/supabase/server";
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { adminPolymarketStatusResponse } from "../_shared/admin-polymarket-status";
 import { readExternalMarkets } from "../_shared/external-market-read";
+import { isPolymarketRoutedTradingAllowlisted } from "../_shared/launch-status";
 import {
   externalMarketDetailResponse,
   externalMarketHistoryResponse,
@@ -64,15 +65,6 @@ const getVersionPayload = () => ({
 
 const safeErrorMessage = (error: unknown): string =>
   process.env.NODE_ENV === "production" ? "Request failed" : error instanceof Error ? error.message : "Failed to fetch data";
-
-const isPolymarketBetaAllowlisted = (userId: string | null): boolean => {
-  if (!userId) return false;
-  return (process.env.POLYMARKET_ROUTED_TRADING_ALLOWLIST ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(userId.toLowerCase());
-};
 
 const rateLimitState = new Map<string, { windowStartedAtMs: number; count: number }>();
 
@@ -210,7 +202,7 @@ async function handleRequest(
       const regionState = !country ? "region_unknown" : restricted.has(country) ? "region_blocked" : null;
       const globallyEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
       const betaEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
-      const betaAllowlisted = globallyEnabled || (betaEnabled && isPolymarketBetaAllowlisted(userId));
+      const betaAllowlisted = globallyEnabled || (betaEnabled && isPolymarketRoutedTradingAllowlisted({ userId }));
       const preview = await previewPolymarketOrder(
         {
           ...body,

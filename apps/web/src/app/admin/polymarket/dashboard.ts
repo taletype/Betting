@@ -33,11 +33,16 @@ export interface PolymarketOperationsDashboard {
   };
   readiness: {
     builderCodeConfigured: boolean;
+    publicRoutedTradingEnabled: boolean;
+    betaRoutedTradingEnabled: boolean;
     routedTradingEnabled: boolean;
+    currentUserAllowlisted: boolean | null;
     canaryOnly: boolean;
     allowedUsersCount: number;
     killSwitchActive: boolean;
     clobSubmitterMode: "disabled" | "real";
+    submitterReady: boolean;
+    attributionRecordingReady: boolean;
     signatureVerifierImplemented: boolean;
     l2CredentialLookupImplemented: boolean;
     serverGeoblockVerifierImplemented: boolean;
@@ -67,6 +72,7 @@ interface DashboardDependencies {
   readGammaFallbackMarkets?: () => Promise<unknown[]>;
   fetchPublicPath?: (path: string) => Promise<{ status: number; json: unknown }>;
   readAmbassadorOverview?: () => Promise<AmbassadorOverview | null>;
+  currentUser?: { id: string; email: string | null } | null;
 }
 
 interface SupabaseExternalMarketCounter {
@@ -87,6 +93,22 @@ const readBoolean = (name: string, defaultValue = false): boolean => {
   const value = process.env[name]?.trim().toLowerCase();
   if (!value) return defaultValue;
   return ["1", "true", "yes", "on"].includes(value);
+};
+
+const readEnvList = (name: string): string[] =>
+  (process.env[name] ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+const isAllowlisted = (user: { id: string; email: string | null } | null | undefined): boolean | null => {
+  if (!user) return null;
+  const allowlist = new Set([
+    ...readEnvList("POLYMARKET_ROUTED_TRADING_ALLOWLIST"),
+    ...readEnvList("POLYMARKET_ROUTED_TRADING_CANARY_USER_IDS"),
+    ...readEnvList("POLYMARKET_ROUTED_TRADING_CANARY_EMAILS"),
+  ]);
+  return allowlist.has(user.id.toLowerCase()) || (user.email ? allowlist.has(user.email.toLowerCase()) : false);
 };
 
 const getLocalWebBaseUrl = (): string => {
@@ -188,41 +210,56 @@ const getPublicPages = async (
   };
 };
 
-const getReadiness = (overview: AmbassadorOverview | null): PolymarketOperationsDashboard["readiness"] => {
+const getReadiness = (
+  overview: AmbassadorOverview | null,
+  currentUser: DashboardDependencies["currentUser"],
+): PolymarketOperationsDashboard["readiness"] => {
   const launchStatus = getSafeLaunchStatus();
   const clobSubmitterMode = launchStatus.clobSubmitterMode === "real" ? "real" : "disabled";
+  const publicRoutedTradingEnabled = launchStatus.routedTradingEnabled;
+  const betaRoutedTradingEnabled = launchStatus.routedTradingBetaEnabled;
+  const submitterReady = clobSubmitterMode === "real";
+  const attributionRecordingReady = process.env.POLYMARKET_ROUTED_ORDER_AUDIT_DISABLED !== "true";
   const signatureVerifierImplemented = readBoolean("POLYMARKET_USER_SIGNATURE_VERIFIER_IMPLEMENTED", false);
   const l2CredentialLookupImplemented = readBoolean("POLYMARKET_L2_CREDENTIAL_LOOKUP_IMPLEMENTED", false);
   const serverGeoblockVerifierImplemented = readBoolean("POLYMARKET_GEOBLOCK_PROOF_VERIFIER_IMPLEMENTED", false);
   const runtime = process.env.DEPLOY_ENV ?? process.env.APP_ENV ?? process.env.NODE_ENV ?? "development";
   const ready =
-    launchStatus.builderCodeConfigured &&
-    launchStatus.routedTradingEnabled &&
+     launchStatus.builderCodeConfigured &&
+    (publicRoutedTradingEnabled || betaRoutedTradingEnabled) &&
     launchStatus.routedTradingCanaryOnly &&
     !launchStatus.routedTradingKillSwitch &&
-    clobSubmitterMode === "real" &&
+    submitterReady &&
+    attributionRecordingReady &&
     signatureVerifierImplemented &&
     l2CredentialLookupImplemented &&
     serverGeoblockVerifierImplemented;
 
   return {
     builderCodeConfigured: launchStatus.builderCodeConfigured,
-    routedTradingEnabled: launchStatus.routedTradingEnabled,
+    publicRoutedTradingEnabled,
+    betaRoutedTradingEnabled,
+    routedTradingEnabled: publicRoutedTradingEnabled || betaRoutedTradingEnabled,
+    currentUserAllowlisted: isAllowlisted(currentUser),
     canaryOnly: launchStatus.routedTradingCanaryOnly,
     allowedUsersCount: launchStatus.routedTradingCanaryAllowlistCount,
     killSwitchActive: launchStatus.routedTradingKillSwitch,
     clobSubmitterMode,
+    submitterReady,
+    attributionRecordingReady,
     signatureVerifierImplemented,
     l2CredentialLookupImplemented,
     serverGeoblockVerifierImplemented,
     l2CredentialReadyCount: null,
     regionCheckStatus: serverGeoblockVerifierImplemented ? "implemented" : "missing",
     lastPreflightFailures: ready ? [] : [
-      !launchStatus.routedTradingEnabled ? "routed_trading_disabled" : null,
+      !publicRoutedTradingEnabled ? "public_routed_trading_disabled" : null,
+      !betaRoutedTradingEnabled ? "beta_routed_trading_disabled" : null,
       !launchStatus.routedTradingCanaryOnly ? "canary_mode_required" : null,
       launchStatus.routedTradingKillSwitch ? "kill_switch_active" : null,
       launchStatus.routedTradingCanaryAllowlistCount === 0 ? "canary_allowlist_empty" : null,
-      clobSubmitterMode !== "real" ? "submitter_unavailable" : null,
+      !submitterReady ? "submitter_unavailable" : null,
+      !attributionRecordingReady ? "attribution_recording_unavailable" : null,
       !serverGeoblockVerifierImplemented ? "region_unknown" : null,
       !l2CredentialLookupImplemented ? "polymarket_l2_credentials_missing" : null,
     ].filter((value): value is string => Boolean(value)),
@@ -291,7 +328,7 @@ export const getPolymarketOperationsDashboard = async (
           fallbackUsedLastRequest: null,
           diagnosis: "unavailable",
         },
-    readiness: getReadiness(overviewResult.status === "fulfilled" ? overviewResult.value : null),
+    readiness: getReadiness(overviewResult.status === "fulfilled" ? overviewResult.value : null, dependencies.currentUser),
     rewards: getRewards(overviewResult.status === "fulfilled" ? overviewResult.value : null),
   };
 };

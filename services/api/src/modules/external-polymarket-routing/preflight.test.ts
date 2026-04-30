@@ -52,3 +52,15 @@ test("preflight is blocked when submitter is disabled and does not expose secret
     assert.doesNotMatch(serialized, /super-secret-value|POLYMARKET_API_SECRET/);
   });
 });
+
+test("invalid builder code is a blocked readiness state instead of a secret-bearing crash", () => {
+  withEnv({ POLY_BUILDER_CODE: "0x1234", POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, () => {
+    const result = evaluatePolymarketPreflight();
+    const serialized = JSON.stringify(result);
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.builderCodeConfigured, false);
+    assert.equal(result.checks.find((check) => check.id === "builder_code_configured")?.status, "warning");
+    assert.doesNotMatch(serialized, /0x1234/);
+  });
+});

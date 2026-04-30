@@ -21,11 +21,12 @@ const diagnosisCopy: Record<"ok" | "safe_empty" | "unavailable", string> = {
 };
 
 export default async function AdminPolymarketPage() {
-  await requireCurrentAdmin();
+  const adminUser = await requireCurrentAdmin();
 
   const copy = getLocaleCopy(defaultLocale).admin;
   const dashboard = await getPolymarketOperationsDashboard({
     readAmbassadorOverview: async () => getAdminAmbassadorOverview().catch(() => null),
+    currentUser: adminUser,
   });
   const { marketDataHealth, publicPages, readiness, rewards } = dashboard;
   const statusPayload = await import("../../api/_shared/admin-polymarket-status").then(({ getAdminPolymarketStatusPayload }) => getAdminPolymarketStatusPayload());
@@ -34,7 +35,7 @@ export default async function AdminPolymarketPage() {
     <main className="stack">
       <section className="hero">
         <h1>Polymarket 營運狀態</h1>
-        <p>檢查市場同步、公開頁面、Builder 歸因與路由交易 readiness。此頁不會顯示 POLY_BUILDER_CODE。</p>
+        <p>檢查市場同步、公開頁面、Builder 歸因與路由交易 readiness。此頁只顯示安全狀態，不會顯示 POLY_BUILDER_CODE、L2 憑證、API keys、簽名或服務金鑰。</p>
         <div className="trust-badge-row">
           <StatusChip tone="warning">未通過 preflight 前不會啟用路由交易</StatusChip>
           <StatusChip>Builder Code：{readiness.builderCodeConfigured ? "已設定" : "未設定"}</StatusChip>
@@ -70,17 +71,21 @@ export default async function AdminPolymarketPage() {
       <section className="panel stack">
         <h2 className="section-title">路由交易 readiness</h2>
         <div className="kv"><span className="kv-key">Builder Code 已設定</span><span className="kv-value">{yesNo(readiness.builderCodeConfigured)}</span></div>
-        <div className="kv"><span className="kv-key">路由交易已啟用</span><span className="kv-value">{yesNo(readiness.routedTradingEnabled)}</span></div>
+        <div className="kv"><span className="kv-key">公開路由交易已啟用</span><span className="kv-value">{yesNo(readiness.publicRoutedTradingEnabled)}</span></div>
+        <div className="kv"><span className="kv-key">beta 路由交易已啟用</span><span className="kv-value">{yesNo(readiness.betaRoutedTradingEnabled)}</span></div>
+        <div className="kv"><span className="kv-key">當前管理員在 allowlist</span><span className="kv-value">{yesNoUnknown(readiness.currentUserAllowlisted)}</span></div>
         <div className="kv"><span className="kv-key">canary mode</span><span className="kv-value">{readiness.canaryOnly ? "private canary only" : "not allowed for this canary build"}</span></div>
         <div className="kv"><span className="kv-key">allowed users count</span><span className="kv-value">{readiness.allowedUsersCount.toLocaleString(defaultLocale)}</span></div>
         <div className="kv"><span className="kv-key">kill switch</span><span className="kv-value">{readiness.killSwitchActive ? "active" : "inactive"}</span></div>
         <div className="kv"><span className="kv-key">CLOB submitter mode</span><span className="kv-value">{readiness.clobSubmitterMode}</span></div>
-        <div className="kv"><span className="kv-key">submitter status</span><span className="kv-value">{readiness.clobSubmitterMode === "real" ? "configured" : "unavailable"}</span></div>
+        <div className="kv"><span className="kv-key">submitter ready</span><span className="kv-value">{yesNo(readiness.submitterReady)}</span></div>
+        <div className="kv"><span className="kv-key">attribution recording ready</span><span className="kv-value">{yesNo(readiness.attributionRecordingReady)}</span></div>
         <div className="kv"><span className="kv-key">signature verifier implemented</span><span className="kv-value">{yesNo(readiness.signatureVerifierImplemented)}</span></div>
         <div className="kv"><span className="kv-key">L2 credential lookup implemented</span><span className="kv-value">{yesNo(readiness.l2CredentialLookupImplemented)}</span></div>
         <div className="kv"><span className="kv-key">L2 credential readiness count</span><span className="kv-value">{count(readiness.l2CredentialReadyCount)}</span></div>
         <div className="kv"><span className="kv-key">server geoblock verifier implemented</span><span className="kv-value">{yesNo(readiness.serverGeoblockVerifierImplemented)}</span></div>
         <div className="kv"><span className="kv-key">region check status</span><span className="kv-value">{readiness.regionCheckStatus}</span></div>
+        <div className="kv"><span className="kv-key">last readiness failure reason</span><span className="kv-value">{readiness.lastPreflightFailures[0] ?? "none"}</span></div>
         <div className="kv"><span className="kv-key">last preflight failures</span><span className="kv-value">{readiness.lastPreflightFailures.join(", ") || "none"}</span></div>
         <div className="kv"><span className="kv-key">last order submit attempts</span><span className="kv-value">{count(readiness.lastSubmitAttempts)}</span></div>
         <div className="kv"><span className="kv-key">last builder attribution sync</span><span className="kv-value">{readiness.lastBuilderAttributionSync ? formatDateTime(defaultLocale, readiness.lastBuilderAttributionSync) : "-"}</span></div>

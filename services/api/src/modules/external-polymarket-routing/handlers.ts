@@ -248,6 +248,14 @@ const isBetaUserAllowed = (input: { userId?: string; email?: string | null; wall
 const isRoutedTradingGateOpen = (): boolean =>
   (isGlobalRoutedTradingEnabled() || isBetaRoutedTradingEnabled()) && !isKillSwitchActive();
 
+const isBuilderCodeSafelyConfigured = (): boolean => {
+  try {
+    return getPolymarketBuilderCode() !== null;
+  } catch {
+    return false;
+  }
+};
+
 export const getPolymarketCanaryConfig = () => ({
   canaryOnly: !isGlobalRoutedTradingEnabled(),
   betaEnabled: isBetaRoutedTradingEnabled(),
@@ -361,7 +369,7 @@ const isProductionLikeRuntime = (): boolean => {
 const isExternalPolymarketRoutingEnabled = isRoutedTradingGateOpen;
 
 export const getExternalPolymarketRoutingReadiness = () => ({
-  builderCodeConfigured: getPolymarketBuilderCode() !== null,
+  builderCodeConfigured: isBuilderCodeSafelyConfigured(),
   routedTradingEnabled: isExternalPolymarketRoutingEnabled() && !isKillSwitchActive(),
   canaryOnly: !isGlobalRoutedTradingEnabled(),
   betaEnabled: isBetaRoutedTradingEnabled(),

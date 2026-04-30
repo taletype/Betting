@@ -227,6 +227,15 @@ test("reward ledger entries are created as pending records", () => {
   assert.match(handlers, /markRewardsPayable/);
 });
 
+test("unconfirmed Builder attribution does not create payable rewards", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+
+  assert.match(source, /if \(!trade \|\| trade\.status !== "confirmed"\)/);
+  assert.match(source, /builder trade attribution must be confirmed before rewards become payable/);
+  assert.match(source, /const status = input\.status \?\? "pending"/);
+  assert.match(source, /case when \$9 = 'confirmed' then now\(\) else null end/);
+});
+
 test("payout workflow enforces threshold and admin approval before paid", () => {
   const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
 
