@@ -66,6 +66,35 @@ const withBuilderCode = async (value: string | null, run: () => Promise<void>): 
   }
 };
 
+const makePolymarketRecord = (overrides: Record<string, unknown> = {}) => ({
+  id: "m-open",
+  source: "polymarket",
+  externalId: "POLY-OPEN",
+  slug: "poly-open",
+  title: "Open useful market",
+  description: "Useful market",
+  status: "open",
+  marketUrl: "https://polymarket.com/event/poly-open",
+  closeTime: null,
+  endTime: null,
+  resolvedAt: null,
+  bestBid: 0.41,
+  bestAsk: 0.44,
+  lastTradePrice: 0.43,
+  volume24h: 500,
+  volumeTotal: 10000,
+  liquidity: 10000,
+  sourceProvenance: { stale: false, staleAfter: "2099-05-01T01:00:00.000Z" },
+  lastSyncedAt: "2099-05-01T01:00:00.000Z",
+  lastUpdatedAt: "2099-05-01T01:00:00.000Z",
+  createdAt: "2026-05-01T01:00:00.000Z",
+  updatedAt: "2099-05-01T01:00:00.000Z",
+  outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.41, bestAsk: 0.44, lastPrice: 0.43, volume: null }],
+  recentTrades: [],
+  latestOrderbook: [],
+  ...overrides,
+});
+
 test("home page renders Chinese-first Polymarket landing page", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
@@ -167,15 +196,112 @@ test("Polymarket page renders empty-state when no synced rows exist", async (t) 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /暫時未有市場資料/);
-  assert.match(markup, /external_markets table 未返回任何 Polymarket row/);
-  assert.match(markup, /外部同步尚未執行/);
+  assert.match(markup, /暫時未有活躍市場資料/);
+  assert.match(markup, /查看全部市場/);
   assert.match(markup, /增值錢包 \/ Add funds/);
   assert.match(markup, /資金會進入你的錢包。本平台不會託管你的資金。/);
   assert.match(markup, /單純增值錢包不代表已完成 Polymarket 交易。/);
   assert.match(markup, /連接錢包 錢包已連接 更換錢包 斷開連接/);
   assert.doesNotMatch(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.equal(calls[0], "http://127.0.0.1:3000/api/external/markets");
+});
+
+test("Polymarket default feed hides cancelled and zero-liquidity markets", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({ id: "cancelled", externalId: "POLY-CANCELLED", slug: "poly-cancelled", title: "Cancelled zero volume market", status: "cancelled", volume24h: 0, volumeTotal: 0, liquidity: 0 }),
+        makePolymarketRecord({ id: "open", externalId: "POLY-ACTIVE", slug: "poly-active", title: "Active market should lead", volume24h: 50, liquidity: 200 }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /Active market should lead/);
+  assert.doesNotMatch(markup, /Cancelled zero volume market/);
+});
+
+test("Polymarket cancelled filter shows cancelled markets with badge", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({ id: "open", title: "Open filter market" }),
+        makePolymarketRecord({ id: "cancelled", externalId: "POLY-CANCELLED", slug: "poly-cancelled", title: "Cancelled filter market", status: "cancelled", volume24h: 0, volumeTotal: 0, liquidity: 0 }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ status: "cancelled" }) }));
+  assert.match(markup, /Cancelled filter market/);
+  assert.match(markup, /已取消/);
+  assert.match(markup, /暫無成交資料/);
+  assert.doesNotMatch(markup, /Open filter market/);
+});
+
+test("Polymarket all filter sorts open markets before cancelled and closed markets", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({ id: "cancelled", externalId: "POLY-CANCELLED", slug: "poly-cancelled", title: "Cancelled high-volume market", status: "cancelled", volume24h: 9999, liquidity: 9999 }),
+        makePolymarketRecord({ id: "closed", externalId: "POLY-CLOSED", slug: "poly-closed", title: "Closed high-volume market", status: "closed", volume24h: 9000, liquidity: 9000 }),
+        makePolymarketRecord({ id: "open", externalId: "POLY-OPEN-SORT", slug: "poly-open-sort", title: "Open lower-volume market", volume24h: 10, liquidity: 20 }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ status: "all" }) }));
+  assert.ok(markup.indexOf("Open lower-volume market") < markup.indexOf("Cancelled high-volume market"));
+  assert.ok(markup.indexOf("Open lower-volume market") < markup.indexOf("Closed high-volume market"));
+});
+
+test("Polymarket stale markets show stale badge when explicitly included", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({
+          id: "stale",
+          externalId: "POLY-STALE",
+          slug: "poly-stale",
+          title: "Stale market with cached prices",
+          sourceProvenance: { stale: true, staleAfter: "2000-01-01T00:00:00.000Z" },
+          lastSyncedAt: "2000-01-01T00:00:00.000Z",
+          lastUpdatedAt: "2000-01-01T00:00:00.000Z",
+          updatedAt: "2000-01-01T00:00:00.000Z",
+        }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const defaultMarkup = renderToStaticMarkup(await PolymarketPage());
+  assert.doesNotMatch(defaultMarkup, /Stale market with cached prices/);
+
+  const allMarkup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ status: "all" }) }));
+  assert.match(allMarkup, /Stale market with cached prices/);
+  assert.match(allMarkup, /資料可能過期/);
 });
 
 test("Polymarket page browsing works without builder code and shows disabled trade CTA only when configured", async (t) => {
@@ -347,6 +473,61 @@ test("Polymarket detail page renders safe not-found state", async (t) => {
   assert.match(markup, /暫時未有市場資料/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
+});
+
+test("cancelled Polymarket detail page renders safely with disabled trade CTA", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(JSON.stringify({ source: "polymarket", externalId: "POLY-CANCELLED-DETAIL", volume24h: 0, liquidity: 0, spread: null, closeTime: null, lastUpdatedAt: "2099-05-01T01:00:00.000Z", stale: false }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(
+      JSON.stringify({
+        market: makePolymarketRecord({
+          id: "cancelled-detail",
+          externalId: "POLY-CANCELLED-DETAIL",
+          slug: "poly-cancelled-detail",
+          title: "Cancelled market detail remains browsable",
+          status: "cancelled",
+          volume24h: 0,
+          volumeTotal: 0,
+          liquidity: 0,
+        }),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-cancelled-detail" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /Cancelled market detail remains browsable/);
+  assert.match(markup, /已取消/);
+  assert.match(markup, /此市場目前不可交易。/);
+  assert.match(markup, /透過 Polymarket 交易/);
+  assert.match(markup, /disabled=""/);
 });
 
 test("Polymarket detail page renders safe unavailable state when external fetch times out", async (t) => {

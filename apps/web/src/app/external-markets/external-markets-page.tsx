@@ -44,15 +44,11 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
 };
 
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
-  if (status === "resolved" || status === "closed") {
-    return "success";
-  }
-
-  if (status === "cancelled") {
+  if (status === "cancelled" || status === "resolved" || status === "closed") {
     return "warning";
   }
 
-  return "neutral";
+  return "success";
 };
 
 const getCloseState = (market: ExternalMarketApiRecord): { label: string; progress: number } => {
@@ -92,11 +88,68 @@ interface MarketFeedSearchParams {
   market?: string;
 }
 
+const getConfiguredStaleThresholdMs = (): number => {
+  const parsed = Number(process.env.POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? process.env.NEXT_PUBLIC_POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? 15 * 60 * 1000);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15 * 60 * 1000;
+};
+
+const toTime = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+};
+
+const hasUsablePriceData = (market: ExternalMarketApiRecord): boolean =>
+  [market.lastTradePrice, market.bestBid, market.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0) ||
+  market.outcomes.some((outcome) =>
+    [outcome.lastPrice, outcome.bestBid, outcome.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0),
+  );
+
+const getMarketStaleAfter = (market: ExternalMarketApiRecord): string | null => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (!provenance || typeof provenance !== "object") return null;
+  const staleAfter = (provenance as Record<string, unknown>).staleAfter;
+  return typeof staleAfter === "string" ? staleAfter : null;
+};
+
+const isMarketStale = (market: ExternalMarketApiRecord): boolean => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (provenance && typeof provenance === "object" && (provenance as Record<string, unknown>).stale === true) {
+    return true;
+  }
+
+  const staleAfterTime = toTime(getMarketStaleAfter(market));
+  if (staleAfterTime !== null) {
+    return staleAfterTime <= Date.now();
+  }
+
+  const lastSeenTime = toTime(market.lastUpdatedAt ?? market.lastSyncedAt ?? market.updatedAt);
+  return lastSeenTime !== null && Date.now() - lastSeenTime > getConfiguredStaleThresholdMs();
+};
+
+const hasMarketActivity = (market: ExternalMarketApiRecord): boolean =>
+  (market.volume24h ?? 0) > 0 || (market.liquidity ?? market.volumeTotal ?? 0) > 0;
+
+const isDefaultFeedStatus = (status: string | undefined): boolean => !status || !["all", "open", "closed", "resolved", "cancelled"].includes(status);
+
+const isDefaultFeedMarket = (market: ExternalMarketApiRecord): boolean =>
+  market.status === "open" &&
+  hasMarketActivity(market) &&
+  hasUsablePriceData(market) &&
+  !isMarketStale(market);
+
+const qualityScore = (market: ExternalMarketApiRecord): number =>
+  (market.status === "open" ? 8 : 0) +
+  (hasMarketActivity(market) ? 4 : 0) +
+  (hasUsablePriceData(market) ? 2 : 0) +
+  (!isMarketStale(market) ? 1 : 0);
+
 const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: MarketFeedSearchParams) => {
   const q = params?.q?.trim().toLowerCase() ?? "";
   const status = params?.status?.trim();
   const sort = params?.sort ?? "trending";
   const market = params?.market?.trim().toLowerCase() ?? "";
+  const defaultFeed = isDefaultFeedStatus(status);
 
   return markets
     .filter((item) => {
@@ -106,9 +159,14 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
       if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
         return false;
       }
-      return !status || status === "all" || item.status === status;
+      if (defaultFeed) {
+        return isDefaultFeedMarket(item);
+      }
+      return status === "all" || item.status === status;
     })
     .sort((a, b) => {
+      const statusDelta = (b.status === "open" ? 1 : 0) - (a.status === "open" ? 1 : 0);
+      if (statusDelta !== 0) return statusDelta;
       if (sort === "volume") return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
       if (sort === "liquidity") return (b.liquidity ?? b.volumeTotal ?? 0) - (a.liquidity ?? a.volumeTotal ?? 0);
       if (sort === "close") {
@@ -116,7 +174,13 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
         const bTime = b.closeTime ? new Date(b.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       }
-      return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
+      const volumeDelta = (b.volume24h ?? 0) - (a.volume24h ?? 0);
+      if (volumeDelta !== 0) return volumeDelta;
+      const liquidityDelta = (b.liquidity ?? b.volumeTotal ?? 0) - (a.liquidity ?? a.volumeTotal ?? 0);
+      if (liquidityDelta !== 0) return liquidityDelta;
+      const qualityDelta = qualityScore(b) - qualityScore(a);
+      if (qualityDelta !== 0) return qualityDelta;
+      return (toTime(b.lastUpdatedAt ?? b.lastSyncedAt ?? b.updatedAt) ?? 0) - (toTime(a.lastUpdatedAt ?? a.lastSyncedAt ?? a.updatedAt) ?? 0);
     });
 };
 
@@ -125,7 +189,7 @@ const buildFeedHref = (params: MarketFeedSearchParams | undefined, next: MarketF
   const merged = { ...params, ...next };
 
   if (merged.q) search.set("q", merged.q);
-  if (merged.status && merged.status !== "all") search.set("status", merged.status);
+  if (merged.status) search.set("status", merged.status);
   if (merged.sort && merged.sort !== "trending") search.set("sort", merged.sort);
   if (merged.ref) search.set("ref", merged.ref);
 
@@ -186,6 +250,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
   const serviceApiReachable = dataReadiness.serviceApiSelected ? !loadFailed : dataReadiness.configuredApiBaseIsWebOrigin ? false : dataReadiness.apiBaseUrlConfigured;
   const thirdwebClientConfigured = Boolean(process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim());
+  const selectedStatus = params?.status?.trim();
+  const defaultFeed = isDefaultFeedStatus(selectedStatus);
 
   return (
     <main className="stack">
@@ -238,10 +304,10 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         </label>
         <label className="stack">
           類別
-          <select name="status" defaultValue={params?.status ?? "all"}>
+          <select name="status" defaultValue={defaultFeed ? "open" : selectedStatus}>
             <option value="all">全部</option>
             <option value="open">開放</option>
-            <option value="closed">已關閉</option>
+            <option value="closed">已結束</option>
             <option value="resolved">已結算</option>
             <option value="cancelled">已取消</option>
           </select>
@@ -263,12 +329,12 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           ["all", "全部"],
           ["open", "開放"],
           ["resolved", "已結算"],
-          ["closed", "已關閉"],
+          ["closed", "已結束"],
           ["cancelled", "已取消"],
         ].map(([status, label]) => (
           <Link
             key={status}
-            className={`chip ${((params?.status ?? "all") === status) ? "active" : ""}`}
+            className={`chip ${((defaultFeed ? "open" : selectedStatus) === status) ? "active" : ""}`}
             href={buildFeedHref(normalizedParams, { status })}
           >
             {label}
@@ -315,11 +381,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
-            <p>{copy.empty}</p>
-            <ul>
-              <li>{copy.emptyDetails.externalMarketsEmpty}</li>
-              <li>{copy.emptyDetails.externalSyncNotRun}</li>
-            </ul>
+            <p>{defaultFeed ? "暫時未有活躍市場資料" : copy.empty}</p>
+            {defaultFeed ? (
+              <Link className="button-link secondary" href={buildFeedHref(normalizedParams, { status: "all" })}>查看全部市場</Link>
+            ) : (
+              <ul>
+                <li>{copy.emptyDetails.externalMarketsEmpty}</li>
+                <li>{copy.emptyDetails.externalSyncNotRun}</li>
+              </ul>
+            )}
           </div>
         ) : (
           visibleMarkets.map((market) => {
@@ -333,6 +403,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             const marketShareUrl = `${siteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
             const closeState = getCloseState(market);
+            const stale = isMarketStale(market);
+            const noTradeData = !hasMarketActivity(market) || !hasUsablePriceData(market);
 
             return (
             <div key={`${market.source}:${market.externalId}`} className="panel stack market-card">
@@ -341,6 +413,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="market-card-meta">
                     <div className="badge badge-neutral">{market.source}</div>
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
+                    {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
+                    {noTradeData ? <div className="badge badge-warning">暫無成交資料</div> : null}
                   </div>
                   <strong className="market-card-title">{market.title}</strong>
                   <div className="outcome-pill-row">

@@ -1134,7 +1134,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     statuses: {
       open: "開放",
       resolved: "已結算",
-      closed: "已關閉",
+      closed: "已結束",
       cancelled: "已取消",
     },
     sides: {

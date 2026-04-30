@@ -78,6 +78,46 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
   return market.source;
 };
 
+const toTime = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+};
+
+const getConfiguredStaleThresholdMs = (): number => {
+  const parsed = Number(process.env.POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? process.env.NEXT_PUBLIC_POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? 15 * 60 * 1000);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15 * 60 * 1000;
+};
+
+const isCachedMarketStale = (market: ExternalMarketApiRecord): boolean => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (provenance && typeof provenance === "object") {
+    const record = provenance as Record<string, unknown>;
+    if (record.stale === true) return true;
+    if (typeof record.staleAfter === "string") {
+      const staleAfterTime = toTime(record.staleAfter);
+      if (staleAfterTime !== null) return staleAfterTime <= Date.now();
+    }
+  }
+
+  const lastSeenTime = toTime(market.lastUpdatedAt ?? market.lastSyncedAt ?? market.updatedAt);
+  return lastSeenTime !== null && Date.now() - lastSeenTime > getConfiguredStaleThresholdMs();
+};
+
+const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
+  Boolean(
+    market.outcomes[0]?.externalOutcomeId &&
+    (
+      [market.lastTradePrice, market.bestBid, market.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0) ||
+      market.outcomes.some((outcome) =>
+        [outcome.lastPrice, outcome.bestBid, outcome.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0),
+      )
+    ),
+  );
+
+const isMarketTradable = (market: ExternalMarketApiRecord, stale: boolean): boolean =>
+  market.status === "open" && !stale && hasValidTradeData(market);
+
 export default async function PolymarketSlugPage({ params, searchParams }: PolymarketSlugPageProps) {
   const { slug } = await params;
   const query = await searchParams;
@@ -185,8 +225,10 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
   const volumePoints = history.map((point) => ({ timestamp: point.timestamp, value: point.volume }));
   const liquidityPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.liquidity }));
   const tradePoints = visibleTrades.map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
-  const stale = stats?.stale;
+  const stale = stats?.stale || isCachedMarketStale(market);
   const externalDataUnavailable = stale || !stats || history.length === 0 || visibleOrderbook.length === 0;
+  const marketTradable = isMarketTradable(market, Boolean(stale));
+  const orderValid = hasValidTradeData(market);
 
   const routingInput: PolymarketRoutingReadinessInput = {
     hasBuilderCode,
@@ -197,8 +239,8 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     geoblockStatus: "unknown",
     hasCredentials: false,
     userSigningAvailable: false,
-    marketTradable: market.status === "open",
-    orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
+    marketTradable,
+    orderValid,
     submitterAvailable,
   };
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
@@ -214,8 +256,8 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     walletConnected: false,
     hasCredentials: false,
     userSigningAvailable: false,
-    marketTradable: market.status === "open",
-    orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
+    marketTradable,
+    orderValid,
     submitterAvailable,
     marketTitle: market.title,
     outcomes: market.outcomes.map((outcome) => ({
@@ -228,7 +270,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
     tokenId: market.outcomes[0]?.externalOutcomeId,
     outcome: market.outcomes[0]?.title ?? "Yes",
     side: "buy" as const,
-    price: market.lastTradePrice,
+    price: market.lastTradePrice ?? market.outcomes[0]?.lastPrice ?? market.outcomes[0]?.bestAsk ?? market.outcomes[0]?.bestBid ?? null,
     size: 10,
   };
 
@@ -239,7 +281,9 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
       <section className="hero">
         <div className="market-card-meta">
           <div className="badge badge-neutral">polymarket</div>
-          <div className="badge badge-neutral">{copy.statuses[market.status] ?? market.status}</div>
+          <div className={`badge badge-${market.status === "open" ? "success" : "warning"}`}>{copy.statuses[market.status] ?? market.status}</div>
+          {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
+          {!orderValid ? <div className="badge badge-warning">暫無成交資料</div> : null}
         </div>
         <h1>{market.title}</h1>
         <p>{market.description || copy.subtitle}</p>
@@ -258,6 +302,12 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
 
       <BuilderFeeDisclosureCard locale={defaultLocale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
+      {!marketTradable ? (
+        <section className="panel disclosure-card stack">
+          <strong>此市場目前不可交易。</strong>
+          <p className="muted">已結束、已結算、已取消、資料過期或缺少有效價格資料的市場只供瀏覽，不會開放 Polymarket 路由交易。</p>
+        </section>
+      ) : null}
       {externalDataUnavailable ? (
         <section className="panel disclosure-card stack">
           <strong>外部資料可能過時或暫時不可用</strong>
