@@ -1,5 +1,6 @@
 import React from "react";
 import { getAdminAmbassadorOverview, toBigInt } from "../../../lib/api";
+import { requireCurrentAdmin } from "../../../lib/supabase/server";
 import { PayoutStatusChart, VolumeHistoryChart } from "../../charts/market-charts";
 import { formatUsdc } from "../../../lib/format";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
@@ -73,6 +74,7 @@ const getRiskFlagsForPayout = (
 };
 
 export default async function AdminPayoutsPage() {
+  await requireCurrentAdmin();
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).admin;
   const rewardCopy = getLocaleCopy(locale).rewards;

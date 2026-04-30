@@ -3,10 +3,12 @@ import Link from "next/link";
 
 import { getAdminAmbassadorOverview } from "../../lib/api";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
+import { requireCurrentAdmin } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  await requireCurrentAdmin();
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).admin;
   const ambassador = await getAdminAmbassadorOverview().catch(() => null);

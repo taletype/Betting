@@ -234,7 +234,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
 
   return (
     <main className="stack">
-      <FunnelEventTracker name="market_view" metadata={{ market: market.slug || market.externalId }} />
+      <FunnelEventTracker name="market_detail_view" metadata={{ market: market.slug || market.externalId }} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
       <section className="hero">
         <div className="market-card-meta">
@@ -243,6 +243,7 @@ export default async function PolymarketSlugPage({ params, searchParams }: Polym
         </div>
         <h1>{market.title}</h1>
         <p>{market.description || copy.subtitle}</p>
+        <p>{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
           <TrackedCopyButton

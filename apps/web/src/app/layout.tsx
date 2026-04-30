@@ -15,7 +15,7 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentWebUser();
-  const showAdmin = user?.role === "admin" || user?.role === "operator";
+  const showAdmin = user?.role === "admin";
 
   return (
     <html lang={defaultLocale}>

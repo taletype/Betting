@@ -15,10 +15,12 @@ test("app shell points the public nav at the Polymarket funnel", () => {
   assert.match(markup, /Polymarket 市場/);
   assert.match(markup, /首頁/);
   assert.match(markup, /邀請朋友/);
+  assert.match(markup, /指南/);
   assert.match(markup, /href="\/"/);
   assert.match(markup, /href="\/polymarket"/);
   assert.match(markup, /href="\/ambassador"/);
   assert.match(markup, /href="\/rewards"/);
+  assert.match(markup, /href="\/guides"/);
   assert.match(markup, /href="\/account"/);
   assert.match(markup, /href="\/login"/);
   assert.match(markup, /非託管/);
@@ -27,7 +29,6 @@ test("app shell points the public nav at the Polymarket funnel", () => {
   assert.doesNotMatch(markup, /href="\/markets"/);
   assert.doesNotMatch(markup, /href="\/portfolio"/);
   assert.doesNotMatch(markup, /href="\/claims"/);
-  assert.doesNotMatch(markup, /href="\/guides"/);
   assert.doesNotMatch(markup, /external-markets/);
 });
 

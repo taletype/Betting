@@ -3,7 +3,6 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import HomePage from "../page";
-import ExternalMarketsPage from "./page";
 import PolymarketPage from "../polymarket/page";
 import AdminPolymarketPage from "../admin/polymarket/page";
 import {
@@ -134,10 +133,6 @@ test("home page renders real trade-tick chart preview when synced ticks exist", 
   assert.match(markup, /Will launch QA keep chart data honest/);
   assert.match(markup, /<svg class="line-chart"/);
   assert.doesNotMatch(markup, /市場資料暫時未能更新/);
-});
-
-test("external markets route remains a compatibility alias", async () => {
-  await assertRedirectsTo(() => ExternalMarketsPage(), "/polymarket");
 });
 
 test("Polymarket page renders empty-state when no synced rows exist", async (t) => {

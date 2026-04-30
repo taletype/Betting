@@ -52,6 +52,7 @@ export interface LocaleCopy {
       rewards: string;
       claims: string;
       research: string;
+      guides: string;
       account: string;
       admin: string;
     };
@@ -381,6 +382,7 @@ const en: LocaleCopy = {
       rewards: "Rewards",
       claims: "Claims",
       research: "Polymarket Markets",
+      guides: "Guides",
       account: "Account",
       admin: "Admin",
     },
@@ -785,6 +787,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
       rewards: "獎勵",
       claims: "領取",
       research: "Polymarket 市場",
+      guides: "指南",
       account: "帳戶",
       admin: "管理",
     },

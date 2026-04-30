@@ -1,5 +1,6 @@
 import React from "react";
 import { getAdminAmbassadorOverview } from "../../../lib/api";
+import { requireCurrentAdmin } from "../../../lib/supabase/server";
 import { ReferralFunnelChart, RewardSplitChart } from "../../charts/market-charts";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 
@@ -12,6 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function AdminAmbassadorsPage() {
+  await requireCurrentAdmin();
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).admin;
   const overview = await getAdminAmbassadorOverview().catch(() => null);

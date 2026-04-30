@@ -5,7 +5,6 @@ Public pages:
 - `/` is the Chinese-first landing page.
 - `/polymarket` is the primary Polymarket market feed.
 - `/polymarket/[slug]` is the market detail page.
-- `/external-markets` remains a compatibility redirect to `/polymarket`.
 - `/ambassador`, `/rewards`, and admin review pages support the referral and Builder-fee disclosure funnel.
 
 Public API map:

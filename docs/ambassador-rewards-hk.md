@@ -68,4 +68,4 @@ Users can view only their own private reward records after Supabase login. Payou
 
 Risk flags help operators review suspicious referral or reward state without adding invasive tracking. Current flags cover self-referral attempts, disabled/invalid code attempts, high Builder-fee attributions missing external Polymarket ids, and payout approval blockers. IP/device fingerprint checks are documented as future work only; the app does not add invasive tracking for this launch.
 
-Open high-severity risk flags block manual payout approval until reviewed. This does not create automatic payout execution, indirect referral rewards, second-level rewards, or assured earning claims.
+Open high-severity risk flags block manual payout approval until reviewed. This does not create automatic payout execution, MLM/downline/recursive rewards, indirect referral rewards, second-level rewards, or assured earning claims.

@@ -54,7 +54,7 @@ export function BuilderFeeDisclosureCard({
       <div className="kv"><span className="kv-key">Maker Builder 費率</span><span className="kv-value">{statusLabel} Maker 費率：{maker}</span></div>
       <div className="kv"><span className="kv-key">Taker Builder 費率</span><span className="kv-value">{statusLabel} Taker 費率：{taker}</span></div>
       <p className="muted">費率只適用於合資格並成功成交的 Polymarket 路由訂單。單純瀏覽市場不會產生 Builder 費用。</p>
-      <p className="muted">用戶需要自行簽署訂單，本平台不託管用戶在 Polymarket 的資金。Polygon pUSD 獎勵支付維持人手審批。</p>
+      <p className="muted">用戶需要自行簽署訂單，本平台不託管用戶在 Polymarket 的資金。實際支付需要管理員審批。</p>
     </section>
   );
 }

@@ -35,7 +35,7 @@ Safety:
 - Thirdweb funding sends funds to the user-controlled wallet and does not create internal balances.
 - No automatic treasury transfer.
 - Payout remains manual and admin-approved through Polygon pUSD.
-- No automatic payout, treasury transfer, recursive reward, or indirect referral logic is part of this funnel.
+- No automatic payout, treasury transfer, MLM/downline/recursive rewards, or indirect referral logic is part of this funnel.
 
 ## Funnel Events
 

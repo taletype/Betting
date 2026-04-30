@@ -14,8 +14,10 @@ import {
   recordAdminMockBuilderTradeAttribution,
   voidAdminTradeAttributionRewards,
 } from "../../lib/api";
+import { requireCurrentAdmin } from "../../lib/supabase/server";
 
 export const createAmbassadorCodeAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await createAdminAmbassadorCode({
     ownerUserId: String(formData.get("ownerUserId") ?? ""),
     code: String(formData.get("code") ?? "").trim() || null,
@@ -26,12 +28,14 @@ export const createAmbassadorCodeAction = async (formData: FormData) => {
 };
 
 export const disableAmbassadorCodeAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await disableAdminAmbassadorCode(String(formData.get("codeId") ?? ""), String(formData.get("reason") ?? ""));
   revalidatePath("/admin");
   revalidatePath("/admin/ambassadors");
 };
 
 export const overrideReferralAttributionAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await overrideAdminReferralAttribution({
     referredUserId: String(formData.get("referredUserId") ?? ""),
     ambassadorCode: String(formData.get("ambassadorCode") ?? ""),
@@ -44,6 +48,7 @@ export const overrideReferralAttributionAction = async (formData: FormData) => {
 };
 
 export const recordMockBuilderTradeAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await recordAdminMockBuilderTradeAttribution({
     userId: String(formData.get("userId") ?? ""),
     notionalUsdcAtoms: String(formData.get("notionalUsdcAtoms") ?? "0"),
@@ -60,11 +65,13 @@ export const recordMockBuilderTradeAction = async (formData: FormData) => {
 };
 
 export const markRewardsPayableAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await markAdminRewardsPayable(String(formData.get("tradeAttributionId") ?? ""));
   revalidatePath("/admin/rewards");
 };
 
 export const voidTradeRewardsAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await voidAdminTradeAttributionRewards(
     String(formData.get("tradeAttributionId") ?? ""),
     String(formData.get("reason") ?? ""),
@@ -73,11 +80,13 @@ export const voidTradeRewardsAction = async (formData: FormData) => {
 };
 
 export const approveRewardPayoutAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await approveAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
   revalidatePath("/admin/payouts");
 };
 
 export const markRewardPayoutPaidAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await markAdminRewardPayoutPaid(String(formData.get("payoutId") ?? ""), {
     txHash: String(formData.get("txHash") ?? ""),
     notes: String(formData.get("notes") ?? ""),
@@ -86,11 +95,13 @@ export const markRewardPayoutPaidAction = async (formData: FormData) => {
 };
 
 export const failRewardPayoutAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await failAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
   revalidatePath("/admin/payouts");
 };
 
 export const cancelRewardPayoutAction = async (formData: FormData) => {
+  await requireCurrentAdmin();
   await cancelAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
   revalidatePath("/admin/payouts");
 };
