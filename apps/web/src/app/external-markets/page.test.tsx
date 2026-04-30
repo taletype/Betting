@@ -411,6 +411,9 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     assert.match(markup, /href="\/polymarket\/poly-1\?source=polymarket&amp;externalId=POLY-1&amp;ref=FRIEND001"/);
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /Builder Code 未設定/);
+    assert.match(markup, /來源：Polymarket/);
+    assert.match(markup, /資料來源：Polymarket API/);
+    assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
     assert.match(markup, /disabled=""/);
   });
 
@@ -473,6 +476,10 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /推薦分成/);
   assert.match(markup, /Orderbook snapshot/);
   assert.match(markup, /透過 Polymarket 交易/);
+  assert.match(markup, /來源：Polymarket/);
+  assert.match(markup, /資料來源：Polymarket API/);
+  assert.match(markup, /最後更新：/);
+  assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
   assert.match(markup, /mobile-trade-sheet/);
   assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);

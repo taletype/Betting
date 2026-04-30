@@ -23,6 +23,9 @@ const forbiddenChineseTerms = [
   "passive income",
   "guaranteed profit",
   "managed betting",
+  "保證獲利",
+  "穩賺",
+  "profit guaranteed",
 ];
 
 const approvedReferralSafetyCopy = "參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。";
@@ -94,6 +97,14 @@ test("key zh-HK product copy does not expose Sepolia or testnet wording", () => 
   });
 
   assert.doesNotMatch(copy, /Sepolia|測試網|testnet/i);
+});
+
+test("zh-HK product copy avoids legacy external CTA labels", () => {
+  const copy = JSON.stringify({
+    research: getLocaleCopy("zh-HK").research,
+  });
+
+  assert.doesNotMatch(copy, /前往 Polymarket|Open on Polymarket/);
 });
 
 test("Polymarket routed trading stays disabled by default", () => {

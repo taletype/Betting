@@ -4,7 +4,7 @@ import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
 import { PayoutStatusChart, RewardSplitChart, VolumeHistoryChart } from "../charts/market-charts";
 import { PendingReferralNotice } from "../pending-referral-notice";
-import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure } from "../product-ui";
+import { BetaLaunchDisclosure, EmptyState, MetricCard, SharedRewardDisclosure, SharedSafetyDisclosure, SafetyDisclosure } from "../product-ui";
 import { requestRewardPayoutAction } from "./reward-actions";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export default async function RewardsPage() {
       <section className="hero">
         <h1>推薦獎勵帳務紀錄</h1>
         <p>當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
-        <p>獎勵不是交易餘額，不能用作平台內下注或交易。</p>
+        <p>獎勵不是交易餘額，不能用作平台內交易額度或平台餘額。</p>
         <p>獎勵以人手審批方式處理，審批後可透過 Polygon 上的 pUSD 向指定錢包支付。</p>
         <p>獎勵計算可自動記錄，但實際支付不會自動執行，必須由管理員審批及記錄交易哈希。不會自動從金庫轉帳。</p>
         <div className="trust-badge-row">
@@ -33,6 +33,8 @@ export default async function RewardsPage() {
         <PendingReferralNotice />
       </section>
       <BetaLaunchDisclosure />
+      <SharedSafetyDisclosure />
+      <SharedRewardDisclosure />
       <SafetyDisclosure title="帳務提示">
         本頁不顯示可用交易資金，亦不代表盈利。所有項目均為推薦獎勵紀錄，支付前需經人工審批。
       </SafetyDisclosure>

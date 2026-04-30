@@ -822,7 +822,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
       research: "Polymarket 市場",
       guides: "指南",
       account: "帳戶",
-      admin: "管理",
+      admin: "管理員",
     },
   },
   auth: {
@@ -1032,7 +1032,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
   },
   rewards: {
     title: "大使推薦獎勵",
-    subtitle: "查看獨立獎勵帳本，當可提取獎勵達門檻後可提交人工審批。",
+    subtitle: "查看獨立獎勵帳本與人工支付申請狀態。",
     ledger: "獎勵帳本",
     payouts: "支付申請",
     sourceTrade: "來源交易歸因",
@@ -1072,7 +1072,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
   },
   research: {
     title: "Polymarket 市場",
-    subtitle: "瀏覽公開 Polymarket 市場。路由交易啟用後仍維持非託管，訂單由用戶自行簽署。",
+    subtitle: "以繁體中文瀏覽公開 Polymarket 市場、查看推薦歸因，並在生產路由就緒後由用戶自行簽署 Polymarket 訂單。",
     empty: "暫時未有市場資料",
     emptyDetails: {
       externalMarketsEmpty: "external_markets table 未返回任何 Polymarket row。",
@@ -1104,9 +1104,9 @@ const zhHK: DeepPartial<LocaleCopy> = {
     closeTime: "關閉時間",
     resolution: "結算狀態",
     source: "來源",
-    provenance: "來源出處",
-    openOnPolymarket: "前往 Polymarket",
-    openOnPolymarketUnavailable: "Polymarket 連結暫不可用",
+    provenance: "資料來源",
+    openOnPolymarket: "Polymarket 頁面",
+    openOnPolymarketUnavailable: "Polymarket 來源連結暫不可用",
     builderDebug: "Builder 歸因狀態",
     builderCodeConfigured: "Builder 代碼已設定",
     routedTradingEnabled: "實際訂單提交",
@@ -1130,7 +1130,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     noRecentTrades: "此市場暫無近期外部成交紀錄。",
     tradeViaPolymarket: "透過 Polymarket 交易",
     nonCustodialNotice: "用戶需要自行簽署訂單。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。",
-    builderAttributionNotice: "Builder 歸因依照 Polymarket Builder 設定處理；費用生效後會疊加於 Polymarket 或平台費用。",
+    builderAttributionNotice: "Builder 歸因依照 Polymarket Builder 設定處理；只有合資格並成功成交的 Polymarket 路由訂單才會進入獎勵記錄。",
     orderReview: "訂單覆核",
     market: "市場",
     outcome: "結果",

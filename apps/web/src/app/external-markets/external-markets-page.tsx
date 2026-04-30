@@ -10,7 +10,7 @@ import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
-import { BetaLaunchDisclosure } from "../product-ui";
+import { BetaLaunchDisclosure, SharedRewardDisclosure, SharedSafetyDisclosure } from "../product-ui";
 
 import {
   getPolymarketTopBlockingReason,
@@ -42,18 +42,6 @@ const toDisplay = (value: number | null, locale: AppLocale): string =>
 
 const toPriceDisplay = (value: number | null, locale: AppLocale): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const formatProvenance = (market: ExternalMarketApiRecord): string => {
-  const provenance = market.sourceProvenance ?? market.provenance;
-  if (provenance && typeof provenance === "object") {
-    const record = provenance as Record<string, unknown>;
-    const upstream = typeof record.upstream === "string" ? record.upstream : null;
-    const endpoint = typeof record.endpoint === "string" ? record.endpoint : null;
-    return [upstream, endpoint].filter(Boolean).join(" ") || market.source;
-  }
-
-  return market.source;
-};
 
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
   if (status === "cancelled" || status === "resolved" || status === "closed") {
@@ -326,6 +314,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         </div>
       </section>
       <BetaLaunchDisclosure />
+      <SharedSafetyDisclosure />
+      <SharedRewardDisclosure />
       <form className="panel filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
         {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
         <label className="stack">
@@ -490,14 +480,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <td>{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</td>
                       <td>{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</td>
                       <td>
-                        <div>{market.source}</div>
-                        <div className="muted">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</div>
+                        <div>來源：Polymarket</div>
+                        <div className="muted">資料來源：Polymarket API</div>
+                        <div className="muted">最後更新：{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</div>
                       </td>
                       <td>
                         <div className="table-actions">
-                          <Link className="button-link secondary" href={detailPath}>查看市場</Link>
-                          <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
+                          <button type="button" className="primary-cta" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
                           <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
+                          <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                         </div>
                       </td>
                     </tr>
@@ -571,12 +562,14 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 <div className="close-progress" aria-label={closeState.label}><span style={{ width: `${closeState.progress}%` }} /></div>
               </div>
               <div className="muted compact-meta">
-                {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · 來源：Polymarket · 資料來源：Gamma API · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
+                {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                <Link className="button-link secondary" href={detailPath}>查看市場</Link>
+                {market.marketUrl ? <Link className="button-link" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                 <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
+                <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                 <TrackedCopyButton
                   value={marketShareUrl}
                   label="複製市場推薦連結"

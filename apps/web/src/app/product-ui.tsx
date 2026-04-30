@@ -4,6 +4,9 @@ import { getPublicBetaLaunchState } from "../lib/launch-mode";
 
 export type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
+export const sharedSafetyCopy = "本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。";
+export const sharedRewardCopy = "獎勵計算可自動記錄，但實際支付需要管理員審批。";
+
 export function StatusChip({
   tone = "neutral",
   children,
@@ -49,6 +52,22 @@ export function SafetyDisclosure({
   );
 }
 
+export function SharedSafetyDisclosure({
+  title = "安全提示",
+}: Readonly<{
+  title?: string;
+}>) {
+  return <SafetyDisclosure title={title}>{sharedSafetyCopy}</SafetyDisclosure>;
+}
+
+export function SharedRewardDisclosure({
+  title = "獎勵提示",
+}: Readonly<{
+  title?: string;
+}>) {
+  return <SafetyDisclosure title={title}>{sharedRewardCopy}</SafetyDisclosure>;
+}
+
 export function BetaLaunchDisclosure() {
   const launch = getPublicBetaLaunchState();
 
@@ -70,7 +89,7 @@ export function BetaLaunchDisclosure() {
         <StatusChip tone="warning">待確認獎勵</StatusChip>
       </div>
       <div className="muted">
-        公開 Beta 只供瀏覽 Polymarket 市場、推薦歸因及獎勵帳務預覽。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金；獎勵支付不會自動執行。
+        公開 Beta 只供瀏覽 Polymarket 市場、推薦歸因及獎勵帳務預覽。{sharedSafetyCopy} {sharedRewardCopy} 實際支付不會自動執行。
       </div>
     </section>
   );

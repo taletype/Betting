@@ -1091,6 +1091,33 @@ button:disabled:hover {
   display: none;
 }
 
+@media (max-width: 960px) {
+  .filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filters button,
+  .filters .button-link {
+    width: 100%;
+  }
+
+  .market-detail-layout,
+  .market-card-main,
+  .ambassador-code-card {
+    grid-template-columns: 1fr;
+  }
+
+  .sticky-ticket {
+    position: static;
+    max-height: none;
+  }
+
+  .footer-disclosure {
+    display: grid;
+    gap: 8px;
+  }
+}
+
 @media (max-width: 720px) {
   .shell {
     padding: 14px 12px 176px;

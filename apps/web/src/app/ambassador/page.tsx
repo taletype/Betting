@@ -6,7 +6,7 @@ import { applyReferralCodeAction } from "../auth-actions";
 import { ReferralFunnelChart, RewardSplitChart } from "../charts/market-charts";
 import { PendingReferralApplier } from "../pending-referral-applier";
 import { PendingReferralNotice } from "../pending-referral-notice";
-import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure, StatusChip } from "../product-ui";
+import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure, SharedRewardDisclosure, SharedSafetyDisclosure, StatusChip } from "../product-ui";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { getSiteUrl } from "../../lib/site-url";
 
@@ -27,7 +27,7 @@ export default async function AmbassadorPage() {
           <h1>分享有用市場，直接邀請朋友</h1>
           <p>分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
           <p>參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。</p>
-          <p>獎勵計算可自動記錄，但實際支付需要管理員審批。</p>
+          <p>{copy.approvalNotice}</p>
           <div className="trust-badge-row">
             <StatusChip>直接推薦</StatusChip>
             <StatusChip>無需付費</StatusChip>
@@ -39,6 +39,8 @@ export default async function AmbassadorPage() {
         </div>
       </section>
       <BetaLaunchDisclosure />
+      <SharedSafetyDisclosure />
+      <SharedRewardDisclosure />
       <SafetyDisclosure title="推薦規則">
         推薦獎勵只來自直接推薦及已確認的 Builder 費用收入，不設多層推薦，不代表任何交易盈利或確定收入。
       </SafetyDisclosure>
@@ -98,7 +100,7 @@ export default async function AmbassadorPage() {
           </section>
 
           <section className="market-actions">
-            <a className="button-link" href="/polymarket">前往 Polymarket 市場</a>
+            <a className="button-link" href="/polymarket">查看 Polymarket 市場</a>
             <a className="button-link secondary" href="/rewards">前往獎勵</a>
             <TrackedCopyButton
               value={`分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。 ${dashboard.ambassadorCode.inviteUrl}`}

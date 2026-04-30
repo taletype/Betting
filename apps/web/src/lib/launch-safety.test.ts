@@ -267,6 +267,9 @@ test("public external market browsing works without POLY_BUILDER_CODE", async (t
   const markup = renderToStaticMarkup(await PolymarketPage());
   assert.match(markup, /Will public browsing stay available/);
   assert.match(markup, /polymarket/);
+  assert.match(markup, /來源：Polymarket/);
+  assert.match(markup, /資料來源：Polymarket API/);
+  assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
 });
 
 test("ambassador and rewards routes stay public so pending referral capture can run before login", () => {

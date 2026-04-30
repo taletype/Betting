@@ -3,6 +3,7 @@ import { getLocaleCopy, getLocaleHref, type AppLocale } from "../lib/locale";
 import { siteCopy } from "../lib/i18n";
 import { getPublicBetaLaunchState } from "../lib/launch-mode";
 import { LanguageSwitcher } from "./language-switcher";
+import { sharedRewardCopy, sharedSafetyCopy } from "./product-ui";
 
 export function AppShell({
   locale,
@@ -24,7 +25,7 @@ export function AppShell({
     { href: "/ambassador", label: copy.shell.nav.invite, mobileLabel: "邀請", showMobile: true },
     { href: "/rewards", label: copy.shell.nav.rewards, mobileLabel: "獎勵", showMobile: true },
     { href: "/account", label: copy.shell.nav.account, mobileLabel: "帳戶", showMobile: true },
-    ...(showAdmin ? [{ href: "/admin", label: copy.shell.nav.admin, mobileLabel: "管理", showMobile: true }] : []),
+    ...(showAdmin ? [{ href: "/admin", label: copy.shell.nav.admin, mobileLabel: "管理員", showMobile: true }] : []),
   ];
 
   return (
@@ -54,7 +55,8 @@ export function AppShell({
         <span>{shortCopy.nonCustodial}</span>
         <span>{shortCopy.userSignedOrder}</span>
         <span>{copy.research.disabled}</span>
-        <span>{locale === "zh-HK" ? "支付需人手審批" : shortCopy.manualApproval}</span>
+        <span>{locale === "zh-HK" ? sharedSafetyCopy : shortCopy.nonCustodial}</span>
+        <span>{locale === "zh-HK" ? sharedRewardCopy : shortCopy.manualApproval}</span>
       </footer>
     </div>
   );
