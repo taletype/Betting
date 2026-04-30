@@ -7,6 +7,7 @@ import {
   ambassadorRewardTypes,
   ambassadorPayoutRiskReviewRequiredCode,
   ambassadorPayoutRiskReviewRequiredMessage,
+  approveRewardPayout,
   assertPayoutApprovalRiskClear,
   calculateRewardLedgerDrafts,
   assertValidPayoutTxHash,
@@ -19,6 +20,7 @@ import {
   validateRewardShareConfig,
   type AmbassadorCodeRecord,
   type AmbassadorRewardPayoutRecord,
+  type AmbassadorRiskStatus,
   type AmbassadorRewardsConfig,
   type ReferralAttributionRecord,
 } from "./repository";
@@ -62,6 +64,76 @@ const attribution = (overrides: Partial<ReferralAttributionRecord> = {}): Referr
   rejectionReason: null,
   ...overrides,
 });
+
+const payoutId = "55555555-5555-4555-8555-555555555555";
+const payoutRecipientId = "66666666-6666-4666-8666-666666666666";
+const payoutReviewerId = "77777777-7777-4777-8777-777777777777";
+
+const createPayoutApprovalFakeRepository = (riskStatus: AmbassadorRiskStatus) => {
+  let payoutStatus: "requested" | "approved" = "requested";
+  let ledgerStatus: "payable" | "approved" = "payable";
+  const queries: string[] = [];
+  const payoutRow = () => ({
+    id: payoutId,
+    recipient_user_id: payoutRecipientId,
+    amount_usdc_atoms: 500_000n,
+    status: payoutStatus,
+    destination_type: "wallet",
+    destination_value: "0x1111111111111111111111111111111111111111",
+    payout_chain: "polygon",
+    payout_chain_id: 137,
+    payout_asset: "pUSD",
+    payout_asset_decimals: 6,
+    asset_contract_address: enabledConfig.polygonPusdAddress,
+    reviewed_by: payoutStatus === "approved" ? payoutReviewerId : null,
+    reviewed_at: payoutStatus === "approved" ? "2026-04-01T00:00:00.000Z" : null,
+    paid_at: null,
+    tx_hash: null,
+    notes: "reviewed",
+    created_at: "2026-04-01T00:00:00.000Z",
+  });
+
+  const transaction: DatabaseTransaction = {
+    async query<T>(statement: string): Promise<T[]> {
+      const normalized = statement.replace(/\s+/g, " ").trim();
+      queries.push(normalized);
+
+      if (/select recipient_user_id, status from public\.ambassador_reward_payouts/.test(normalized)) {
+        return [{ recipient_user_id: payoutRecipientId, status: payoutStatus }] as T[];
+      }
+
+      if (/from public\.ambassador_risk_flags flag/.test(normalized)) {
+        assert.match(normalized, /flag\.status = 'open'/);
+        assert.match(normalized, /flag\.severity = 'high'/);
+        return riskStatus === "open" ? [{ id: "88888888-8888-4888-8888-888888888888" }] as T[] : [];
+      }
+
+      if (/update public\.ambassador_reward_payouts set status = 'approved'/.test(normalized)) {
+        if (payoutStatus !== "requested") return [];
+        payoutStatus = "approved";
+        return [payoutRow()] as T[];
+      }
+
+      if (/update public\.ambassador_reward_ledger set status = 'approved'/.test(normalized)) {
+        ledgerStatus = "approved";
+        return [];
+      }
+
+      throw new Error(`unexpected fake repository query: ${normalized}`);
+    },
+  };
+
+  return {
+    transaction,
+    queries,
+    get payoutStatus() {
+      return payoutStatus;
+    },
+    get ledgerStatus() {
+      return ledgerStatus;
+    },
+  };
+};
 
 test("ambassador code generation creates usable short codes", () => {
   assert.match(generateAmbassadorCode(), /^[0-9A-F]{8}$/);
@@ -197,6 +269,32 @@ test("reviewed and dismissed high-risk flags do not block payout approval", asyn
   } satisfies DatabaseTransaction;
 
   await assert.doesNotReject(() => assertPayoutApprovalRiskClear(transaction, "55555555-5555-4555-8555-555555555555"));
+});
+
+test("payout approval uses repository risk flags to block only open high-severity flags", async () => {
+  const openRiskRepo = createPayoutApprovalFakeRepository("open");
+  await assert.rejects(
+    () => approveRewardPayout(openRiskRepo.transaction, { payoutId, reviewedBy: payoutReviewerId, notes: "reviewed" }),
+    (error: unknown) => {
+      assert.equal(error instanceof Error ? error.message : "", ambassadorPayoutRiskReviewRequiredMessage);
+      assert.equal((error as { code?: string }).code, ambassadorPayoutRiskReviewRequiredCode);
+      return true;
+    },
+  );
+  assert.equal(openRiskRepo.payoutStatus, "requested");
+  assert.equal(openRiskRepo.ledgerStatus, "payable");
+  assert.ok(openRiskRepo.queries.some((query) => /from public\.ambassador_risk_flags flag/.test(query)));
+
+  for (const riskStatus of ["reviewed", "dismissed"] as const) {
+    const repo = createPayoutApprovalFakeRepository(riskStatus);
+    const payout = await approveRewardPayout(repo.transaction, { payoutId, reviewedBy: payoutReviewerId, notes: "reviewed" });
+
+    assert.equal(payout.status, "approved");
+    assert.equal(payout.reviewedBy, payoutReviewerId);
+    assert.equal(repo.payoutStatus, "approved");
+    assert.equal(repo.ledgerStatus, "approved");
+    assert.ok(repo.queries.some((query) => /flag\.status = 'open'/.test(query)));
+  }
 });
 
 test("payout risk guard checks recipient, payout, referral, and trade links", () => {

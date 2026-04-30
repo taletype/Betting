@@ -9,21 +9,25 @@ import {
 
 const getAdminSupabase = () => createSupabaseAdminClient();
 
-const unavailablePayload = (source: string, message: string) => ({
+type SupabaseAdminFactory = typeof createSupabaseAdminClient;
+
+const publicUnavailableMessage = "Configured market data sources are temporarily unavailable.";
+
+const unavailablePayload = (source: string) => ({
   ok: false,
   error: "MARKET_SOURCE_UNAVAILABLE",
   source,
-  message,
+  message: publicUnavailableMessage,
 });
 
 const safeMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Market source unavailable";
 
-export async function externalMarketsResponse() {
+export async function externalMarketsResponse(adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   let backendError: unknown = null;
 
   try {
-    return NextResponse.json(await readExternalMarkets(getAdminSupabase()), {
+    return NextResponse.json(await readExternalMarkets(adminSupabase()), {
       headers: { "x-market-source": "external_markets" },
     });
   } catch (error) {
@@ -43,21 +47,19 @@ export async function externalMarketsResponse() {
       console.warn("public external markets Gamma fallback failed", {
         source: "gamma-api.polymarket.com/events",
         message: safeMessage(fallbackError),
+        backendMessage: safeMessage(backendError),
       });
       return NextResponse.json(
-        unavailablePayload(
-          "external_markets,gamma-api.polymarket.com/events",
-          `Backend source failed: ${safeMessage(backendError)}; Gamma fallback failed: ${safeMessage(fallbackError)}`,
-        ),
+        unavailablePayload("external_markets,gamma-api.polymarket.com/events"),
         { status: 503 },
       );
     }
   }
 }
 
-export async function externalMarketDetailResponse(source: string, externalId: string) {
+export async function externalMarketDetailResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
-    const market = await readExternalMarketBySourceAndId(getAdminSupabase(), source, externalId);
+    const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
     return NextResponse.json({ market }, { status: market ? 200 : 404 });
   } catch (error) {
     console.warn("public external market detail unavailable; serving fallback or null", error);
@@ -109,9 +111,9 @@ const buildDepth = (orderbook: Array<{ bids: unknown; asks: unknown }>) => {
   return depth;
 };
 
-export async function externalMarketOrderbookResponse(source: string, externalId: string) {
+export async function externalMarketOrderbookResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
-    const market = await readExternalMarketBySourceAndId(getAdminSupabase(), source, externalId);
+    const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
     const orderbook = market?.latestOrderbook ?? [];
     return NextResponse.json({ orderbook, depth: buildDepth(orderbook) });
   } catch (error) {
@@ -120,9 +122,9 @@ export async function externalMarketOrderbookResponse(source: string, externalId
   }
 }
 
-export async function externalMarketTradesResponse(source: string, externalId: string) {
+export async function externalMarketTradesResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
-    const market = await readExternalMarketBySourceAndId(getAdminSupabase(), source, externalId);
+    const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
     return NextResponse.json({ source, externalId, trades: market?.recentTrades ?? [] });
   } catch (error) {
     console.warn("public external market trades unavailable; serving safe empty state", error);
@@ -130,9 +132,9 @@ export async function externalMarketTradesResponse(source: string, externalId: s
   }
 }
 
-export async function externalMarketHistoryResponse(source: string, externalId: string) {
+export async function externalMarketHistoryResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
-    const market = await readExternalMarketBySourceAndId(getAdminSupabase(), source, externalId);
+    const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
     const history = (market?.recentTrades ?? []).map((trade) => ({
       timestamp: trade.tradedAt,
       outcome: trade.externalOutcomeId,
@@ -149,9 +151,9 @@ export async function externalMarketHistoryResponse(source: string, externalId: 
   }
 }
 
-export async function externalMarketStatsResponse(source: string, externalId: string) {
+export async function externalMarketStatsResponse(source: string, externalId: string, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
-    const market = await readExternalMarketBySourceAndId(getAdminSupabase(), source, externalId);
+    const market = await readExternalMarketBySourceAndId(adminSupabase(), source, externalId);
     const lastUpdatedAt = market?.lastUpdatedAt ?? market?.lastSyncedAt ?? null;
     return NextResponse.json({
       source,

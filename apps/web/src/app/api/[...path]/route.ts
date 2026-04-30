@@ -4,8 +4,15 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supa
 import { readMarketById, readMarketOrderBook, readMarketTrades } from "../_shared/market-read";
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { getMarketsResponse } from "../_shared/market-route-response";
-import { readExternalMarketBySourceAndId, readExternalMarkets } from "../_shared/external-market-read";
-import { readPolymarketGammaFallbackMarkets } from "../_shared/polymarket-gamma-fallback";
+import { readExternalMarkets } from "../_shared/external-market-read";
+import {
+  externalMarketDetailResponse,
+  externalMarketHistoryResponse,
+  externalMarketOrderbookResponse,
+  externalMarketsResponse,
+  externalMarketStatsResponse,
+  externalMarketTradesResponse,
+} from "../_shared/public-external-market-routes";
 import { previewPolymarketOrder } from "../_shared/polymarket-orders";
 import type { ExternalMarketApiRecord } from "../../../lib/api";
 import {
@@ -106,91 +113,32 @@ async function handleRequest(
     }
 
     if (apiPath === "external/markets" && request.method === "GET") {
-      let backendError: unknown = null;
-      try {
-        return NextResponse.json(await readExternalMarkets(adminSupabase()), {
-          headers: { "x-market-source": "external_markets" },
-        });
-      } catch (error) {
-        backendError = error;
-        console.warn("catch-all public external markets backend source failed; trying Polymarket Gamma fallback", {
-          source: "external_markets",
-          message: safeErrorMessage(error),
-        });
-        try {
-          return NextResponse.json(await readPolymarketGammaFallbackMarkets(), {
-            headers: {
-              "x-market-source": "gamma-api.polymarket.com/events",
-              "x-market-backend-fallback": "external_markets",
-            },
-          });
-        } catch (fallbackError) {
-          console.warn("catch-all public external markets Gamma fallback failed", {
-            source: "gamma-api.polymarket.com/events",
-            message: safeErrorMessage(fallbackError),
-          });
-          return NextResponse.json(
-            {
-              ok: false,
-              error: "MARKET_SOURCE_UNAVAILABLE",
-              source: "external_markets,gamma-api.polymarket.com/events",
-              message: `Backend source failed: ${safeErrorMessage(backendError)}; Gamma fallback failed: ${safeErrorMessage(fallbackError)}`,
-            },
-            { status: 503 },
-          );
-        }
-      }
+      return externalMarketsResponse(adminSupabase);
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/orderbook$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
-      return NextResponse.json({ orderbook: market?.latestOrderbook ?? [], depth: [] });
+      return externalMarketOrderbookResponse(source ?? "", externalId ?? "", adminSupabase);
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/trades$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
-      return NextResponse.json({ source, externalId, trades: market?.recentTrades ?? [] });
+      return externalMarketTradesResponse(source ?? "", externalId ?? "", adminSupabase);
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/history$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
-      const history = (market?.recentTrades ?? []).map((trade) => ({
-        timestamp: trade.tradedAt,
-        outcome: trade.externalOutcomeId,
-        price: trade.price,
-        volume: trade.size,
-        liquidity: null,
-        source: market?.source ?? source,
-        provenance: { source: market?.source ?? source, upstream: "external_trade_ticks" },
-      })).reverse();
-      return NextResponse.json({ source, externalId, history });
+      return externalMarketHistoryResponse(source ?? "", externalId ?? "", adminSupabase);
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+\/stats$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
-      const lastUpdatedAt = market?.lastUpdatedAt ?? market?.lastSyncedAt ?? null;
-      return NextResponse.json({
-        source,
-        externalId,
-        volume24h: market?.volume24h ?? null,
-        liquidity: market?.liquidity ?? market?.volumeTotal ?? null,
-        spread: market?.bestBid !== null && market?.bestAsk !== null && market?.bestBid !== undefined && market?.bestAsk !== undefined
-          ? Math.max(0, market.bestAsk - market.bestBid)
-          : null,
-        closeTime: market?.closeTime ?? null,
-        lastUpdatedAt,
-        stale: lastUpdatedAt ? Date.now() - new Date(lastUpdatedAt).getTime() > 15 * 60 * 1000 : true,
-      });
+      return externalMarketStatsResponse(source ?? "", externalId ?? "", adminSupabase);
     }
 
     if (apiPath.match(/^external\/markets\/[^/]+\/[^/]+$/) && request.method === "GET") {
       const [, , source, externalId] = apiPath.split("/");
-      const market = await readExternalMarketBySourceAndId(adminSupabase(), source ?? "", externalId ?? "");
-      return NextResponse.json({ market }, { status: market ? 200 : 404 });
+      return externalMarketDetailResponse(source ?? "", externalId ?? "", adminSupabase);
     }
 
     const user = await getAuthenticatedUser(request);

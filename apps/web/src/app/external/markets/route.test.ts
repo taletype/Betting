@@ -98,13 +98,12 @@ test("GET /external/markets returns clear JSON error when backend and Gamma fail
 
   assert.equal(response.status, 503);
   assert.deepEqual(
-    { ok: payload.ok, error: payload.error, source: payload.source },
+    { ok: payload.ok, error: payload.error, source: payload.source, message: payload.message },
     {
       ok: false,
       error: "MARKET_SOURCE_UNAVAILABLE",
       source: "external_markets,gamma-api.polymarket.com/events",
+      message: "Configured market data sources are temporarily unavailable.",
     },
   );
-  assert.match(payload.message, /Backend source failed:/);
-  assert.match(payload.message, /Gamma fallback failed:/);
 });
