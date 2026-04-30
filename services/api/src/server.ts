@@ -160,6 +160,78 @@ const safeErrorPayload = (error: unknown): ApiErrorResponse & { code?: string; m
   return { error: "Request failed", code: "API_REQUEST_FAILED" };
 };
 
+const getAdminPolymarketStatus = async () => {
+  const db = createDatabaseClient();
+  const [marketCounts, staleCounts, lastRun] = await Promise.all([
+    db.query<{ total: string; open: string }>(
+      `
+        select
+          count(*)::text as total,
+          count(*) filter (where status = 'open')::text as open
+        from public.external_markets
+        where source = 'polymarket'
+      `,
+    ),
+    db.query<{ stale: string; errored: string }>(
+      `
+        select
+          count(*) filter (
+            where coalesce(last_seen_at, last_synced_at, updated_at) < now() - interval '15 minutes'
+          )::text as stale,
+          count(*) filter (where sync_status = 'error')::text as errored
+        from public.external_markets
+        where source = 'polymarket'
+      `,
+    ),
+    db.query<{
+      sync_kind: string;
+      status: string;
+      started_at: Date | string;
+      finished_at: Date | string | null;
+      markets_seen: number;
+      markets_upserted: number;
+      error_message: string | null;
+      diagnostics: unknown;
+    }>(
+      `
+        select sync_kind, status, started_at, finished_at, markets_seen, markets_upserted, error_message, diagnostics
+        from public.external_market_sync_runs
+        where source = 'polymarket'
+        order by started_at desc
+        limit 10
+      `,
+    ),
+  ]);
+
+  return {
+    source: "polymarket",
+    marketCounts: {
+      total: Number(marketCounts[0]?.total ?? 0),
+      open: Number(marketCounts[0]?.open ?? 0),
+      stale: Number(staleCounts[0]?.stale ?? 0),
+      errored: Number(staleCounts[0]?.errored ?? 0),
+    },
+    preflight: evaluatePolymarketPreflight(),
+    syncCadence: {
+      metadata: "5-15 minutes",
+      hotMarketPrices: "15-60 seconds",
+      orderbookSnapshots: "30-120 seconds for hot/detail markets",
+      recentTrades: "1-5 minutes",
+      staleness: "1-5 minutes",
+    },
+    recentRuns: lastRun.map((run) => ({
+      syncKind: run.sync_kind,
+      status: run.status,
+      startedAt: run.started_at instanceof Date ? run.started_at.toISOString() : new Date(run.started_at).toISOString(),
+      finishedAt: run.finished_at ? (run.finished_at instanceof Date ? run.finished_at.toISOString() : new Date(run.finished_at).toISOString()) : null,
+      marketsSeen: run.markets_seen,
+      marketsUpserted: run.markets_upserted,
+      errorMessage: run.error_message,
+      diagnostics: run.diagnostics,
+    })),
+  };
+};
+
 const handleRequest = async (request: Request): Promise<Response> => {
   try {
     const url = new URL(request.url);
@@ -197,6 +269,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const unauthorizedAdmin = requireAdminResponse(requestUser);
       if (unauthorizedAdmin) return unauthorizedAdmin;
       return Response.json(evaluatePolymarketPreflight());
+    }
+
+    if (request.method === "GET" && url.pathname === "/admin/polymarket/status") {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      return Response.json(await getAdminPolymarketStatus());
     }
 
     if (request.method === "GET" && url.pathname === "/external/markets") {

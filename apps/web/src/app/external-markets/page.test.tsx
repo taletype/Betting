@@ -871,7 +871,7 @@ test("Polymarket page does not call configured API when service lacks external m
   assert.match(markup, /API base URL configured<\/span><span class="kv-value">yes/);
   assert.match(markup, /same-origin API reachable<\/span><span class="kv-value">yes/);
   assert.match(markup, /external markets endpoint reachable<\/span><span class="kv-value">yes/);
-  assert.match(markup, /Polymarket fallback enabled<\/span><span class="kv-value">yes/);
+  assert.match(markup, /Polymarket fallback enabled<\/span><span class="kv-value">no/);
   assert.match(markup, /routed trading enabled<\/span><span class="kv-value">no/);
   assert.doesNotMatch(markup, /市場資料暫時未能更新/);
   assert.deepEqual(calls, ["https://bet.example.vercel.app/api/external/markets"]);

@@ -1115,7 +1115,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     readinessCopy: {
       auth_required: "尚未登入",
       builder_code_missing: "Builder Code 未設定",
-      submit_mode_disabled: "實際訂單提交已停用",
+      submit_mode_disabled: "交易功能尚未啟用",
       feature_disabled: "交易功能尚未啟用",
       wallet_not_connected: "尚未連接錢包",
       wallet_funds_insufficient: "錢包資金不足",
@@ -1125,7 +1125,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
       credentials_missing: "需要 Polymarket 憑證",
       market_not_tradable: "市場暫時不可交易",
       invalid_order: "價格或數量無效",
-      submitter_unavailable: "提交器暫時不可用",
+      submitter_unavailable: "交易提交器未準備好",
       signature_required: "需要用戶自行簽署訂單",
       ready_to_submit: "透過 Polymarket 交易",
       submitted: "已提交到 Polymarket",

@@ -121,32 +121,11 @@ export function PolymarketTradeTicket(props: Props) {
       market: props.marketTitle,
       tokenId: selectedTokenId || null,
     });
-  }, [props.marketTitle, selectedTokenId]);
+  }, [props.geoblockAllowed, props.marketTitle, selectedTokenId]);
 
   useEffect(() => {
-    let cancelled = false;
-    setGeoblockStatus("checking");
     trackFunnelEvent("order_preview_requested", { market: props.marketTitle, tokenId: selectedTokenId || null });
-    fetch("https://polymarket.com/api/geoblock", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`geoblock ${response.status}`);
-        return (await response.json()) as { blocked?: boolean };
-      })
-      .then((payload) => {
-        if (cancelled) return;
-        const allowed = payload.blocked !== true;
-        setGeoblockStatus(allowed ? "allowed" : "blocked");
-        if (!allowed) trackFunnelEvent("geoblock_failed", { market: props.marketTitle });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setGeoblockStatus("error");
-        trackFunnelEvent("geoblock_failed", { market: props.marketTitle });
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    setGeoblockStatus(initialGeoblockStatus(props.geoblockAllowed));
   }, [props.marketTitle, selectedTokenId]);
 
   useEffect(() => {

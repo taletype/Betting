@@ -26,7 +26,7 @@ export const polymarketDisabledReasonZh: Record<PolymarketPreviewDisabledCode, s
   feature_disabled: "交易功能尚未啟用",
   market_not_tradable: "市場暫時不可交易",
   invalid_order: "價格或數量無效",
-  submitter_unavailable: "提交器暫時不可用",
+  submitter_unavailable: "交易提交器未準備好",
 };
 
 export interface PolymarketOrderPreviewInput {

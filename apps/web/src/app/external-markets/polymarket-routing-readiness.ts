@@ -233,7 +233,7 @@ export const getPolymarketReadinessChecklist = (
     {
       id: "submitter",
       label: "提交器",
-      explanation: input.submitModeEnabled === false || !input.submitterAvailable ? "提交器暫時不可用。" : "提交器已準備接收用戶簽署訂單。",
+      explanation: input.submitModeEnabled === false || !input.submitterAvailable ? "交易提交器未準備好。" : "交易提交器已準備接收用戶簽署訂單。",
       status: input.submitModeEnabled === false || !input.submitterAvailable ? "blocked" : "complete",
     },
   ];

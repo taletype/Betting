@@ -97,7 +97,7 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "暫時未能確認所在地區支援狀態",
     "你目前所在地區暫不支援 Polymarket 下單",
     "價格或數量無效",
-    "提交器暫時不可用",
+    "交易提交器未準備好",
     "需要用戶自行簽署訂單",
     "透過 Polymarket 交易",
     "已提交到 Polymarket",

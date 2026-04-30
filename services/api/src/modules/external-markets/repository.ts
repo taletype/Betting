@@ -6,9 +6,12 @@ interface ExternalMarketRow {
   external_id: string;
   slug: string;
   title: string;
+  question?: string | null;
   description: string;
   status: "open" | "closed" | "resolved" | "cancelled";
+  resolution_status?: string | null;
   market_url: string | null;
+  source_url?: string | null;
   close_time: Date | string | null;
   end_time: Date | string | null;
   resolved_at: Date | string | null;
@@ -17,6 +20,8 @@ interface ExternalMarketRow {
   last_trade_price: number | string | null;
   volume_24h: number | string | null;
   volume_total: number | string | null;
+  volume?: number | string | null;
+  liquidity?: number | string | null;
   source_provenance?: unknown;
   last_seen_at?: Date | string | null;
   last_synced_at: Date | string | null;
@@ -199,8 +204,8 @@ const mapMarket = (row: ExternalMarketRow): ExternalMarketView => ({
   slug: row.slug,
   title: row.title,
   description: row.description,
-  status: row.status,
-  marketUrl: row.market_url,
+  status: (row.resolution_status as ExternalMarketView["status"] | null) ?? row.status,
+  marketUrl: row.source_url ?? row.market_url,
   closeTime: toNullableIsoString(row.close_time),
   endTime: toNullableIsoString(row.end_time),
   resolvedAt: toNullableIsoString(row.resolved_at),
@@ -208,8 +213,8 @@ const mapMarket = (row: ExternalMarketRow): ExternalMarketView => ({
   bestAsk: toNumber(row.best_ask),
   lastTradePrice: toNumber(row.last_trade_price),
   volume24h: toNumber(row.volume_24h),
-  volumeTotal: toNumber(row.volume_total),
-  liquidity: toNumber(row.volume_total),
+  volumeTotal: toNumber(row.volume_total ?? row.volume ?? null),
+  liquidity: toNumber(row.liquidity ?? row.volume_total ?? row.volume ?? null),
   provenance: row.source_provenance ?? {
     source: row.source,
     upstream: "external_markets",
@@ -396,9 +401,12 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           external_id,
           slug,
           title,
+          question,
           description,
           status,
+          resolution_status,
           market_url,
+          source_url,
           close_time,
           end_time,
           resolved_at,
@@ -407,6 +415,8 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           last_trade_price,
           volume_24h,
           volume_total,
+          volume,
+          liquidity,
           source_provenance,
           last_seen_at,
           last_synced_at,
@@ -430,9 +440,12 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           external_id,
           slug,
           title,
+          question,
           description,
           status,
+          resolution_status,
           market_url,
+          source_url,
           close_time,
           end_time,
           resolved_at,
@@ -441,13 +454,16 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
           last_trade_price,
           volume_24h,
           volume_total,
+          volume,
+          liquidity,
           source_provenance,
           last_seen_at,
           last_synced_at,
           created_at,
           updated_at
         from public.external_markets
-        where source = $1 and external_id = $2
+        where source = $1
+          and (external_id = $2 or slug = $2)
         limit 1
       `,
       [source, externalId],
@@ -470,7 +486,8 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
       `
         select id
         from public.external_markets
-        where source = $1 and external_id = $2
+        where source = $1
+          and (external_id = $2 or slug = $2)
         limit 1
       `,
       [source, externalId],
@@ -480,23 +497,53 @@ export const createExternalMarketsRepository = (database: DatabaseExecutor) => {
       return null;
     }
 
-    const rows = await database.query<ExternalTradeRow>(
+    let rows = await database.query<ExternalTradeRow>(
       `
         select
-          external_market_id,
+          market_id as external_market_id,
           external_trade_id,
           external_outcome_id,
+          source,
           side,
           price,
+          price_ppm,
           size,
-          traded_at
-        from public.external_trade_ticks
-        where external_market_id = $1::uuid
-        order by traded_at desc, external_trade_id desc
+          size_atoms,
+          executed_at as traded_at,
+          executed_at
+        from public.external_trades
+        where market_id = $1::uuid
+          and source = $3
+        order by executed_at desc, external_trade_id desc
         limit $2
       `,
-      [market.id, limit],
+      [market.id, limit, source],
     );
+
+    if (rows.length === 0) {
+      rows = await database.query<ExternalTradeRow>(
+        `
+          select
+            external_market_id,
+            external_trade_id,
+            external_outcome_id,
+            source,
+            side,
+            price,
+            price_ppm,
+            size,
+            size_atoms,
+            executed_at as traded_at,
+            executed_at
+          from public.external_trade_ticks
+          where external_market_id = $1::uuid
+            and source = $3
+          order by executed_at desc, external_trade_id desc
+          limit $2
+        `,
+        [market.id, limit, source],
+      );
+    }
 
     return rows.map((row) => mapImportedTrade(row, source as "polymarket" | "kalshi"));
   };

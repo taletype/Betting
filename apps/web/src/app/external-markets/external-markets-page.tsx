@@ -43,13 +43,6 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
   return market.source;
 };
 
-const isPolymarketFallbackMarket = (market: ExternalMarketApiRecord): boolean => {
-  const provenance = market.sourceProvenance ?? market.provenance;
-  if (!provenance || typeof provenance !== "object") return false;
-  const upstream = (provenance as Record<string, unknown>).upstream;
-  return typeof upstream === "string" && upstream.includes("gamma-api.polymarket.com");
-};
-
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
   if (status === "resolved" || status === "closed") {
     return "success";
@@ -192,7 +185,6 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const externalMarketsEndpointReachable = !loadFailed;
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
   const serviceApiReachable = dataReadiness.serviceApiSelected ? !loadFailed : dataReadiness.configuredApiBaseIsWebOrigin ? false : dataReadiness.apiBaseUrlConfigured;
-  const fallbackUsedOnLastRequest = markets.some(isPolymarketFallbackMarket);
   const thirdwebClientConfigured = Boolean(process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim());
 
   return (
@@ -231,7 +223,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
-          <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">{fallbackUsedOnLastRequest ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">no</span></div>
           <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{routedTradingEnabled ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{hasBuilderCode ? "yes" : "no"}</span></div>
           <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
@@ -349,7 +341,6 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="market-card-meta">
                     <div className="badge badge-neutral">{market.source}</div>
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
-                    {isPolymarketFallbackMarket(market) ? <div className="badge badge-warning">Gamma fallback</div> : null}
                   </div>
                   <strong className="market-card-title">{market.title}</strong>
                   <div className="outcome-pill-row">

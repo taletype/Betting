@@ -52,32 +52,47 @@ const toScaledIntegerString = (value: number | null, scale: number): string | nu
   return String(Math.round(value * scale));
 };
 
+const getOutcomePricesJson = (market: NormalizedExternalMarket): Array<{ outcome: string; tokenId: string; price: number | null }> =>
+  market.outcomes.map((outcome) => ({
+    outcome: outcome.title,
+    tokenId: outcome.externalOutcomeId,
+    price: outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid,
+  }));
+
 export const upsertMarket = async (database: DatabaseClient, market: NormalizedExternalMarket): Promise<string> => {
   return database.transaction(async (tx) => {
     const rawJson = (market.rawPayload as { rawJson?: unknown })?.rawJson ?? market.rawPayload ?? {};
     const sourceProvenance = (market.rawPayload as { provenance?: unknown })?.provenance ?? {};
+    const outcomePrices = getOutcomePricesJson(market);
+    const observedAt = new Date().toISOString();
 
     await tx.query(
       `
         insert into public.external_markets (
-          source, external_id, slug, title, description, status, market_url,
+          source, external_id, slug, title, question, description, status, resolution_status, market_url, source_url,
+          outcomes, outcome_prices,
           close_time, end_time, resolved_at, best_bid, best_ask, last_trade_price,
-          volume_24h, volume_total, raw_payload, raw_json, source_provenance,
+          volume_24h, volume_total, volume, liquidity, raw_payload, raw_json, source_provenance,
           last_synced_at, last_seen_at, updated_at
         ) values (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10,
-          $11, $12, $13, $14, $15,
-          $16::jsonb, $17::jsonb, $18::jsonb,
+          $1, $2, $3, $4, $4, $5, $6, $6, $7, $7,
+          $8::jsonb, $9::jsonb,
+          $10, $11, $12, $13, $14, $15,
+          $16, $17, $17, $17, $18::jsonb, $19::jsonb, $20::jsonb,
           now(), now(), now()
         )
         on conflict (source, external_id)
         do update set
           slug = excluded.slug,
           title = excluded.title,
+          question = excluded.question,
           description = excluded.description,
           status = excluded.status,
+          resolution_status = excluded.resolution_status,
           market_url = excluded.market_url,
+          source_url = excluded.source_url,
+          outcomes = excluded.outcomes,
+          outcome_prices = excluded.outcome_prices,
           close_time = excluded.close_time,
           end_time = excluded.end_time,
           resolved_at = excluded.resolved_at,
@@ -86,6 +101,8 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
           last_trade_price = excluded.last_trade_price,
           volume_24h = excluded.volume_24h,
           volume_total = excluded.volume_total,
+          volume = excluded.volume,
+          liquidity = excluded.liquidity,
           raw_payload = excluded.raw_payload,
           raw_json = excluded.raw_json,
           source_provenance = excluded.source_provenance,
@@ -101,6 +118,8 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
         market.description,
         market.status,
         market.url,
+        JSON.stringify(market.outcomes),
+        JSON.stringify(outcomePrices),
         market.closeTime,
         market.endTime,
         market.resolvedAt,
@@ -122,6 +141,41 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
 
     const marketId = marketRows[0]?.id;
     if (!marketId) throw new Error(`failed to load upserted external market ${market.source}:${market.externalId}`);
+
+    await tx.query(
+      `
+        insert into public.external_market_prices (
+          market_id, source, observed_at, outcome_prices, best_bid, best_ask,
+          last_trade_price, volume, liquidity, raw_json, source_provenance
+        ) values (
+          $1::uuid, $2, $3::timestamptz, $4::jsonb, $5, $6,
+          $7, $8, $9, $10::jsonb, $11::jsonb
+        )
+        on conflict (market_id, observed_at)
+        do update set
+          outcome_prices = excluded.outcome_prices,
+          best_bid = excluded.best_bid,
+          best_ask = excluded.best_ask,
+          last_trade_price = excluded.last_trade_price,
+          volume = excluded.volume,
+          liquidity = excluded.liquidity,
+          raw_json = excluded.raw_json,
+          source_provenance = excluded.source_provenance
+      `,
+      [
+        marketId,
+        market.source,
+        observedAt,
+        JSON.stringify(outcomePrices),
+        market.bestBid,
+        market.bestAsk,
+        market.lastTradePrice,
+        market.volumeTotal,
+        market.volumeTotal,
+        JSON.stringify(rawJson),
+        JSON.stringify(sourceProvenance),
+      ],
+    );
 
     for (const outcome of market.outcomes) {
       await tx.query(
@@ -216,6 +270,48 @@ export const upsertMarket = async (database: DatabaseClient, market: NormalizedE
           JSON.stringify(tickSourceProvenance),
         ],
       );
+
+      await tx.query(
+        `
+          insert into public.external_trades (
+            market_id, source, external_trade_id, external_outcome_id, side,
+            price, price_ppm, size, size_atoms,
+            executed_at, raw_json, source_provenance, last_seen_at, updated_at
+          ) values (
+            $1::uuid, $2, $3, $4, $5,
+            $6, $7::bigint, $8, $9::bigint,
+            coalesce($10::timestamptz, now()), $11::jsonb, $12::jsonb, now(), now()
+          )
+          on conflict (source, external_trade_id)
+          do update set
+            market_id = excluded.market_id,
+            external_outcome_id = excluded.external_outcome_id,
+            side = excluded.side,
+            price = excluded.price,
+            price_ppm = excluded.price_ppm,
+            size = excluded.size,
+            size_atoms = excluded.size_atoms,
+            executed_at = excluded.executed_at,
+            raw_json = excluded.raw_json,
+            source_provenance = excluded.source_provenance,
+            last_seen_at = now(),
+            updated_at = now()
+        `,
+        [
+          marketId,
+          market.source,
+          tick.tradeId,
+          tick.outcomeExternalId,
+          tick.side,
+          tick.price,
+          toScaledIntegerString(tick.price, EXTERNAL_PRICE_SCALE),
+          tick.size,
+          toScaledIntegerString(tick.size, EXTERNAL_SIZE_SCALE),
+          tick.tradedAt,
+          JSON.stringify(tickRawJson),
+          JSON.stringify(tickSourceProvenance),
+        ],
+      );
     }
     return marketId;
   });
@@ -243,12 +339,21 @@ const syncOrderbookSnapshots = async (
       await database.query(
         `
           insert into public.external_orderbook_snapshots (
-            external_market_id, external_outcome_id, source, bids_json, asks_json,
-            captured_at, last_trade_price, best_bid, best_ask, raw_json, source_provenance
+            external_market_id, market_id, external_outcome_id, source, bids_json, asks_json,
+            captured_at, observed_at, last_trade_price, best_bid, best_ask, raw_json, source_provenance
           ) values (
-            $1::uuid, $2, $3, $4::jsonb, $5::jsonb,
-            $6::timestamptz, $7, $8, $9, $10::jsonb, $11::jsonb
+            $1::uuid, $1::uuid, $2, $3, $4::jsonb, $5::jsonb,
+            $6::timestamptz, $6::timestamptz, $7, $8, $9, $10::jsonb, $11::jsonb
           )
+          on conflict (market_id, observed_at)
+          do update set
+            bids_json = excluded.bids_json,
+            asks_json = excluded.asks_json,
+            last_trade_price = excluded.last_trade_price,
+            best_bid = excluded.best_bid,
+            best_ask = excluded.best_ask,
+            raw_json = excluded.raw_json,
+            source_provenance = excluded.source_provenance
         `,
         [
           marketId,
@@ -304,6 +409,82 @@ const recordCheckpoint = async (database: DatabaseExecutor, source: string, sync
   );
 };
 
+const startSyncRun = async (database: DatabaseExecutor, source: string, syncKind: string): Promise<string | null> => {
+  try {
+    await database.query(
+      `
+        update public.external_market_sync_runs
+        set status = 'failure',
+            finished_at = now(),
+            error_message = 'superseded by a newer sync run'
+        where source = $1
+          and sync_kind = $2
+          and status = 'running'
+      `,
+      [source, syncKind],
+    );
+    const [row] = await database.query<{ id: string }>(
+      `
+        insert into public.external_market_sync_runs (source, sync_kind, status, started_at)
+        values ($1, $2, 'running', now())
+        returning id
+      `,
+      [source, syncKind],
+    );
+    return row?.id ?? null;
+  } catch (error) {
+    logger.error("external_sync.audit_start_failed", {
+      source,
+      syncKind,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+    return null;
+  }
+};
+
+const finishSyncRun = async (
+  database: DatabaseExecutor,
+  input: {
+    runId: string | null;
+    status: "success" | "partial" | "failure" | "skipped";
+    marketsSeen?: number;
+    marketsUpserted?: number;
+    errorMessage?: string | null;
+    diagnostics?: Record<string, unknown>;
+  },
+): Promise<void> => {
+  if (!input.runId) return;
+
+  try {
+    await database.query(
+      `
+        update public.external_market_sync_runs
+        set status = $2,
+            finished_at = now(),
+            markets_seen = $3,
+            markets_upserted = $4,
+            error_message = $5,
+            diagnostics = $6::jsonb
+        where id = $1::uuid
+      `,
+      [
+        input.runId,
+        input.status,
+        input.marketsSeen ?? 0,
+        input.marketsUpserted ?? 0,
+        input.errorMessage ?? null,
+        JSON.stringify(input.diagnostics ?? {}),
+      ],
+    );
+  } catch (error) {
+    logger.error("external_sync.audit_finish_failed", {
+      runId: input.runId,
+      status: input.status,
+      error: error instanceof Error ? error.message : "unknown error",
+    });
+  }
+};
+
 export interface MarketSyncDependencies {
   db: DatabaseClient;
   adapters: ExternalMarketAdapter[];
@@ -345,6 +526,8 @@ export const runMarketSyncJobWithDependencies = async ({ db: database, adapters,
 
   for (const adapter of adapters) {
     const syncStartedAt = Date.now();
+    const syncKind = adapter.source === "polymarket" ? "polymarket_market_metadata_sync" : "market_metadata_sync";
+    const runId = await startSyncRun(database, adapter.source, syncKind);
     try {
       logger.info("external_sync.source_started", { source: adapter.source });
       const previousLagMs = await getPreviousCheckpointLagMs(database, adapter.source);
@@ -388,9 +571,34 @@ export const runMarketSyncJobWithDependencies = async ({ db: database, adapters,
       recordGauge("external_sync_outcomes_synced", outcomesSynced, { source: adapter.source });
       recordGauge("external_sync_trade_ticks_synced", tradesSynced, { source: adapter.source });
       sources.push({ source: adapter.source, marketsSynced: markets.length, outcomesSynced, tradesSynced, checkpointRecordedAt, durationMs, previousLagMs });
+      await finishSyncRun(database, {
+        runId,
+        status: "success",
+        marketsSeen: fetchedMarkets.length,
+        marketsUpserted: upsertedMarkets,
+        diagnostics: {
+          syncKind,
+          outcomesSynced,
+          tradesSynced,
+          orderbooksSkipped: skipOrderbooks,
+          cadence: {
+            metadata: "5-15 minutes",
+            hotMarketPrices: "15-60 seconds",
+            orderbookSnapshots: "30-120 seconds",
+            recentTrades: "1-5 minutes",
+            staleness: "1-5 minutes",
+          },
+        },
+      });
       logger.info("external_sync.source_completed", { source: adapter.source, marketsSynced: markets.length, outcomesSynced, tradesSynced, durationMs });
     } catch (error) {
       incrementCounter("external_sync_runs_total", { source: adapter.source, status: "failed" });
+      await finishSyncRun(database, {
+        runId,
+        status: "failure",
+        errorMessage: error instanceof Error ? error.message : "unknown error",
+        diagnostics: { syncKind },
+      });
       logger.error("external_sync.source_failed", {
         source: adapter.source,
         error: error instanceof Error ? error.message : "unknown error",
@@ -418,4 +626,56 @@ export const runMarketSyncJob = async (source?: string): Promise<ExternalSyncRun
   }
   const adapters = selectExternalSyncAdapters(source);
   return runMarketSyncJobWithDependencies({ db, adapters });
+};
+
+export const runPolymarketMarketMetadataSyncJob = (): Promise<ExternalSyncRunSummary> =>
+  runMarketSyncJob("polymarket");
+
+export const runPolymarketMarketPriceSyncJob = (): Promise<ExternalSyncRunSummary> =>
+  runMarketSyncJob("polymarket");
+
+export const runPolymarketOrderbookSnapshotSyncJob = (): Promise<ExternalSyncRunSummary> =>
+  runMarketSyncJob("polymarket");
+
+export const runPolymarketRecentTradesSyncJob = (): Promise<ExternalSyncRunSummary> =>
+  runMarketSyncJob("polymarket");
+
+export const runPolymarketStalenessCheckJob = async (): Promise<ExternalSyncRunSummary> => {
+  const startedAt = new Date().toISOString();
+  await db.query(
+    `
+      insert into public.external_market_sync_runs (
+        source, sync_kind, status, started_at, finished_at, diagnostics
+      ) values (
+        'polymarket',
+        'polymarket_staleness_check',
+        'success',
+        now(),
+        now(),
+        jsonb_build_object(
+          'staleMarketCount',
+          (
+            select count(*)
+            from public.external_markets
+            where source = 'polymarket'
+              and coalesce(last_seen_at, last_synced_at, updated_at) < now() - interval '15 minutes'
+          )
+        )
+      )
+    `,
+  );
+  return {
+    startedAt,
+    completedAt: new Date().toISOString(),
+    sources: [{
+      source: "polymarket",
+      marketsSynced: 0,
+      outcomesSynced: 0,
+      tradesSynced: 0,
+      checkpointRecordedAt: new Date().toISOString(),
+      durationMs: 0,
+      previousLagMs: null,
+    }],
+    totals: { marketsSynced: 0, outcomesSynced: 0, tradesSynced: 0 },
+  };
 };

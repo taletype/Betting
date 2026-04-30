@@ -200,8 +200,8 @@ test("market upsert stores raw payload/provenance and does not touch internal tr
   await runMarketSyncJobWithDependencies({ db, adapters: [adapter] });
   const firstInsert = marketInsertValues[0] ?? [];
   const firstTradeInsert = tradeInsertValues[0] ?? [];
-  assert.match(String(firstInsert[15]), /rawJson/);
-  assert.match(String(firstInsert[17]), /gamma-api.polymarket.com/);
+  assert.match(String(firstInsert[17]), /rawJson/);
+  assert.match(String(firstInsert[19]), /gamma-api.polymarket.com/);
   assert.equal(firstTradeInsert[3], "polymarket");
   assert.equal(firstTradeInsert[6], "450000");
   assert.equal(firstTradeInsert[8], "5000000");

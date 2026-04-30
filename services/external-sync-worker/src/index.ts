@@ -1,4 +1,9 @@
 export {
+  runPolymarketMarketMetadataSyncJob,
+  runPolymarketMarketPriceSyncJob,
+  runPolymarketOrderbookSnapshotSyncJob,
+  runPolymarketRecentTradesSyncJob,
+  runPolymarketStalenessCheckJob,
   runMarketSyncJob,
   runMarketSyncJobWithDependencies,
   upsertMarket,

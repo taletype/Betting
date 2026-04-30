@@ -1,0 +1,3 @@
+export {
+  fetchPolymarketMarketTrades,
+} from "./trades";

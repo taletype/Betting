@@ -588,7 +588,7 @@ export const getPublicExternalMarketsReadiness = () => {
     configuredApiBaseIsWebOrigin,
     sameOriginApiSelected: dataUrl === sameOriginUrl,
     serviceApiSelected: Boolean(configuredApiBaseUrl) && !configuredApiBaseIsWebOrigin && dataUrl !== sameOriginUrl,
-    polymarketFallbackEnabled: true,
+    polymarketFallbackEnabled: false,
   };
 };
 

@@ -257,7 +257,7 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
   assert.match(blockedMarkup, /你目前所在地區暫不支援 Polymarket 下單/);
 
   const submitterMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitterAvailable: false }));
-  assert.match(submitterMarkup, /data-testid="top-blocking-reason">提交器暫時不可用/);
+  assert.match(submitterMarkup, /data-testid="top-blocking-reason">交易提交器未準備好/);
 });
 
 test("rewards page presents rewards as manual approval accounting", async () => {

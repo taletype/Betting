@@ -1,5 +1,5 @@
 import { normalizeApiPayload } from "./api-serialization";
-import { readPolymarketGammaFallbackMarkets, type PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
+import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
 
 interface ExternalMarketRow {
   id: string;
@@ -176,14 +176,13 @@ export async function readExternalMarkets(supabase: {
     .limit(500);
 
   if (marketError) {
-    console.warn("external_markets read failed; falling back to Polymarket Gamma", marketError);
-    return normalizeApiPayload(await readPolymarketGammaFallbackMarkets());
+    throw marketError;
   }
 
   marketRows = data;
 
   if (!marketRows?.length) {
-    return normalizeApiPayload(await readPolymarketGammaFallbackMarkets());
+    return normalizeApiPayload([]);
   }
 
   const marketIds = marketRows.map((market) => market.id);
@@ -304,10 +303,6 @@ export async function readExternalMarkets(supabase: {
 
     byId.get(snapshot.external_market_id)?.latestOrderbook.push(mapExternalOrderbookSnapshot(snapshot));
     latestOrderbookByOutcome.add(key);
-  }
-
-  if (!markets.some((market) => market.source === "polymarket")) {
-    markets.push(...(await readPolymarketGammaFallbackMarkets()));
   }
 
   return normalizeApiPayload(markets);

@@ -286,36 +286,16 @@ test("GET /api/external/markets returns stale cache while refresh stays server-s
   assert.equal(payload.markets[0]?.externalId, "POLY-ROUTE-1");
 });
 
-test("GET /api/external/markets falls back to public Gamma events when backend fails", async (t) => {
+test("GET /api/external/markets does not call Polymarket when backend cache fails", async (t) => {
   const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
   setSupabaseAdminClientFactoryForTests(() => {
     throw new Error("SUPABASE_URL is required");
   });
 
-  globalThis.fetch = (async (input) => {
-    assert.equal(String(input), "https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume_24hr&ascending=false&limit=50");
-    return new Response(
-      JSON.stringify([
-        {
-          id: "event-route-1",
-          slug: "route-fallback-event",
-          title: "Route fallback event",
-          active: true,
-          closed: false,
-          markets: [
-            {
-              id: "gamma-route-1",
-              slug: "gamma-route-fallback",
-              question: "Will the API route fall back to Gamma?",
-              outcomes: JSON.stringify(["Yes", "No"]),
-              outcomePrices: JSON.stringify(["0.7", "0.3"]),
-              clobTokenIds: JSON.stringify(["yes-route", "no-route"]),
-            },
-          ],
-        },
-      ]),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    throw new Error("public market route must be cache-only");
   }) as typeof globalThis.fetch;
 
   t.after(() => {
@@ -330,25 +310,15 @@ test("GET /api/external/markets falls back to public Gamma events when backend f
     ok: boolean;
     source: string;
     fallbackUsed: boolean;
-    markets: Array<{
-      externalId: string;
-      source: string;
-      title: string;
-      sourceProvenance: { dataPath?: string; stale?: boolean };
-      outcomes: Array<{ title: string; lastPrice: number | null }>;
-    }>;
+    markets: unknown[];
   };
 
-  assert.equal(response.status, 200);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.source, "polymarket_public_fallback");
-  assert.equal(payload.fallbackUsed, true);
-  assert.equal(payload.markets[0]?.source, "polymarket");
-  assert.equal(payload.markets[0]?.externalId, "gamma-route-1");
-  assert.equal(payload.markets[0]?.title, "Will the API route fall back to Gamma?");
-  assert.equal(payload.markets[0]?.sourceProvenance.dataPath, "fallback");
-  assert.equal(payload.markets[0]?.sourceProvenance.stale, false);
-  assert.equal(payload.markets[0]?.outcomes[0]?.lastPrice, 0.7);
+  assert.equal(response.status, 503);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.source, "supabase_cache");
+  assert.equal(payload.fallbackUsed, false);
+  assert.deepEqual(payload.markets, []);
+  assert.equal(fetchCalled, false);
 });
 
 test("GET /api/external/markets detail, orderbook, and trades return safe JSON", async (t) => {
@@ -383,11 +353,11 @@ test("GET /api/external/markets detail, orderbook, and trades return safe JSON",
 
 test("public health, version, and external markets survive missing Supabase config", async (t) => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify([]), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    })) as typeof globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    throw new Error("external market browsing should not call Polymarket directly");
+  }) as typeof globalThis.fetch;
 
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -398,9 +368,10 @@ test("public health, version, and external markets survive missing Supabase conf
     assert.equal(versionGET().status, 200);
 
     const listResponse = await externalMarketsGET();
-    assert.equal(listResponse.status, 200);
+    assert.equal(listResponse.status, 503);
     const listPayload = await listResponse.json() as { markets?: unknown[] };
     assert.ok(Array.isArray(listPayload.markets));
+    assert.equal(fetchCalled, false);
 
     const detailResponse = await externalMarketGET(new Request("http://localhost/api/external/markets/polymarket/missing"), {
       params: Promise.resolve({ source: "polymarket", externalId: "missing" }),
