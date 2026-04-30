@@ -12,25 +12,51 @@ import { getSiteUrl } from "../../lib/site-url";
 
 export const dynamic = "force-dynamic";
 
-export default async function AmbassadorPage() {
+const rewardExplanation =
+  "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。";
+const safetyExplanation =
+  "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。";
+const payoutApprovalExplanation = "獎勵計算可自動記錄，但實際支付需要管理員審批。";
+const manualPayoutExplanation = "實際支付不會自動執行，必須由管理員審批及記錄交易哈希。";
+const polygonPayoutExplanation = "請確認你的收款地址支援 Polygon 網絡。";
+
+const getMarketSlug = (searchParams?: Record<string, string | string[] | undefined>): string | null => {
+  const rawSlug = searchParams?.market ?? searchParams?.slug;
+  const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+  if (!slug || !/^[a-z0-9][a-z0-9-]{0,180}$/i.test(slug)) {
+    return null;
+  }
+
+  return slug;
+};
+
+export default async function AmbassadorPage({
+  searchParams,
+}: Readonly<{
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}> = {}) {
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).ambassador;
   const authCopy = getLocaleCopy(locale).auth;
   const dashboard = await getAmbassadorDashboard().catch(() => null);
   const siteUrl = getSiteUrl();
+  const resolvedSearchParams = await searchParams;
+  const marketSlug = getMarketSlug(resolvedSearchParams);
   const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
+  const referralCode = dashboard?.ambassadorCode.code ?? null;
+  const referralLink = dashboard?.ambassadorCode.inviteUrl ?? "";
+  const marketReferralLink = referralCode
+    ? `${siteUrl}/polymarket${marketSlug ? `/${marketSlug}` : ""}?ref=${encodeURIComponent(referralCode)}`
+    : "";
 
   return (
     <main className="stack">
       <section className="hero">
         <div className="hero-copy stack">
-          <h1>分享有用市場，直接邀請朋友</h1>
-          <p>分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
-          <p>參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。</p>
-          <p>{copy.approvalNotice}</p>
+          <h1>邀請朋友</h1>
+          <p>{rewardExplanation}</p>
           <div className="trust-badge-row">
             <StatusChip>直接推薦</StatusChip>
-            <StatusChip>無需付費</StatusChip>
             <StatusChip>人手審批</StatusChip>
             <StatusChip tone="warning">待確認獎勵</StatusChip>
             <StatusChip>非託管</StatusChip>
@@ -42,37 +68,52 @@ export default async function AmbassadorPage() {
       <SharedSafetyDisclosure />
       <SharedRewardDisclosure />
       <SafetyDisclosure title="推薦規則">
-        推薦獎勵只來自直接推薦及已確認的 Builder 費用收入，不設多層推薦，不代表任何交易盈利或確定收入。
+        <div className="stack">
+          <p>{rewardExplanation}</p>
+          <p>{safetyExplanation}</p>
+          <p>{payoutApprovalExplanation}</p>
+        </div>
+      </SafetyDisclosure>
+      <SafetyDisclosure title="支付提示">
+        <div className="stack">
+          <p>{manualPayoutExplanation}</p>
+          <p>{polygonPayoutExplanation}</p>
+        </div>
       </SafetyDisclosure>
 
       {!dashboard ? (
         <section className="panel stack">
-          <EmptyState title={authCopy.sessionRequired}>登入後可查看你的推薦碼、直接推薦紀錄及獎勵帳務。</EmptyState>
-          <a href="/login">{authCopy.login}</a>
+          <EmptyState title={authCopy.sessionRequired}>登入或註冊後可查看你的推薦碼、複製市場推薦連結，並追蹤直接推薦獎勵帳務。</EmptyState>
+          <div className="market-actions">
+            <a className="button-link" href="/login">{authCopy.login}</a>
+            <a className="button-link secondary" href="/signup">{authCopy.signup}</a>
+          </div>
         </section>
       ) : (
         <>
           <PendingReferralApplier />
           <section className="panel ambassador-code-card invite-link-card">
             <div className="stack">
-              <span className="metric-label">你的邀請連結</span>
-              <div className="metric-sm mono">{dashboard.ambassadorCode.code}</div>
-              <p className="muted">推薦碼只作直接歸因。分享市場連結後，直接推薦及已確認 Builder 費用收入會用作獎勵帳務紀錄。</p>
+              <span className="metric-label">推薦碼</span>
+              <div className="metric-sm mono">{referralCode}</div>
+              <span className="metric-label">推薦連結</span>
+              <div className="metric-sm mono">{referralLink}</div>
+              <p className="muted">推薦碼只作直接推薦歸因。分享市場連結後，已確認 Builder 費用收入會用作獎勵帳務紀錄。</p>
             </div>
             <div className="market-actions">
-              <TrackedCopyButton value={dashboard.ambassadorCode.inviteUrl} label="複製邀請連結" copiedLabel="已複製" eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
+              <TrackedCopyButton value={referralLink} label="複製推薦連結" copiedLabel="已複製" eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
               <TrackedCopyButton
-                value={`${siteUrl}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
-                label="複製市場邀請連結"
+                value={marketReferralLink}
+                label="複製市場推薦連結"
                 copiedLabel="已複製"
                 eventName="market_share_link_copied"
-                metadata={{ code: dashboard.ambassadorCode.code, surface: "polymarket_feed" }}
+                metadata={{ code: dashboard.ambassadorCode.code, marketSlug: marketSlug ?? "polymarket_feed" }}
               />
             </div>
           </section>
 
           <section className="grid">
-            <MetricCard label="直接推薦用戶" value={dashboard.rewards.directReferralCount.toLocaleString(locale)} note={`${copy.directTradingVolume}: ${formatUsdc(dashboard.rewards.directTradingVolumeUsdcAtoms, locale)}`} />
+            <MetricCard label="直接推薦人數" value={dashboard.rewards.directReferralCount.toLocaleString(locale)} />
             <MetricCard label="待確認獎勵" value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" />
             <MetricCard label="可提取獎勵" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" />
             <MetricCard label="已支付獎勵" value={formatUsdc(dashboard.rewards.paidRewards, locale)} />
@@ -103,7 +144,7 @@ export default async function AmbassadorPage() {
             <a className="button-link" href="/polymarket">查看 Polymarket 市場</a>
             <a className="button-link secondary" href="/rewards">前往獎勵</a>
             <TrackedCopyButton
-              value={`分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。 ${dashboard.ambassadorCode.inviteUrl}`}
+              value={`${rewardExplanation} ${referralLink}`}
               label="複製分享文字"
               copiedLabel="已複製"
               eventName="invite_link_copied"

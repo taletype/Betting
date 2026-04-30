@@ -547,7 +547,36 @@ test("admin payout approval exposes safe risk review error and UI risk summary",
   assert.match(payoutPage, /flag\.severity/);
   assert.match(payoutPage, /flag\.status/);
   assert.match(payoutPage, /flag\.reasonCode/);
+  assert.match(payoutPage, /pattern=\{polygonTxHashPattern\}/);
+  assert.match(payoutPage, /Polygon tx hash must be a 32-byte 0x hash/);
+  assert.match(payoutPage, /此頁不會自動發送 crypto/);
+  assert.match(payoutPage, /safeAuditMetadata/);
   assert.doesNotMatch(payoutPage, /flag\.details/);
+  assert.doesNotMatch(payoutPage, /JSON\.stringify\(entry\.metadata\)/);
+});
+
+test("admin pages surface referral reward payout and Polymarket operator fields", () => {
+  const ambassadorPage = readFileSync(resolve(process.cwd(), "src/app/admin/ambassadors/page.tsx"), "utf8");
+  const rewardsPage = readFileSync(resolve(process.cwd(), "src/app/admin/rewards/page.tsx"), "utf8");
+  const payoutsPage = readFileSync(resolve(process.cwd(), "src/app/admin/payouts/page.tsx"), "utf8");
+  const polymarketPage = readFileSync(resolve(process.cwd(), "src/app/admin/polymarket/page.tsx"), "utf8");
+  const publicMarketPage = readFileSync(resolve(process.cwd(), "src/app/external-markets/external-markets-page.tsx"), "utf8");
+
+  assert.match(ambassadorPage, /Direct referred user/);
+  assert.match(ambassadorPage, /Rejected attribution attempts/);
+  assert.match(ambassadorPage, /已停用推薦碼/);
+  assert.match(ambassadorPage, /Suspicious flags/);
+  assert.match(rewardsPage, /Builder attribution source/);
+  assert.match(rewardsPage, /平台分帳/);
+  assert.match(rewardsPage, /推薦人分帳/);
+  assert.match(rewardsPage, /交易者分帳/);
+  assert.match(rewardsPage, /Duplicate \/ idempotency/);
+  assert.match(payoutsPage, /Wallet address/);
+  assert.match(payoutsPage, /Polygon \{payout\.payoutChainId\}/);
+  assert.match(payoutsPage, /Admin notes/);
+  assert.match(polymarketPage, /Source URLs \/ debug info/);
+  assert.match(polymarketPage, /gamma-api\.polymarket\.com\/events/);
+  assert.doesNotMatch(publicMarketPage, /Open on Polymarket|前往 Polymarket|gamma-api\.polymarket\.com\/events/);
 });
 
 test("production catch-all errors are sanitized", async () => {

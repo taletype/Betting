@@ -3,9 +3,10 @@ import Link from "next/link";
 
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { normalizeReferralCode } from "../../lib/referral-capture";
+import { pendingReferralPrimaryCopy, pendingReferralSecondaryCopy } from "../../lib/referral-ui";
 import { hasPublicSupabaseConfig } from "../../lib/supabase/config";
 import { sendMagicLinkAction } from "../auth-actions";
-import { PendingReferralNotice } from "../pending-referral-notice";
+import { MalformedReferralNotice, PendingReferralNotice } from "../pending-referral-notice";
 
 export default async function LoginPage({
   searchParams,
@@ -16,6 +17,7 @@ export default async function LoginPage({
   const copy = getLocaleCopy(defaultLocale).auth;
   const next = params?.next?.startsWith("/") ? params.next : "/account";
   const refCode = normalizeReferralCode(params?.ref);
+  const malformedRef = Boolean(params?.ref) && !refCode;
   const authUnavailable = params?.auth === "unavailable" && !hasPublicSupabaseConfig();
 
   return (
@@ -23,7 +25,16 @@ export default async function LoginPage({
       <section className="hero">
         <h1>{copy.loginTitle}</h1>
         <p>{copy.loginSubtitle}</p>
-        {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
+        {refCode ? (
+          <div className="banner banner-success">
+            <strong>{pendingReferralPrimaryCopy(refCode)}</strong>
+            <span>{pendingReferralSecondaryCopy}</span>
+          </div>
+        ) : malformedRef ? (
+          <MalformedReferralNotice />
+        ) : (
+          <PendingReferralNotice />
+        )}
       </section>
 
       {authUnavailable ? <div className="error-state">{copy.authUnavailable}</div> : null}

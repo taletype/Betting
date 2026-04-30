@@ -7,9 +7,9 @@ import {
   getPolymarketReadinessChecklist,
   getPolymarketRoutingReadiness,
   getPolymarketTopBlockingReason,
-  getPolymarketTradingReadiness,
   type PolymarketGeoblockStatus,
   type PolymarketReadinessChecklistStatus,
+  type PolymarketRoutingReadinessInput,
 } from "./polymarket-routing-readiness";
 import { BuilderFeeDisclosureCard } from "../builder-fee-disclosure-card";
 import { trackFunnelEvent } from "../funnel-analytics";
@@ -63,6 +63,21 @@ const statusLabel = (status: PolymarketReadinessChecklistStatus): string => {
 const initialGeoblockStatus = (allowed: boolean | undefined): PolymarketGeoblockStatus =>
   allowed === true ? "allowed" : allowed === false ? "blocked" : "unknown";
 
+const getTradeTicketActionLabel = (
+  input: PolymarketRoutingReadinessInput,
+  readiness: ReturnType<typeof getPolymarketRoutingReadiness>,
+): string => {
+  if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
+  if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false) return "增值錢包";
+  if (!input.featureEnabled) return "交易功能尚未啟用";
+  if (!input.hasCredentials) return "需要 Polymarket 憑證";
+  if (!input.hasBuilderCode) return "Builder Code 未設定";
+  if (!input.marketTradable || input.orderValid === false) return "市場只供瀏覽";
+  if (input.submitModeEnabled === false || !input.submitterAvailable) return "實盤提交已停用";
+  if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
+  return "透過 Polymarket 交易";
+};
+
 export function PolymarketTradeTicket(props: Props) {
   const copy = getLocaleCopy(props.locale).research;
   const thirdweb = useThirdwebWalletStatus();
@@ -114,11 +129,10 @@ export function PolymarketTradeTicket(props: Props) {
     orderValid,
   };
   const readiness = getPolymarketRoutingReadiness(readinessInput);
-  const tradingReadiness = getPolymarketTradingReadiness(readinessInput);
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
   const disabled = readiness !== "ready_to_submit" || !finalConfirmation;
-  const tradeButtonLabel = disabled ? tradingReadiness.disabledReason : "透過 Polymarket 交易";
+  const tradeButtonLabel = disabled ? getTradeTicketActionLabel(readinessInput, readiness) : "透過 Polymarket 交易";
   const publicTradingReady = Boolean(
     props.featureEnabled &&
     props.hasBuilderCode &&

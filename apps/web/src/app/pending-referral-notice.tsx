@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { createElement, useEffect, useState } from "react";
 
 import {
   pendingReferralCookieName,
@@ -8,6 +8,13 @@ import {
   referralAttributionResultStorageKey,
   normalizeReferralCode,
 } from "../lib/referral-capture";
+import {
+  mapReferralRejectionReason,
+  pendingReferralPrimaryCopy,
+  pendingReferralSecondaryCopy,
+  referralAppliedCopy,
+  referralRejectedCopy,
+} from "../lib/referral-ui";
 
 type ReferralAttributionResult = {
   status: "applied" | "refused";
@@ -47,8 +54,10 @@ const readAttributionResult = (): ReferralAttributionResult | null => {
 
 export function PendingReferralNotice({
   prefix = "你正在使用推薦碼：",
+  suffix,
 }: {
   prefix?: string;
+  suffix?: string;
 }) {
   const [code, setCode] = useState<string | null>(null);
 
@@ -62,7 +71,12 @@ export function PendingReferralNotice({
     return () => window.removeEventListener("bet:referral-captured", onCaptured);
   }, []);
 
-  return code ? <div className="banner banner-success">{prefix}{code}</div> : null;
+  return code ? (
+    <div className="banner banner-success">
+      <strong>{prefix === "你正在使用推薦碼：" ? pendingReferralPrimaryCopy(code) : `${prefix}${code}`}</strong>
+      {suffix ? <span>{suffix}</span> : prefix === "你正在使用推薦碼：" ? <span>{pendingReferralSecondaryCopy}</span> : null}
+    </div>
+  ) : null;
 }
 
 export function ReferralAttributionResultNotice() {
@@ -78,12 +92,23 @@ export function ReferralAttributionResultNotice() {
   if (!result) return null;
 
   if (result.status === "applied") {
-    return <div className="banner banner-success">推薦碼已套用：{result.code}</div>;
+    return <div className="banner banner-success">{referralAppliedCopy}</div>;
   }
 
+  const safeReason = mapReferralRejectionReason(result.reason);
   return (
     <div className="banner banner-warning">
-      推薦碼未能套用：{result.code}{result.reason ? `（${result.reason}）` : ""}
+      <div>{referralRejectedCopy}</div>
+      {safeReason ? <div>{safeReason}</div> : null}
     </div>
+  );
+}
+
+export function MalformedReferralNotice() {
+  return createElement(
+    "div",
+    { className: "banner banner-warning" },
+    createElement("div", null, referralRejectedCopy),
+    createElement("div", null, "推薦碼無效"),
   );
 }

@@ -54,8 +54,21 @@ const getOutcomePrice = (market: ExternalMarketApiRecord, yesNo: "yes" | "no"): 
   return outcome?.lastPrice ?? outcome?.bestAsk ?? outcome?.bestBid ?? null;
 };
 
-const getShareLabel = (refCode: string | null): string =>
-  refCode ? "複製市場推薦連結" : "複製市場連結";
+const isSafeMarketImageUrl = (value: string | null | undefined): value is string => {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
+const getMarketHeroImageUrl = (market: ExternalMarketApiRecord): string | null => {
+  if (isSafeMarketImageUrl(market.imageUrl)) return market.imageUrl;
+  if (isSafeMarketImageUrl(market.iconUrl)) return market.iconUrl;
+  return null;
+};
 
 const hasPolymarketBuilderCode = (): boolean => {
   try {
@@ -156,11 +169,28 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
 };
 
 const MarketHeroImage = ({ market, alt }: { market: ExternalMarketApiRecord; alt: string }) => {
-  if (!market.imageUrl) {
-    return <div className="market-card-image market-card-image-fallback" aria-hidden="true" />;
+  const imageUrl = getMarketHeroImageUrl(market);
+
+  if (!imageUrl) {
+    return (
+      <div className="market-card-image market-card-image-fallback market-hero-image-fallback" aria-hidden="true">
+        <span>Polymarket</span>
+      </div>
+    );
   }
 
-  return <img src={market.imageUrl} alt={alt} width={1440} height={720} className="market-card-image" />;
+  return (
+    <img
+      src={imageUrl}
+      alt={alt}
+      width={1440}
+      height={720}
+      className="market-card-image market-hero-image"
+      loading="eager"
+      decoding="async"
+      fetchPriority="high"
+    />
+  );
 };
 
 const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
@@ -250,7 +280,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
         <section className="hero">
           <h1>{copy.loadError}</h1>
-          <p>外部 Polymarket / Gamma / CLOB 資料暫時不可用；頁面已改用安全瀏覽狀態，不會提交交易或更改任何平台餘額。</p>
+          <p>外部 Polymarket / Gamma / CLOB 資料暫時不可用；頁面已改用安全瀏覽狀態，不會提交交易或更改任何內部帳務紀錄。</p>
           {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         </section>
         <div className="panel empty-state">
@@ -353,9 +383,9 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     hasBuilderCode &&
     submitterAvailable;
   const publicTradingStatusLabel = publicSubmitEnabled ? "實盤提交已啟用" : "交易介面預覽 / 實盤提交已停用";
-  const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(slug)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-  const marketShareUrl = `${getSiteUrl()}${detailPath}`;
-  const shareLabel = getShareLabel(refCode);
+  const baseDetailPath = getLocaleHref(locale, `/polymarket/${encodeURIComponent(slug)}`);
+  const baseMarketShareUrl = `${getSiteUrl()}${baseDetailPath}`;
+  const referralMarketShareUrl = refCode ? `${getSiteUrl()}${baseDetailPath}?ref=${encodeURIComponent(refCode)}` : baseMarketShareUrl;
   const tradeTicketProps = {
     locale,
     hasBuilderCode,
@@ -398,6 +428,14 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
           {restricted ? <div className="badge badge-warning">市場受限制</div> : null}
         </div>
         <h1>{localizedTitle}</h1>
+        <div className="market-hero-facts">
+          <div className="kv"><span className="kv-key">狀態</span><span className="kv-value">{copy.statuses[market.status] ?? market.status}</span></div>
+          <div className="kv"><span className="kv-key">截止時間</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>
+          <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{toDisplay(market.volume24h ?? market.volumeTotal)}</span></div>
+          <div className="kv"><span className="kv-key">流動性</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal)}</span></div>
+          <div className="kv"><span className="kv-key">來源</span><span className="kv-value">來源：Polymarket</span></div>
+          <div className="kv"><span className="kv-key">最後更新</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
+        </div>
         <div className="grid">
           <article className="metric-card">
             <span className="metric-label">Yes</span>
@@ -419,8 +457,15 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <div className="market-actions">
           <button type="button" className="button-link primary-cta" disabled>{copy.tradeViaPolymarket}</button>
           <TrackedCopyButton
-            value={marketShareUrl}
-            label={shareLabel}
+            value={baseMarketShareUrl}
+            label="複製市場連結"
+            copiedLabel="已複製"
+            eventName="market_share_link_copied"
+            metadata={{ market: market.slug || market.externalId, surface: "hero_plain" }}
+          />
+          <TrackedCopyButton
+            value={referralMarketShareUrl}
+            label="複製市場推薦連結"
             copiedLabel="已複製"
             eventName="market_share_link_copied"
             metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
@@ -459,6 +504,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
           <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toPriceDisplay(market.lastTradePrice)}</span></div>
           <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(market.bestBid)}</span></div>
           <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk)}</span></div>
+          <div className="kv"><span className="kv-key">買賣差價</span><span className="kv-value">{toPriceDisplay(stats?.spread ?? market.spread ?? (market.bestBid !== null && market.bestAsk !== null ? market.bestAsk - market.bestBid : null))}</span></div>
         </article>
         <article className="panel stack">
           <strong>{copy.volume24h} / {copy.liquidity}</strong>
@@ -516,7 +562,6 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">資料來源：Polymarket API</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
         <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
-        {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
       </section>
 
       {debugVisible ? (
@@ -542,8 +587,15 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <p className="muted">分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
         <p className="muted">交易回贈：合資格交易如產生已確認 Builder 費用收入，交易用戶可獲得交易回贈。實際支付需要人手審批。</p>
         <TrackedCopyButton
-          value={marketShareUrl}
-          label={shareLabel}
+          value={baseMarketShareUrl}
+          label="複製市場連結"
+          copiedLabel="已複製"
+          eventName="market_share_link_copied"
+          metadata={{ market: market.slug || market.externalId, surface: "detail_plain" }}
+        />
+        <TrackedCopyButton
+          value={referralMarketShareUrl}
+          label="複製市場推薦連結"
           copiedLabel="已複製"
           eventName="market_share_link_copied"
           metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
@@ -554,6 +606,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <article className="panel stack">
           <h2 className="section-title">訂單簿 Orderbook snapshot</h2>
           <OrderBookDepthChart points={orderbookPayload.depth} stale={stale} />
+          <div className="kv"><span className="kv-key">Bid depth</span><span className="kv-value">{orderbookPayload.depth.filter((point) => point.side === "bid").length.toLocaleString(locale)}</span></div>
+          <div className="kv"><span className="kv-key">Ask depth</span><span className="kv-value">{orderbookPayload.depth.filter((point) => point.side === "ask").length.toLocaleString(locale)}</span></div>
           {visibleOrderbook.length > 0 ? (
             <table className="table compact-table">
               <thead><tr><th>{copy.outcome}</th><th>{copy.bestBid}</th><th>{copy.bestAsk}</th><th>{copy.lastSynced}</th></tr></thead>
@@ -604,13 +658,19 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               <p className="muted">登入後可查看推薦、獎勵及支付狀態</p>
               <p className="muted">複製市場邀請連結，讓朋友直接查看同一個 Polymarket 市場。</p>
               <TrackedCopyButton
-                value={marketShareUrl}
-                label={shareLabel}
+                value={baseMarketShareUrl}
+                label="複製市場連結"
+                copiedLabel="已複製"
+                eventName="market_share_link_copied"
+                metadata={{ market: market.slug || market.externalId, surface: "detail_panel_plain" }}
+              />
+              <TrackedCopyButton
+                value={referralMarketShareUrl}
+                label="複製市場推薦連結"
                 copiedLabel="已複製"
                 eventName="market_share_link_copied"
                 metadata={refCode ? { code: refCode, market: market.slug || market.externalId, surface: "detail_panel" } : { market: market.slug || market.externalId, surface: "detail_panel" }}
               />
-              {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
             </div>
             <div className="readiness-checklist stack">
               <div className="section-heading-row">

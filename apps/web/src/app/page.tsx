@@ -3,6 +3,7 @@ import React from "react";
 
 import { MarketSparkline } from "./charts/market-charts";
 import { FunnelEventTracker } from "./funnel-analytics";
+import { HomeMarketImage } from "./home-market-image";
 import { PendingReferralNotice } from "./pending-referral-notice";
 import { BetaLaunchDisclosure, EmptyState, SharedRewardDisclosure, SharedSafetyDisclosure, StatusChip } from "./product-ui";
 import { TrackedCopyButton } from "./tracked-copy-button";
@@ -22,11 +23,16 @@ interface HomePageProps {
   searchParams?: Promise<{ ref?: string }>;
 }
 
-const numberOrDash = (value: number | null): string =>
-  value === null ? "—" : value.toLocaleString(defaultLocale, { maximumFractionDigits: 2 });
-
 const priceOrUnavailable = (value: number | null): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const formatMarketMoney = (value: number | null | undefined): string =>
+  value === null || value === undefined
+    ? "—"
+    : value.toLocaleString(defaultLocale, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+const formatOptionalDateTime = (locale: AppLocale, value: string | null | undefined): string =>
+  value ? formatDateTime(locale, value, "UTC") : "—";
 
 const sparklinePoints = (market: ExternalMarketApiRecord) =>
   market.priceHistory?.length
@@ -45,7 +51,7 @@ const getTrendingMarkets = async (locale: AppLocale): Promise<ExternalMarketApiR
       .sort((a: ExternalMarketApiRecord, b: ExternalMarketApiRecord) =>
         (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0)
       )
-      .slice(0, 3);
+      .slice(0, 4);
   } catch (error) {
     console.warn("landing page Polymarket preview unavailable", error);
     return [];
@@ -63,15 +69,23 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
     <main className="stack">
       <FunnelEventTracker name="landing_page_view" metadata={refCode ? { ref: refCode } : undefined} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
-      {refCode ? <div className="banner banner-success referral-banner sticky-referral">你正在使用推薦碼：{refCode}。市場連結會保留直接推薦歸因。</div> : null}
+      {refCode ? (
+        <div className="banner banner-success referral-banner sticky-referral">
+          <strong>你正在使用推薦碼：{refCode}</strong>
+          <span>登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。</span>
+        </div>
+      ) : (
+        <PendingReferralNotice
+          prefix="你正在使用推薦碼："
+          suffix="登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。"
+        />
+      )}
       <section className="hero landing-hero">
         <div className="hero-copy stack">
-          <h1>繁中 Polymarket 市場入口</h1>
-          <span className="sr-only">用一個頁面追蹤熱門 Polymarket 市場</span>
-          <p>以繁體中文瀏覽市場、比較價格、分享有用市場連結，並清楚查看推薦獎勵及 Beta 交易狀態。</p>
-          {!refCode ? <PendingReferralNotice /> : null}
+          <h1>用一個頁面追蹤熱門 Polymarket 市場</h1>
+          <p>瀏覽市場、比較價格，並在交易功能啟用後透過 Polymarket 自行簽署交易。</p>
           <div className="trust-badge-row" aria-label="平台安全披露">
-            {["Beta", "非託管", "交易尚未啟用", "直接推薦", "人手審批"].map((label) => (
+            {["非託管", "用戶自行簽署", "熱門市場", "交易尚未啟用"].map((label) => (
               <StatusChip key={label}>{label}</StatusChip>
             ))}
           </div>
@@ -89,11 +103,19 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
         </div>
         <aside className="hero-market-preview panel stack" aria-label="熱門市場預覽">
           <div className="section-heading-row">
-            <strong>市場探索</strong>
-            <StatusChip tone="info">Polymarket</StatusChip>
+            <strong>熱門市場</strong>
+            <StatusChip tone="info">Polymarket / Gamma</StatusChip>
           </div>
           {markets[0] ? (
             <>
+              <div className="home-market-image-frame featured">
+                <HomeMarketImage
+                  imageUrl={markets[0].imageUrl}
+                  iconUrl={markets[0].iconUrl}
+                  alt={localizeMarketTitle(markets[0], locale)}
+                  featured
+                />
+              </div>
               <strong>{localizeMarketTitle(markets[0], locale)}</strong>
               <div className="outcome-pill-row">
                 {markets[0].outcomes.slice(0, 2).map((outcome) => (
@@ -108,7 +130,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
                 label="價格走勢"
                 hideWhenEmpty
               />
-              <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{numberOrDash(markets[0].volume24h ?? markets[0].volumeTotal)}</span></div>
+              <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{formatMarketMoney(markets[0].volume24h ?? markets[0].volumeTotal)}</span></div>
             </>
           ) : (
             <EmptyState title="市場資料同步中">稍後可在市場頁查看開放市場。</EmptyState>
@@ -131,10 +153,13 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
         ) : (
           <div className="grid">
             {markets.map((market) => (
-              <article className="panel stack" key={market.id}>
+              <article className="panel stack home-market-card" key={market.id}>
+                <div className="home-market-image-frame">
+                  <HomeMarketImage imageUrl={market.imageUrl} iconUrl={market.iconUrl} alt={localizeMarketTitle(market, locale)} />
+                </div>
                 <div className="market-card-meta">
-                  <StatusChip tone="info">Polymarket</StatusChip>
-                  <StatusChip tone="success">開放</StatusChip>
+                  <StatusChip tone="info">熱門市場</StatusChip>
+                  <StatusChip tone="success">非託管</StatusChip>
                 </div>
                 <strong>{localizeMarketTitle(market, locale)}</strong>
                 <div className="muted">
@@ -142,18 +167,27 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
                     ? market.outcomes.map((outcome) => localizeOutcomeLabel(outcome.title, locale)).join(" / ")
                     : "結果資料同步中"}
                 </div>
-                <div className="kv"><span className="kv-key">價格</span><span className="kv-value">{priceOrUnavailable(market.lastTradePrice)}</span></div>
+                <div className="outcome-pill-row">
+                  {market.outcomes.slice(0, 3).map((outcome) => (
+                    <span className="outcome-pill" key={outcome.externalOutcomeId}>
+                      <span>{localizeOutcomeLabel(outcome.title, locale)}</span>
+                      <strong>{priceOrUnavailable(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid)}</strong>
+                    </span>
+                  ))}
+                </div>
                 <MarketSparkline
                   points={sparklinePoints(market)}
                   label="價格走勢"
                   hideWhenEmpty
                 />
-                <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{numberOrDash(market.volume24h ?? market.volumeTotal)}</span></div>
-                <div className="kv"><span className="kv-key">流動性</span><span className="kv-value">{numberOrDash(market.liquidity ?? null)}</span></div>
+                <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{formatMarketMoney(market.volume24h ?? market.volumeTotal)}</span></div>
+                <div className="kv"><span className="kv-key">流動性</span><span className="kv-value">{formatMarketMoney(market.liquidity ?? null)}</span></div>
+                <div className="kv"><span className="kv-key">收市時間</span><span className="kv-value">{formatOptionalDateTime(locale, market.closeTime)}</span></div>
+                <div className="kv"><span className="kv-key">來源</span><span className="kv-value">Polymarket / Gamma</span></div>
                 {getOriginalMarketTitle(market) && getOriginalMarketTitle(market) !== localizeMarketTitle(market, locale) ? <div className="muted">原文：{getOriginalMarketTitle(market)}</div> : null}
-                <div className="muted">更新：{market.lastSyncedAt ? formatDateTime(locale, market.lastSyncedAt, "UTC") : "—"}</div>
+                <div className="muted">最後更新：{formatOptionalDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt)}</div>
                 <Link className="button-link secondary" href={`${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`}>
-                  市場詳情
+                  查看市場
                 </Link>
               </article>
             ))}
@@ -164,12 +198,28 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
       <section className="premium-band stack">
         <h2 className="section-title">如何運作</h2>
         <div className="grid">
-          {["瀏覽市場", "分享連結", "用戶自行簽署", "合資格交易可產生獎勵"].map((item, index) => (
-            <article className="panel stack" key={item}>
+          {["瀏覽 Polymarket 市場", "連接錢包", "用戶自行簽署訂單", "合資格交易可產生 Builder 費用收入"].map((item, index) => (
+            <article className="panel stack visual-step-card" key={item}>
               <StatusChip>0{index + 1}</StatusChip>
               <strong>{item}</strong>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="premium-band stack">
+        <h2 className="section-title">安全說明</h2>
+        <div className="panel stack">
+          <p>本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</p>
+          <p>交易功能只會在錢包、Polymarket 憑證、Builder Code 及提交流程準備好後啟用。</p>
+        </div>
+      </section>
+
+      <section className="premium-band stack">
+        <h2 className="section-title">Ambassador</h2>
+        <div className="panel stack invite-link-card">
+          <p>分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
+          <Link className="button-link secondary" href={getLocaleHref(locale, "/ambassador")}>取得推薦連結</Link>
         </div>
       </section>
     </main>

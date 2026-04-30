@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import AccountPage from "./account/page";
+import AccountPage, { AccountReferralSection } from "./account/page";
 import LoginPage from "./login/page";
 import SignupPage from "./signup/page";
 
@@ -40,7 +41,64 @@ test("login and signup pages display pending referral from query string", async 
   const signup = renderToStaticMarkup(await SignupPage({ searchParams: Promise.resolve({ ref: "friend001" }) }));
 
   assert.match(login, /你正在使用推薦碼：FRIEND001/);
+  assert.match(login, /登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。/);
   assert.match(signup, /你正在使用推薦碼：FRIEND001/);
+  assert.match(signup, /登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。/);
+});
+
+test("malformed referral code shows safe failure copy", async () => {
+  const login = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ ref: "x" }) }));
+
+  assert.match(login, /推薦碼未能使用/);
+  assert.match(login, /推薦碼無效/);
+  assert.doesNotMatch(login, /malformed|invalid/i);
+});
+
+test("account referral section shows applied attribution and invite actions", () => {
+  const account = renderToStaticMarkup(
+    React.createElement(AccountReferralSection, {
+      dashboard: {
+        ambassadorCode: {
+          id: "11111111-1111-4111-8111-111111111111",
+          code: "OWNER001",
+          ownerUserId: "22222222-2222-4222-8222-222222222222",
+          status: "active",
+          inviteUrl: "http://127.0.0.1:3000/signup?ref=OWNER001",
+          createdAt: "2026-04-22T00:00:00.000Z",
+          disabledAt: null,
+        },
+        attribution: {
+          id: "33333333-3333-4333-8333-333333333333",
+          referredUserId: "22222222-2222-4222-8222-222222222222",
+          referrerUserId: "44444444-4444-4444-8444-444444444444",
+          ambassadorCode: "FRIEND001",
+          attributedAt: "2026-04-22T00:00:00.000Z",
+          qualificationStatus: "pending",
+          rejectionReason: null,
+        },
+        directReferrals: [],
+        rewards: {
+          pendingRewards: "0",
+          payableRewards: "0",
+          approvedRewards: "0",
+          paidRewards: "0",
+          voidRewards: "0",
+          directReferralCount: 0,
+          directTradingVolumeUsdcAtoms: "0",
+        },
+        rewardLedger: [],
+        payouts: [],
+      },
+    }),
+  );
+
+  assert.match(account, /推薦來源已保存/);
+  assert.match(account, /目前推薦來源/);
+  assert.match(account, /FRIEND001/);
+  assert.match(account, /你的推薦碼/);
+  assert.match(account, /OWNER001/);
+  assert.match(account, /複製邀請連結/);
+  assert.match(account, /href="\/rewards"/);
 });
 
 test("login page does not show auth unavailable when public Supabase config exists", async () => {

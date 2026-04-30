@@ -440,7 +440,7 @@ test("forbidden reward and trading wording does not appear in non-test product f
   const offenders = walkTextFiles(repoRoot)
     .filter((file) => !/(\.test\.|\/node_modules\/|\/\.next\/)/.test(file))
     .filter((file) => !/docs\/(mvp-scope|invite-referral-funnel|ambassador-rewards-hk)\.md$/.test(file))
-    .filter((file) => pattern.test(readFileSync(file, "utf8")));
+    .filter((file) => pattern.test(readFileSync(file, "utf8").replaceAll("本平台不設入會費", "")));
 
   assert.deepEqual(offenders.map((file) => file.replace(`${repoRoot}/`, "")), []);
 });

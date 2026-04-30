@@ -20,6 +20,13 @@ const diagnosisCopy: Record<"ok" | "safe_empty" | "unavailable", string> = {
   unavailable: "failure: public market route is unavailable or non-JSON",
 };
 
+const debugSourceUrls = [
+  { label: "Public market feed API", url: "/api/external/markets" },
+  { label: "Admin status API", url: "/api/admin/polymarket/status" },
+  { label: "Same-page status route", url: "/admin/polymarket/status" },
+  { label: "Polymarket Gamma events source", url: "https://gamma-api.polymarket.com/events" },
+];
+
 export default async function AdminPolymarketPage() {
   const adminUser = await requireCurrentAdmin();
 
@@ -66,6 +73,22 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">last sync status</span><span className="kv-value">{publicPages.lastSyncStatus ?? "-"}</span></div>
         <div className="kv"><span className="kv-key">fallback used last request</span><span className="kv-value">{yesNoUnknown(publicPages.fallbackUsedLastRequest)}</span></div>
         <div className="kv"><span className="kv-key">safe empty/failure diagnosis</span><span className="kv-value">{diagnosisCopy[publicPages.diagnosis]}</span></div>
+      </section>
+
+      <section className="panel stack">
+        <h2 className="section-title">Source URLs / debug info</h2>
+        <p className="muted">Raw source URLs are intentionally kept on the admin page for diagnostics and are not rendered as public user CTAs.</p>
+        <table className="table compact-table">
+          <thead><tr><th>Source</th><th>URL</th></tr></thead>
+          <tbody>
+            {debugSourceUrls.map((source) => (
+              <tr key={source.url}>
+                <td>{source.label}</td>
+                <td className="mono">{source.url}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       <section className="panel stack">

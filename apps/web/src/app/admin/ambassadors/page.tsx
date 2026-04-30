@@ -19,6 +19,17 @@ const toCsv = (rows: NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOve
   return [header, ...body].join("\n");
 };
 
+type AdminOverview = NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>;
+
+const getRiskFlagsForAttribution = (
+  overview: AdminOverview,
+  attribution: AdminOverview["attributions"][number],
+) => overview.riskFlags.filter((flag) => (
+  flag.referralAttributionId === attribution.id ||
+  flag.userId === attribution.referredUserId ||
+  flag.userId === attribution.referrerUserId
+));
+
 export default async function AdminAmbassadorsPage({
   searchParams,
 }: {
@@ -31,6 +42,8 @@ export default async function AdminAmbassadorsPage({
   const q = (await searchParams)?.q?.trim().toLowerCase() ?? "";
   const visibleCodes = overview?.codes.filter((code) => !q || `${code.code} ${code.ownerUserId} ${code.status}`.toLowerCase().includes(q)) ?? [];
   const visibleAttributions = overview?.attributions.filter((attribution) => !q || `${attribution.ambassadorCode} ${attribution.referrerUserId} ${attribution.referredUserId} ${attribution.qualificationStatus}`.toLowerCase().includes(q)) ?? [];
+  const visibleRejectedAttributions = visibleAttributions.filter((attribution) => attribution.qualificationStatus === "rejected" || attribution.rejectionReason);
+  const disabledCodes = overview?.codes.filter((code) => code.status === "disabled") ?? [];
   const csvHref = overview ? `data:text/csv;charset=utf-8,${encodeURIComponent(toCsv(visibleAttributions))}` : "#";
 
   return (
@@ -58,6 +71,8 @@ export default async function AdminAmbassadorsPage({
           <section className="grid">
             <MetricCard label="推薦碼" value={overview.codes.length.toLocaleString(locale)} />
             <MetricCard label="直接歸因" value={overview.attributions.length.toLocaleString(locale)} tone="info" />
+            <MetricCard label="已停用推薦碼" value={disabledCodes.length.toLocaleString(locale)} tone="warning" />
+            <MetricCard label="被拒歸因嘗試" value={overview.attributions.filter((attribution) => attribution.qualificationStatus === "rejected" || attribution.rejectionReason).length.toLocaleString(locale)} tone="danger" />
             <MetricCard label="可疑旗標" value={(overview.riskFlags ?? []).filter((flag) => flag.status === "open").length.toLocaleString(locale)} tone="warning" />
             <ReferralFunnelChart points={visibleAttributions.map((attribution) => ({ timestamp: attribution.attributedAt, value: 1 }))} />
             <RewardSplitChart
@@ -97,8 +112,9 @@ export default async function AdminAmbassadorsPage({
                 <thead>
                   <tr>
                     <th>{copy.code}</th>
-                    <th>{copy.ownerUserId}</th>
+                    <th>Referrer user</th>
                     <th>{copy.status}</th>
+                    <th>Disabled</th>
                     <th>Created</th>
                     <th>{copy.disableCode}</th>
                   </tr>
@@ -109,6 +125,7 @@ export default async function AdminAmbassadorsPage({
                       <td>{code.code}</td>
                       <td className="mono">{code.ownerUserId}</td>
                       <td><StatusChip tone={code.status === "active" ? "success" : "warning"}>{code.status}</StatusChip></td>
+                      <td>{code.disabledAt ? formatDateTime(locale, code.disabledAt) : "-"}</td>
                       <td>{formatDateTime(locale, code.createdAt)}</td>
                       <td>
                         {code.status === "active" ? (
@@ -134,20 +151,58 @@ export default async function AdminAmbassadorsPage({
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Referred</th>
-                    <th>Referrer</th>
+                    <th>Direct referred user</th>
+                    <th>Referrer user</th>
                     <th>{copy.code}</th>
-                    <th>{copy.status}</th>
+                    <th>Attribution status</th>
+                    <th>Rejected reason</th>
+                    <th>Suspicious flags</th>
                     <th>Attributed</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleAttributions.map((attribution) => (
+                  {visibleAttributions.map((attribution) => {
+                    const riskFlags = getRiskFlagsForAttribution(overview, attribution);
+
+                    return (
+                      <tr key={attribution.id}>
+                        <td className="mono">{attribution.referredUserId}</td>
+                        <td className="mono">{attribution.referrerUserId}</td>
+                        <td>{attribution.ambassadorCode}</td>
+                        <td><StatusChip tone={attribution.qualificationStatus === "rejected" ? "danger" : attribution.qualificationStatus === "qualified" ? "success" : "warning"}>{attribution.qualificationStatus}</StatusChip></td>
+                        <td>{attribution.rejectionReason ?? "-"}</td>
+                        <td>{riskFlags.length === 0 ? "-" : riskFlags.map((flag) => `${flag.severity}/${flag.status}/${flag.reasonCode}`).join(", ")}</td>
+                        <td>{formatDateTime(locale, attribution.attributedAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          <section className="panel stack">
+            <h2 className="section-title">Rejected attribution attempts</h2>
+            {visibleRejectedAttributions.length === 0 ? (
+              <EmptyState title={copy.noRows} />
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Referred user</th>
+                    <th>Referrer user</th>
+                    <th>{copy.code}</th>
+                    <th>Reason</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRejectedAttributions.map((attribution) => (
                     <tr key={attribution.id}>
                       <td className="mono">{attribution.referredUserId}</td>
                       <td className="mono">{attribution.referrerUserId}</td>
                       <td>{attribution.ambassadorCode}</td>
-                      <td>{attribution.qualificationStatus}</td>
+                      <td>{attribution.rejectionReason ?? attribution.qualificationStatus}</td>
                       <td>{formatDateTime(locale, attribution.attributedAt)}</td>
                     </tr>
                   ))}

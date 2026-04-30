@@ -648,9 +648,10 @@ const en: LocaleCopy = {
     statuses: {
       pending: "Pending",
       payable: "Payable",
-      approved: "Approved",
+      approved: "Approval pending",
       paid: "Paid",
-      void: "Void",
+      void: "Cancelled",
+      failed: "Failed",
     },
     payoutStatuses: {
       requested: "Requested",
@@ -1053,15 +1054,16 @@ const zhHK: DeepPartial<LocaleCopy> = {
     statuses: {
       pending: "待確認",
       payable: "可提取",
-      approved: "已審批",
+      approved: "審批中",
       paid: "已支付",
-      void: "已作廢",
+      void: "已取消",
+      failed: "已失敗",
     },
     payoutStatuses: {
       requested: "已申請",
       approved: "已審批",
       paid: "已支付",
-      failed: "失敗",
+      failed: "已失敗",
       cancelled: "已取消",
     },
     rewardTypes: {

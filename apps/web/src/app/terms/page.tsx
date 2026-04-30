@@ -16,9 +16,8 @@ export default function TermsPage() {
       <section className="panel stack">
         <h2 className="section-title">Beta 範圍</h2>
         <p className="muted">本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。任何 Polymarket 操作均由用戶自行在 Polymarket 或其錢包流程中處理。</p>
-        <p className="muted">推薦獎勵只屬帳務紀錄及人工覆核流程，不代表盈利承諾、可用交易資金或自動支付安排。</p>
+        <p className="muted">推薦獎勵只屬帳務紀錄及人工覆核流程，不代表盈利承諾、下單能力或自動支付安排。</p>
       </section>
     </main>
   );
 }
-

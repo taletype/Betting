@@ -43,6 +43,20 @@ const toCsv = (rows: Awaited<ReturnType<typeof getAdminAmbassadorOverview>>["pay
   return [header, ...body].join("\n");
 };
 
+const polygonTxHashPattern = "0x[0-9a-fA-F]{64}";
+const polygonTxHashRegex = /^0x[0-9a-fA-F]{64}$/;
+
+const safeAuditMetadata = (metadata: unknown): string => {
+  if (!metadata || typeof metadata !== "object") return "-";
+  const record = metadata as Record<string, unknown>;
+  const parts = [
+    typeof record.notes === "string" && record.notes.trim() ? "notes recorded" : null,
+    typeof record.txHash === "string" && polygonTxHashRegex.test(record.txHash) ? `tx ${record.txHash.slice(0, 10)}...` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return parts.join(" / ") || "metadata recorded";
+};
+
 const getRiskFlagsForPayout = (
   overview: NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>,
   payout: NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>["payouts"][number],
@@ -95,7 +109,7 @@ export default async function AdminPayoutsPage({
     <main className="stack">
       <section className="hero">
         <h1>人工支付審批</h1>
-        <p>逐筆覆核支付申請、檢查風險旗標，批准後以 Polygon 交易雜湊標記為已支付。</p>
+        <p>逐筆覆核支付申請、檢查風險旗標，批准後以 Polygon 交易雜湊標記為已支付。此頁不會自動發送 crypto 或代替金庫轉帳。</p>
         <a className="button-link secondary" href={csvHref} download="ambassador-payouts.csv">{copy.exportCsv}</a>
       </section>
 
@@ -140,16 +154,17 @@ export default async function AdminPayoutsPage({
               <tr>
                 <th>ID</th>
                 <th>{copy.userId}</th>
+                <th>Wallet address</th>
                 <th>{rewardCopy.amount}</th>
                 <th>{copy.payoutRail}</th>
                 <th>{copy.asset}</th>
                 <th>{rewardCopy.status}</th>
+                <th>Admin notes</th>
                 <th>Risk</th>
-                <th>{rewardCopy.payoutDestination}</th>
                 <th>{copy.txHash}</th>
                 <th>{copy.approve}</th>
                 <th>{copy.markPaid}</th>
-                <th>{copy.markFailed}</th>
+                <th>Cancel / failed</th>
               </tr>
             </thead>
             <tbody>
@@ -161,10 +176,12 @@ export default async function AdminPayoutsPage({
                   <tr key={payout.id}>
                     <td className="mono">{payout.id.slice(0, 8)}</td>
                     <td className="mono">{payout.recipientUserId}</td>
+                    <td className="mono">{payout.destinationType === "wallet" ? payout.destinationValue : `manual: ${payout.destinationValue}`}</td>
                     <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
-                    <td>{payout.payoutChain} #{payout.payoutChainId}</td>
+                    <td>Polygon {payout.payoutChainId}</td>
                     <td>{payout.payoutAsset}</td>
                     <td><StatusChip tone={payout.status === "paid" ? "success" : payout.status === "failed" || payout.status === "cancelled" ? "danger" : "warning"}>{rewardCopy.payoutStatuses[payout.status] ?? payout.status}</StatusChip></td>
+                    <td>{payout.notes || "-"}</td>
                     <td>
                       {riskFlags.length === 0 ? (
                         "-"
@@ -178,7 +195,6 @@ export default async function AdminPayoutsPage({
                         </div>
                       )}
                     </td>
-                    <td>{payout.destinationValue}</td>
                     <td>
                       {payout.txHash ? (
                         <a href={`${explorerBaseUrl}/tx/${payout.txHash}`} target="_blank" rel="noreferrer">
@@ -198,7 +214,7 @@ export default async function AdminPayoutsPage({
                     <td>
                       <form action={markRewardPayoutPaidAction} className="stack">
                         <input type="hidden" name="payoutId" value={payout.id} />
-                        <input name="txHash" placeholder={copy.txHash} required />
+                        <input name="txHash" placeholder={copy.txHash} pattern={polygonTxHashPattern} title="Polygon tx hash must be a 32-byte 0x hash" required />
                         <input name="notes" placeholder={copy.notes} />
                         <button type="submit" disabled={payout.status !== "approved"}>{copy.markPaid}</button>
                       </form>
@@ -234,6 +250,7 @@ export default async function AdminPayoutsPage({
                   <th>Actor</th>
                   <th>Action</th>
                   <th>Target</th>
+                  <th>Metadata</th>
                 </tr>
               </thead>
               <tbody>
@@ -243,6 +260,7 @@ export default async function AdminPayoutsPage({
                     <td className="mono">{entry.actorUserId ?? "-"}</td>
                     <td>{entry.action}</td>
                     <td className="mono">{entry.entityId}</td>
+                    <td>{safeAuditMetadata(entry.metadata)}</td>
                   </tr>
                 ))}
               </tbody>

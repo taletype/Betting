@@ -3,9 +3,10 @@ import Link from "next/link";
 
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { normalizeReferralCode } from "../../lib/referral-capture";
+import { pendingReferralPrimaryCopy, pendingReferralSecondaryCopy } from "../../lib/referral-ui";
 import { sendMagicLinkAction } from "../auth-actions";
 import { FunnelEventTracker } from "../funnel-analytics";
-import { PendingReferralNotice } from "../pending-referral-notice";
+import { MalformedReferralNotice, PendingReferralNotice } from "../pending-referral-notice";
 import { TrackedCopyButton } from "../tracked-copy-button";
 
 interface SignupPageProps {
@@ -17,6 +18,7 @@ const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:300
 export default async function SignupPage({ searchParams }: SignupPageProps = {}) {
   const params = await searchParams;
   const refCode = normalizeReferralCode(params?.ref);
+  const malformedRef = Boolean(params?.ref) && !refCode;
   const copy = getLocaleCopy(defaultLocale).auth;
   const inviteUrl = `${siteUrl()}/signup${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
 
@@ -26,7 +28,16 @@ export default async function SignupPage({ searchParams }: SignupPageProps = {})
       <section className="hero">
         <h1>{copy.signupTitle}</h1>
         <p>{copy.signupSubtitle}</p>
-        {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
+        {refCode ? (
+          <div className="banner banner-success">
+            <strong>{pendingReferralPrimaryCopy(refCode)}</strong>
+            <span>{pendingReferralSecondaryCopy}</span>
+          </div>
+        ) : malformedRef ? (
+          <MalformedReferralNotice />
+        ) : (
+          <PendingReferralNotice />
+        )}
       </section>
 
       <section className="panel stack">

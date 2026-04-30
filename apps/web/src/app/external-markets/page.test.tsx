@@ -99,6 +99,54 @@ const makePolymarketRecord = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const makePolymarketDetailFetch = (marketOverrides: Record<string, unknown> = {}): typeof globalThis.fetch => {
+  const market = makePolymarketRecord({
+    externalId: "POLYDETAIL-IMAGE",
+    slug: "poly-detail-image",
+    title: "Will the detail page show market imagery?",
+    description: "Detail image test",
+    closeTime: "2099-06-01T00:00:00.000Z",
+    outcomes: [
+      { externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.5, bestAsk: 0.52, lastPrice: 0.51, volume: null },
+      { externalOutcomeId: "no", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.48, bestAsk: 0.5, lastPrice: 0.49, volume: null },
+    ],
+    ...marketOverrides,
+  });
+
+  return (async (input) => {
+    const url = String(input);
+    if (url.endsWith("/orderbook")) {
+      return new Response(JSON.stringify({ orderbook: market.latestOrderbook ?? [], depth: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/trades")) {
+      return new Response(JSON.stringify({ trades: market.recentTrades ?? [], recentTrades: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/history")) {
+      return new Response(JSON.stringify({ history: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/stats")) {
+      return new Response(
+        JSON.stringify({
+          source: "polymarket",
+          externalId: market.externalId,
+          volume24h: market.volume24h,
+          liquidity: market.liquidity,
+          spread: 0.02,
+          closeTime: market.closeTime,
+          lastUpdatedAt: "2099-05-01T01:00:00.000Z",
+          stale: false,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.includes("/external/markets/polymarket/")) {
+      return new Response(JSON.stringify({ market }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    return new Response(JSON.stringify([market]), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof globalThis.fetch;
+};
+
 test("home page renders Chinese-first Polymarket landing page", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
@@ -113,14 +161,93 @@ test("home page renders Chinese-first Polymarket landing page", async (t) => {
 
   const markup = renderToStaticMarkup(await HomePage({ searchParams: Promise.resolve({ ref: "hkref001" }) }));
   assert.match(markup, /用一個頁面追蹤熱門 Polymarket 市場/);
-  assert.match(markup, /瀏覽市場、比較價格/);
+  assert.match(markup, /瀏覽市場、比較價格，並在交易功能啟用後透過 Polymarket 自行簽署交易。/);
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
+  assert.match(markup, /登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。/);
   assert.match(markup, /href="\/polymarket\?ref=HKREF001"/);
+  assert.match(markup, /href="\/ambassador"/);
   assert.match(markup, /查看熱門市場/);
   assert.match(markup, /邀請朋友/);
   assert.match(markup, /交易尚未啟用/);
   assert.match(markup, /複製邀請連結/);
   assert.match(markup, /本平台不會代用戶下注或交易/);
+  assert.match(markup, /暫時未有符合條件的開放市場/);
+  assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
+  assert.doesNotMatch(markup, /下線|downline|guaranteed profit|保證獲利/);
+});
+
+test("home page renders market cards with safe image behavior", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({
+          id: "with-image",
+          externalId: "POLY-IMAGE",
+          slug: "poly-image",
+          title: "Image market",
+          imageUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/home-image.png",
+          iconUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/home-icon.png",
+          imageSourceUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/home-image.png",
+          imageUpdatedAt: "2026-05-01T01:00:00.000Z",
+          closeTime: "2099-06-01T00:00:00.000Z",
+          outcomes: [
+            { externalOutcomeId: "yes", title: "Yes", slug: "yes", index: 0, yesNo: "yes", bestBid: 0.41, bestAsk: 0.44, lastPrice: 0.43, volume: null },
+            { externalOutcomeId: "no", title: "No", slug: "no", index: 1, yesNo: "no", bestBid: 0.56, bestAsk: 0.59, lastPrice: 0.57, volume: null },
+          ],
+        }),
+        makePolymarketRecord({
+          id: "with-icon",
+          externalId: "POLY-ICON",
+          slug: "poly-icon",
+          title: "Icon market",
+          imageUrl: null,
+          iconUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/home-icon-only.png",
+          volume24h: 400,
+        }),
+        makePolymarketRecord({
+          id: "without-image",
+          externalId: "POLY-NO-IMAGE",
+          slug: "poly-no-image",
+          title: "No image market",
+          imageUrl: null,
+          iconUrl: null,
+          volume24h: 300,
+        }),
+        makePolymarketRecord({
+          id: "invalid-image",
+          externalId: "POLY-BAD-IMAGE",
+          slug: "poly-bad-image",
+          title: "Bad image market",
+          imageUrl: "javascript:alert(1)",
+          iconUrl: "data:image/png;base64,aaa",
+          volume24h: 200,
+        }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await HomePage({ searchParams: Promise.resolve({ ref: "friend001" }) }));
+  assert.match(markup, /home-image\.png/);
+  assert.match(markup, /alt="Image market"/);
+  assert.match(markup, /home-icon-only\.png/);
+  assert.match(markup, /No image market/);
+  assert.match(markup, /Polymarket/);
+  assert.doesNotMatch(markup, /javascript:alert/);
+  assert.doesNotMatch(markup, /data:image/);
+  assert.match(markup, /成交量/);
+  assert.match(markup, /流動性/);
+  assert.match(markup, /收市時間/);
+  assert.match(markup, /來源/);
+  assert.match(markup, /最後更新/);
+  assert.match(markup, /查看市場/);
+  assert.match(markup, /href="\/polymarket\/poly-image\?ref=FRIEND001"/);
+  assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
 });
 
 test("home page renders real trade-tick chart preview when synced ticks exist", async (t) => {
@@ -520,9 +647,90 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /mobile-trade-sheet/);
   assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未登入<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
-  assert.match(markup, /<button[^>]*>交易介面預覽<\/button>/);
+  assert.match(markup, /<button[^>]*>連接錢包<\/button>/);
   assert.match(markup, /複製市場推薦連結/);
   assert.equal(markup.match(/class="warning-card"/g)?.length ?? 0, 2);
+});
+
+test("Polymarket detail page renders hero image from image_url", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = makePolymarketDetailFetch({
+    imageUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/detail-hero.png",
+    iconUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/detail-icon.png",
+    imageSourceUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/detail-hero.png",
+  });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-detail-image" }),
+    searchParams: Promise.resolve({ ref: "hkref001" }),
+  }));
+
+  assert.match(markup, /detail-hero\.png/);
+  assert.match(markup, /alt="Will the detail page show market imagery\?"/);
+  assert.match(markup, /loading="eager"/);
+  assert.match(markup, /來源：Polymarket/);
+  assert.match(markup, /最後更新/);
+  assert.match(markup, /data-copy-value="http:\/\/127\.0\.0\.1:3000\/polymarket\/poly-detail-image\?ref=HKREF001"/);
+  assert.match(markup, /複製市場連結/);
+  assert.match(markup, /複製市場推薦連結/);
+});
+
+test("Polymarket detail page falls back to icon_url when image_url is missing", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = makePolymarketDetailFetch({
+    imageUrl: null,
+    iconUrl: "https://polymarket-upload.s3.us-east-2.amazonaws.com/detail-icon.png",
+  });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-detail-image" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /detail-icon\.png/);
+  assert.doesNotMatch(markup, /market-hero-image-fallback/);
+});
+
+test("Polymarket detail page renders safe fallback for missing or unsafe image fields", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = makePolymarketDetailFetch({
+    imageUrl: "javascript:alert(1)",
+    iconUrl: "not a url",
+    imageSourceUrl: "javascript:alert(1)",
+  });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const unsafeMarkup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-detail-image" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(unsafeMarkup, /market-hero-image-fallback/);
+  assert.doesNotMatch(unsafeMarkup, /javascript:alert|not a url/);
+
+  globalThis.fetch = makePolymarketDetailFetch({ imageUrl: null, iconUrl: null, imageSourceUrl: null });
+  const missingMarkup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-detail-image" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(missingMarkup, /market-hero-image-fallback/);
+  assert.match(missingMarkup, /暫時未有訂單簿資料/);
+  assert.match(missingMarkup, /暫時未有近期成交資料/);
 });
 
 test("Polymarket detail page renders safe not-found state", async (t) => {
@@ -616,7 +824,7 @@ test("Polymarket detail page resolves feed fallback links from market list", asy
   assert.match(markup, /挪威會否贏得 2026 FIFA 世界盃？/);
   assert.match(markup, /POLY-NORWAY/);
   assert.match(markup, /複製市場連結/);
-  assert.doesNotMatch(markup, /複製市場推薦連結/);
+  assert.match(markup, /複製市場推薦連結/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
   assert.match(markup, /disabled=""/);
 });

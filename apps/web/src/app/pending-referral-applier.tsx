@@ -12,6 +12,7 @@ import {
   referralSessionStorageKey,
   normalizeReferralCode,
 } from "../lib/referral-capture";
+import { mapReferralRejectionReason } from "../lib/referral-ui";
 import { trackFunnelEvent } from "./funnel-analytics";
 
 const writeResult = (result: { status: "applied" | "refused"; code: string; reason?: string }) => {
@@ -27,6 +28,10 @@ const readCookieCode = (): string | null => {
 };
 
 export function PendingReferralApplier() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
   const router = useRouter();
 
   useEffect(() => {
@@ -50,7 +55,7 @@ export function PendingReferralApplier() {
       if (cancelled) return;
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        writeResult({ status: "refused", code, reason: payload.error ?? "推薦碼不可用" });
+        writeResult({ status: "refused", code, reason: mapReferralRejectionReason(payload.error) ?? "推薦碼無效" });
         clearPendingReferralCode();
         trackFunnelEvent("referral_attribution_rejected", { code, reason: payload.error ?? "request_failed" });
         router.refresh();
@@ -59,7 +64,7 @@ export function PendingReferralApplier() {
       const dashboard = (await response.json().catch(() => null)) as { attribution?: { ambassadorCode?: string | null } | null } | null;
       const appliedCode = normalizeReferralCode(dashboard?.attribution?.ambassadorCode);
       if (appliedCode && appliedCode !== code) {
-        writeResult({ status: "refused", code, reason: `已存在推薦碼 ${appliedCode}` });
+        writeResult({ status: "refused", code, reason: "已有推薦來源" });
         trackFunnelEvent("referral_attribution_rejected", { code, reason: "existing_attribution" });
       } else {
         writeResult({ status: "applied", code: appliedCode ?? code });

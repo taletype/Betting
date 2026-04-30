@@ -14,6 +14,42 @@ import { EmptyState, MetricCard, StatusChip } from "../../product-ui";
 
 export const dynamic = "force-dynamic";
 
+type AdminOverview = NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>;
+
+const getBuilderAttributionSource = (trade: AdminOverview["tradeAttributions"][number]): string => {
+  if (trade.polymarketTradeId) return `Polymarket trade ${trade.polymarketTradeId}`;
+  if (trade.polymarketOrderId) return `Polymarket order ${trade.polymarketOrderId}`;
+  if (trade.conditionId) return `Condition ${trade.conditionId}`;
+  if (trade.marketSlug) return `Market ${trade.marketSlug}`;
+  return "manual/admin mock";
+};
+
+const countRewardsByType = (
+  rewards: AdminOverview["rewardLedger"],
+  rewardType: string,
+) => rewards
+  .filter((entry) => entry.rewardType === rewardType)
+  .reduce((sum, entry) => sum + toBigInt(entry.amountUsdcAtoms), 0n);
+
+const getDuplicateLedgerIndicator = (
+  rewards: AdminOverview["rewardLedger"],
+  entry: AdminOverview["rewardLedger"][number],
+): string => {
+  const sameKey = rewards.filter((candidate) => (
+    candidate.sourceTradeAttributionId === entry.sourceTradeAttributionId &&
+    candidate.rewardType === entry.rewardType
+  ));
+  return sameKey.length > 1 ? `duplicate key x${sameKey.length}` : "idempotent key unique";
+};
+
+const getRiskFlagsForReward = (
+  overview: AdminOverview,
+  entry: AdminOverview["rewardLedger"][number],
+) => overview.riskFlags.filter((flag) => (
+  flag.tradeAttributionId === entry.sourceTradeAttributionId ||
+  flag.userId === entry.recipientUserId
+));
+
 export default async function AdminRewardsPage({
   searchParams,
 }: {
@@ -57,6 +93,10 @@ export default async function AdminRewardsPage({
             <MetricCard label="可支付獎勵" value={formatUsdc(rewardTotal("payable"), locale)} tone="success" />
             <MetricCard label="已支付獎勵" value={formatUsdc(rewardTotal("paid"), locale)} />
             <MetricCard label="Builder 歸因狀態" value={`${overview.tradeAttributions.filter((trade) => trade.status === "confirmed").length}/${overview.tradeAttributions.length}`} note="已確認 / 全部歸因" tone="info" />
+            <MetricCard label="平台分帳" value={formatUsdc(countRewardsByType(overview.rewardLedger, "platform_revenue"), locale)} />
+            <MetricCard label="推薦人分帳" value={formatUsdc(countRewardsByType(overview.rewardLedger, "direct_referrer_commission"), locale)} />
+            <MetricCard label="交易者分帳" value={formatUsdc(countRewardsByType(overview.rewardLedger, "trader_cashback"), locale)} />
+            <MetricCard label="可疑獎勵旗標" value={overview.riskFlags.filter((flag) => flag.status === "open" && (flag.tradeAttributionId || flag.userId)).length.toLocaleString(locale)} tone="warning" />
           </section>
           <section className="grid">
             <RewardSplitChart
@@ -97,8 +137,11 @@ export default async function AdminRewardsPage({
                   <tr>
                     <th>ID</th>
                     <th>{copy.userId}</th>
+                    <th>Builder attribution source</th>
+                    <th>Referrer</th>
                     <th>{copy.builderFee}</th>
                     <th>{copy.status}</th>
+                    <th>Observed</th>
                     <th>{copy.markPayable}</th>
                     <th>Void</th>
                   </tr>
@@ -108,8 +151,11 @@ export default async function AdminRewardsPage({
                     <tr key={trade.id}>
                       <td className="mono">{trade.id.slice(0, 8)}</td>
                       <td className="mono">{trade.userId}</td>
+                      <td className="mono">{getBuilderAttributionSource(trade)}</td>
+                      <td className="mono">{trade.directReferrerUserId ?? "-"}</td>
                       <td>{formatUsdc(trade.builderFeeUsdcAtoms, locale)}</td>
                       <td><StatusChip tone={trade.status === "confirmed" ? "success" : trade.status === "void" ? "danger" : "warning"}>{trade.status}</StatusChip></td>
+                      <td>{formatDateTime(locale, trade.observedAt)}</td>
                       <td>
                         <form action={markRewardsPayableAction}>
                           <input type="hidden" name="tradeAttributionId" value={trade.id} />
@@ -139,22 +185,32 @@ export default async function AdminRewardsPage({
                 <thead>
                   <tr>
                     <th>{rewardCopy.sourceTrade}</th>
+                    <th>Recipient</th>
                     <th>{rewardCopy.rewardType}</th>
                     <th>{rewardCopy.amount}</th>
                     <th>{rewardCopy.status}</th>
+                    <th>Duplicate / idempotency</th>
+                    <th>Suspicious flags</th>
                     <th>{rewardCopy.created}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRewards.map((entry) => (
-                    <tr key={entry.id}>
-                      <td className="mono">{entry.sourceTradeAttributionId.slice(0, 8)}</td>
-                      <td>{rewardCopy.rewardTypes[entry.rewardType] ?? entry.rewardType}</td>
-                      <td>{formatUsdc(entry.amountUsdcAtoms, locale)}</td>
-                      <td>{rewardCopy.statuses[entry.status] ?? entry.status}</td>
-                      <td>{formatDateTime(locale, entry.createdAt)}</td>
-                    </tr>
-                  ))}
+                  {visibleRewards.map((entry) => {
+                    const riskFlags = getRiskFlagsForReward(overview, entry);
+
+                    return (
+                      <tr key={entry.id}>
+                        <td className="mono">{entry.sourceTradeAttributionId.slice(0, 8)}</td>
+                        <td className="mono">{entry.recipientUserId ?? "platform"}</td>
+                        <td>{rewardCopy.rewardTypes[entry.rewardType] ?? entry.rewardType}</td>
+                        <td>{formatUsdc(entry.amountUsdcAtoms, locale)}</td>
+                        <td><StatusChip tone={entry.status === "paid" ? "success" : entry.status === "void" ? "danger" : entry.status === "payable" ? "info" : "warning"}>{rewardCopy.statuses[entry.status] ?? entry.status}</StatusChip></td>
+                        <td>{getDuplicateLedgerIndicator(overview.rewardLedger, entry)}</td>
+                        <td>{riskFlags.length === 0 ? "-" : riskFlags.map((flag) => `${flag.severity}/${flag.status}/${flag.reasonCode}`).join(", ")}</td>
+                        <td>{formatDateTime(locale, entry.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

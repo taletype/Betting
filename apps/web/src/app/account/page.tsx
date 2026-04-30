@@ -1,4 +1,5 @@
 import React from "react";
+import type { GetAmbassadorDashboardResponse } from "@bet/contracts";
 import { getAmbassadorDashboard } from "../../lib/api";
 import { formatUsdc } from "../../lib/format";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
@@ -10,6 +11,63 @@ import { PendingReferralApplier } from "../pending-referral-applier";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 import { getSiteUrl } from "../../lib/site-url";
+
+export function AccountReferralSection({
+  dashboard,
+}: {
+  dashboard: GetAmbassadorDashboardResponse | null;
+}) {
+  const copy = getLocaleCopy(defaultLocale).auth;
+
+  return (
+    <>
+      <section className="panel stack">
+        <strong>推薦來源</strong>
+        {dashboard?.attribution ? (
+          <>
+            <div className="banner banner-success">推薦來源已保存</div>
+            <div className="kv">
+              <span className="kv-key">目前推薦來源</span>
+              <span className="kv-value mono">{dashboard.attribution.ambassadorCode}</span>
+            </div>
+          </>
+        ) : (
+          <PendingReferralNotice prefix="待套用推薦碼：" />
+        )}
+        <form action={applyReferralCodeAction} className="stack">
+          <input name="code" placeholder={getLocaleCopy(defaultLocale).ambassador.manualCodePlaceholder} />
+          <button type="submit">{copy.applyReferral}</button>
+        </form>
+      </section>
+
+      <section className="panel stack">
+        <strong>你的推薦碼</strong>
+        {dashboard?.ambassadorCode ? (
+          <>
+            <div className="metric-sm mono">{dashboard.ambassadorCode.code}</div>
+            <TrackedCopyButton
+              value={dashboard.ambassadorCode.inviteUrl}
+              label="複製邀請連結"
+              copiedLabel="已複製"
+              eventName="invite_link_copied"
+              metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
+            />
+            <TrackedCopyButton
+              value={`${getSiteUrl()}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
+              label="複製市場推薦連結"
+              copiedLabel="已複製"
+              eventName="market_share_link_copied"
+              metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
+            />
+            <a href="/rewards">查看獎勵</a>
+          </>
+        ) : (
+          <div className="empty-state">登入後可在此查看你的推薦碼及邀請連結。</div>
+        )}
+      </section>
+    </>
+  );
+}
 
 export default async function AccountPage() {
   const copy = getLocaleCopy(defaultLocale).auth;
@@ -48,46 +106,7 @@ export default async function AccountPage() {
 
           <ThirdwebWalletFundingCard surface="account" walletConnected={false} />
 
-          <section className="panel stack">
-            <strong>推薦碼</strong>
-            {dashboard ? (
-              <>
-                <div className="metric-sm mono">{dashboard.ambassadorCode.code}</div>
-                <TrackedCopyButton
-                  value={dashboard.ambassadorCode.inviteUrl}
-                  label="複製一般邀請連結"
-                  copiedLabel="已複製"
-                  eventName="invite_link_copied"
-                  metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
-                />
-                <TrackedCopyButton
-                  value={`${getSiteUrl()}/polymarket?ref=${encodeURIComponent(dashboard.ambassadorCode.code)}`}
-                  label="複製市場推薦連結"
-                  copiedLabel="已複製"
-                  eventName="market_share_link_copied"
-                  metadata={{ code: dashboard.ambassadorCode.code, surface: "account" }}
-                />
-              </>
-            ) : (
-              <div className="empty-state">登入後可在此查看你的推薦碼及邀請連結。</div>
-            )}
-          </section>
-
-          <section className="panel stack">
-            <strong>{copy.pendingReferral}</strong>
-            {dashboard?.attribution ? (
-              <div className="kv">
-                <span className="kv-key">已套用推薦碼</span>
-                <span className="kv-value mono">{dashboard.attribution.ambassadorCode}</span>
-              </div>
-            ) : (
-              <PendingReferralNotice prefix="待套用推薦碼：" />
-            )}
-            <form action={applyReferralCodeAction} className="stack">
-              <input name="code" placeholder={getLocaleCopy(defaultLocale).ambassador.manualCodePlaceholder} />
-              <button type="submit">{copy.applyReferral}</button>
-            </form>
-          </section>
+          <AccountReferralSection dashboard={dashboard} />
 
           <section className="panel stack">
             <strong>獎勵摘要</strong>

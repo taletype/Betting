@@ -8,6 +8,7 @@ import {
   readReferralCodeFromSearch,
   selectReferralCodeToPersist,
 } from "./referral-capture";
+import { mapReferralRejectionReason } from "./referral-ui";
 
 test("referral code is captured from query string before login", () => {
   assert.equal(readReferralCodeFromSearch("?ref=hkref001"), "HKREF001");
@@ -51,4 +52,12 @@ test("pending referral survives internal navigation and existing refs win", () =
 test("referral apply idempotency key is code-scoped and normalized", () => {
   assert.equal(createReferralApplyIdempotencyKey("friend001"), "referral-apply:FRIEND001");
   assert.equal(createReferralApplyIdempotencyKey("x"), null);
+});
+
+test("referral rejection reasons are safe user-facing copy", () => {
+  assert.equal(mapReferralRejectionReason("invalid ambassador code"), "推薦碼無效");
+  assert.equal(mapReferralRejectionReason("ambassador code is malformed"), "推薦碼無效");
+  assert.equal(mapReferralRejectionReason("ambassador code is disabled"), "推薦碼已停用");
+  assert.equal(mapReferralRejectionReason("self-referrals are not allowed"), "不能使用自己的推薦碼");
+  assert.equal(mapReferralRejectionReason("same_user_multiple_ref_codes"), "已有推薦來源");
 });
