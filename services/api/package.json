@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@bet/chain": "workspace:*",
+    "@bet/config": "workspace:*",
     "@bet/contracts": "workspace:*",
     "@bet/db": "workspace:*",
     "@bet/domain": "workspace:*",
@@ -25,9 +26,9 @@
     "@bet/observability": "workspace:*",
     "@bet/supabase": "workspace:*",
     "@bet/trading": "workspace:*",
+    "@polymarket/builder-signing-sdk": "^1.0.0",
     "@polymarket/clob-client-v2": "^1.0.2",
     "ethers": "^6.14.4",
-    "viem": "^2.46.3",
-    "@bet/config": "workspace:*"
+    "viem": "^2.46.3"
   }
 }

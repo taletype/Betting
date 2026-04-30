@@ -5,6 +5,15 @@ import { createDatabaseClient, type DatabaseExecutor } from "@bet/db";
 import type { PolymarketL2Credentials } from "./submitter";
 
 const ALGORITHM = "aes-256-gcm";
+const API_KEY_PATTERN = /^[A-Za-z0-9_-]{8,}$/;
+
+export type PolymarketL2CredentialPublicStatus = "present" | "missing" | "revoked";
+
+export interface PolymarketL2CredentialStatusResult {
+  status: PolymarketL2CredentialPublicStatus;
+  walletAddress: string | null;
+  updatedAt: string | null;
+}
 
 const getEncryptionKey = (): Buffer => {
   const raw = process.env.POLYMARKET_L2_CREDENTIAL_ENCRYPTION_KEY;
@@ -36,12 +45,27 @@ const decryptCredentials = (payload: { iv: string; tag: string; ciphertext: stri
   return JSON.parse(plaintext) as PolymarketL2Credentials;
 };
 
+const assertCredentialShape = (credentials: PolymarketL2Credentials): void => {
+  if (
+    !credentials ||
+    typeof credentials.key !== "string" ||
+    typeof credentials.secret !== "string" ||
+    typeof credentials.passphrase !== "string" ||
+    !API_KEY_PATTERN.test(credentials.key.trim()) ||
+    !credentials.secret.trim() ||
+    !credentials.passphrase.trim()
+  ) {
+    throw new Error("valid user-owned Polymarket L2 credentials are required");
+  }
+};
+
 export const storeUserPolymarketL2Credentials = async (input: {
   userId: string;
   walletAddress: string;
   credentials: PolymarketL2Credentials;
   executor?: DatabaseExecutor;
 }) => {
+  assertCredentialShape(input.credentials);
   const executor = input.executor ?? createDatabaseClient();
   await executor.query(
     `
@@ -64,18 +88,41 @@ export const lookupUserPolymarketL2Credentials = async (
   walletAddress: string,
   executor: DatabaseExecutor = createDatabaseClient(),
 ) => {
-  const [row] = await executor.query<{ encrypted_credentials: { iv: string; tag: string; ciphertext: string } }>(
+  const [row] = await executor.query<{ encrypted_credentials: { iv: string; tag: string; ciphertext: string }; status: string }>(
     `
-      select encrypted_credentials
+      select encrypted_credentials, status
       from public.polymarket_l2_credentials
       where user_id = $1::uuid
         and lower(wallet_address) = lower($2)
-        and status = 'active'
       limit 1
     `,
     [userId, walletAddress],
   );
-  return row ? { status: "present" as const, credentials: decryptCredentials(row.encrypted_credentials) } : { status: "missing" as const };
+  if (!row) return { status: "missing" as const };
+  if (row.status === "revoked") return { status: "revoked" as const };
+  return { status: "present" as const, credentials: decryptCredentials(row.encrypted_credentials) };
+};
+
+export const getUserPolymarketL2CredentialStatus = async (
+  userId: string,
+  executor: DatabaseExecutor = createDatabaseClient(),
+): Promise<PolymarketL2CredentialStatusResult> => {
+  const [row] = await executor.query<{ wallet_address: string; status: string; updated_at: Date | string }>(
+    `
+      select wallet_address, status, updated_at
+      from public.polymarket_l2_credentials
+      where user_id = $1::uuid
+      limit 1
+    `,
+    [userId],
+  );
+
+  if (!row) return { status: "missing", walletAddress: null, updatedAt: null };
+  return {
+    status: row.status === "revoked" ? "revoked" : "present",
+    walletAddress: row.wallet_address,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : new Date(row.updated_at).toISOString(),
+  };
 };
 
 export const revokeUserPolymarketL2Credentials = async (

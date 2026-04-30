@@ -6,6 +6,7 @@ import test from "node:test";
 import type { DatabaseExecutor } from "@bet/db";
 
 import {
+  getUserPolymarketL2CredentialStatus,
   lookupUserPolymarketL2Credentials,
   storeUserPolymarketL2Credentials,
 } from "./l2-credentials";
@@ -45,9 +46,8 @@ test("L2 credential storage encrypts secrets and lookup is scoped to user and wa
         if (/select encrypted_credentials/.test(statement)) {
           assert.match(statement, /where user_id = \$1::uuid/);
           assert.match(statement, /lower\(wallet_address\) = lower\(\$2\)/);
-          assert.match(statement, /status = 'active'/);
           if (params?.[0] === userId && params?.[1] === walletAddress) {
-            return [{ encrypted_credentials: encryptedPayload }] as T[];
+            return [{ encrypted_credentials: encryptedPayload, status: "active" }] as T[];
           }
           return [] as T[];
         }
@@ -84,4 +84,26 @@ test("L2 credential module does not log or return raw credentials from HTTP hand
 
   assert.doesNotMatch(l2Source, /logger\.|console\./);
   assert.doesNotMatch(handlersSource, /Response\.json\([^)]*(l2Credentials|secret|passphrase|key)/is);
+});
+
+test("L2 credential status returns only public metadata", async () => {
+  const executor = {
+    query: async <T>(statement: string) => {
+      assert.match(statement, /select wallet_address, status, updated_at/);
+      return [{
+        wallet_address: walletAddress,
+        status: "active",
+        updated_at: "2026-05-01T00:00:00.000Z",
+        encrypted_credentials: credentials,
+      }] as T[];
+    },
+  } satisfies DatabaseExecutor;
+
+  const status = await getUserPolymarketL2CredentialStatus(userId, executor);
+  assert.deepEqual(status, {
+    status: "present",
+    walletAddress,
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
+  assert.doesNotMatch(JSON.stringify(status), /user-owned-key|user-owned-secret|user-owned-passphrase/);
 });

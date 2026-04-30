@@ -120,6 +120,29 @@ const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 const isInternalExchangeEnabled = (): boolean => process.env.INTERNAL_EXCHANGE_ENABLED === "true";
+const getServiceApiBaseUrl = (): string | null => {
+  const configured = process.env.API_BASE_URL;
+  if (!configured) return null;
+  return configured.replace(/\/$/, "");
+};
+
+const forwardServiceApiRequest = async (request: NextRequest, path: string): Promise<NextResponse | null> => {
+  const baseUrl = getServiceApiBaseUrl();
+  if (!baseUrl) return null;
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+  const response = await fetch(`${baseUrl}/${path}`, {
+    method: request.method,
+    headers,
+    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
+    cache: "no-store",
+  });
+  const payload = await response.text();
+  return new NextResponse(payload, {
+    status: response.status,
+    headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
+  });
+};
 
 const isInternalExchangeApiPath = (apiPath: string): boolean =>
   apiPath === "markets" ||
@@ -249,11 +272,16 @@ async function handleRequest(
     }
 
     if (apiPath === "polymarket/orders/submit" && request.method === "POST") {
+      if (!userId) {
+        return NextResponse.json({ error: "Authentication required", code: "AUTHENTICATION_REQUIRED" }, { status: 401 });
+      }
+      if (process.env.POLYMARKET_ROUTED_TRADING_KILL_SWITCH === "true" || process.env.POLYMARKET_ORDER_SUBMIT_KILL_SWITCH === "true") {
+        return NextResponse.json({ error: "Polymarket routed trading is disabled", code: "POLYMARKET_ROUTED_TRADING_DISABLED" }, { status: 503 });
+      }
+      const forwarded = await forwardServiceApiRequest(request, "polymarket/orders/submit");
+      if (forwarded) return forwarded;
       return NextResponse.json(
-        {
-          error: "Polymarket signed order submission is handled by the service API canary path and is disabled here by default",
-          code: "POLYMARKET_SUBMITTER_UNAVAILABLE",
-        },
+        { error: "Polymarket submitter unavailable", code: "POLYMARKET_SUBMITTER_UNAVAILABLE" },
         { status: 503 },
       );
     }
@@ -289,6 +317,40 @@ async function handleRequest(
             }
           : null,
       });
+    }
+
+    if (apiPath === "polymarket/l2-credentials/status" && request.method === "GET") {
+      const { data, error } = await adminSupabase()
+        .from("polymarket_l2_credentials")
+        .select("wallet_address, status, updated_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      return NextResponse.json(data
+        ? {
+            status: data.status === "revoked" ? "revoked" : "present",
+            walletAddress: data.wallet_address,
+            updatedAt: data.updated_at,
+          }
+        : { status: "missing", walletAddress: null, updatedAt: null });
+    }
+
+    if (apiPath === "polymarket/l2-credentials" && request.method === "DELETE") {
+      const { error } = await adminSupabase()
+        .from("polymarket_l2_credentials")
+        .update({ status: "revoked", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+      if (error) throw error;
+      return NextResponse.json({ status: "revoked", walletAddress: null, updatedAt: new Date().toISOString() });
+    }
+
+    if (apiPath === "polymarket/l2-credentials" && request.method === "POST") {
+      const forwarded = await forwardServiceApiRequest(request, "polymarket/l2-credentials");
+      if (forwarded) return forwarded;
+      return NextResponse.json(
+        { error: "Polymarket L2 credential setup requires the service API", code: "POLYMARKET_L2_SETUP_UNAVAILABLE" },
+        { status: 503 },
+      );
     }
 
     if (apiPath === "wallets/link/challenge" && request.method === "POST") {

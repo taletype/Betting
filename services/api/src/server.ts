@@ -23,6 +23,11 @@ import {
   routeExternalPolymarketOrder,
   type ExternalPolymarketServerRegionCheck,
 } from "./modules/external-polymarket-routing/handlers";
+import {
+  getUserPolymarketL2CredentialStatus,
+  revokeUserPolymarketL2Credentials,
+  storeUserPolymarketL2Credentials,
+} from "./modules/external-polymarket-routing/l2-credentials";
 import { evaluatePolymarketPreflight } from "./modules/external-polymarket-routing/preflight";
 import { getHealth } from "./modules/health/handlers";
 import {
@@ -362,6 +367,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/orders/submit") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+
       const rateLimit = checkRateLimit("polymarketRoutedTrade", actorIdentity);
       if (!rateLimit.allowed) {
         incrementCounter("rate_limited_total", { scope: "polymarket_routed_trade" });
@@ -697,6 +705,53 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return new Response(toJson({ wallet: await getLinkedWallet(requestUserId) }), {
         headers: { "content-type": "application/json" },
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/polymarket/l2-credentials/status") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const userId = requestUserId!;
+
+      return Response.json(await getUserPolymarketL2CredentialStatus(userId));
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/polymarket/l2-credentials") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const userId = requestUserId!;
+
+      await revokeUserPolymarketL2Credentials(userId);
+      const status = await getUserPolymarketL2CredentialStatus(userId);
+      return Response.json(status);
+    }
+
+    if (request.method === "POST" && url.pathname === "/polymarket/l2-credentials") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const userId = requestUserId!;
+
+      const linkedWallet = await getLinkedWallet(userId);
+      if (!linkedWallet?.walletAddress || !linkedWallet.verifiedAt) {
+        return Response.json({ error: "verified linked wallet is required", code: "POLYMARKET_WALLET_NOT_VERIFIED" }, { status: 403 });
+      }
+      const body = await parseBody(request);
+      const walletAddress = String(body.walletAddress ?? linkedWallet.walletAddress).trim().toLowerCase();
+      if (walletAddress !== linkedWallet.walletAddress.toLowerCase()) {
+        return Response.json({ error: "wallet mismatch", code: "POLYMARKET_WALLET_MISMATCH" }, { status: 400 });
+      }
+      const credentials = body.credentials && typeof body.credentials === "object"
+        ? body.credentials as { key?: unknown; secret?: unknown; passphrase?: unknown }
+        : body;
+      await storeUserPolymarketL2Credentials({
+        userId,
+        walletAddress: linkedWallet.walletAddress,
+        credentials: {
+          key: String(credentials.key ?? ""),
+          secret: String(credentials.secret ?? ""),
+          passphrase: String(credentials.passphrase ?? ""),
+        },
+      });
+      return Response.json(await getUserPolymarketL2CredentialStatus(userId), { status: 201 });
     }
 
     if (request.method === "POST" && url.pathname === "/wallets/link/challenge") {

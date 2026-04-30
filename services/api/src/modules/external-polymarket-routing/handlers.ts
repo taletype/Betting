@@ -18,7 +18,7 @@ import {
   type PolymarketOrderSubmitterResponse,
 } from "./submitter";
 
-export type PolymarketL2CredentialStatus = "present" | "missing" | "expired";
+export type PolymarketL2CredentialStatus = "present" | "missing" | "revoked";
 export type ExternalPolymarketOrderSide = "BUY" | "SELL";
 export type ExternalPolymarketOrderType = "GTC" | "GTD" | "FOK" | "FAK";
 export type ExternalPolymarketCanaryReadinessState =
@@ -122,9 +122,11 @@ export interface ExternalPolymarketOrderRoutePayload {
   geoblock: ExternalPolymarketGeoblockProof;
   orderInput: Record<string, unknown> & { builderCode: string };
   signedOrder: Record<string, unknown> & {
+    maker: string;
     signer: string;
     tokenId: string;
     side: ExternalPolymarketOrderSide;
+    signatureType: number;
     timestamp: string;
     expiration: string;
     builder: string;
@@ -148,6 +150,7 @@ export interface PolymarketOrderSubmitter {
   readonly mode: "disabled" | "real";
   healthCheck(): Promise<{ ok: boolean; reason?: string }>;
   getMarketConstraints(conditionId: string, tokenId: string): Promise<PolymarketMarketConstraints>;
+  checkBalanceAllowance?(payload: ExternalPolymarketOrderRoutePayload): Promise<{ balanceSufficient: boolean; allowanceSufficient: boolean }>;
   submitOrder(payload: ExternalPolymarketOrderRoutePayload): Promise<PolymarketOrderSubmitterResponse>;
 }
 
@@ -172,6 +175,7 @@ export interface ExternalPolymarketOrderRouteDependencies {
   balanceAllowanceLookup?: (input: {
     userId: string;
     walletAddress: string;
+    funderAddress: string;
     tokenId: string;
     side: ExternalPolymarketOrderSide;
     price: number;
@@ -201,6 +205,7 @@ export class ExternalPolymarketRoutingError extends Error {
 const MAX_ORDER_AGE_MS = 60_000;
 const MAX_CONFIRMATION_AGE_MS = 60_000;
 const ALLOWED_ORDER_TYPES = new Set<ExternalPolymarketOrderType>(["GTC", "GTD", "FOK", "FAK"]);
+const ALLOWED_SIGNATURE_TYPES = new Set([0, 1, 2, 3]);
 
 const defaultLinkedWalletLookup = async (userId: string) =>
   getLinkedWalletForUser(createDatabaseClient(), userId);
@@ -316,9 +321,11 @@ const readSignedOrder = (
   const signedOrder = toObject(value, "signedOrder");
   return {
     ...signedOrder,
+    maker: toTrimmedString(signedOrder.maker, "signedOrder.maker"),
     signer: toTrimmedString(signedOrder.signer, "signedOrder.signer"),
     tokenId: toTrimmedString(signedOrder.tokenId, "signedOrder.tokenId"),
     side: toSide(signedOrder.side, "signedOrder.side"),
+    signatureType: toFiniteNumber(signedOrder.signatureType, "signedOrder.signatureType"),
     timestamp: toTrimmedString(signedOrder.timestamp, "signedOrder.timestamp"),
     expiration: toTrimmedString(signedOrder.expiration, "signedOrder.expiration"),
     builder: toTrimmedString(signedOrder.builder, "signedOrder.builder"),
@@ -543,7 +550,7 @@ export const evaluateExternalPolymarketOrderReadiness = async (
   if (size === null || size <= 0) appendReason(reasons, "size_invalid");
 
   if (userId && linkedWalletAddress && tokenId && side && price !== null && size !== null && dependencies.balanceAllowanceLookup) {
-    const balance = await dependencies.balanceAllowanceLookup({ userId, walletAddress: linkedWalletAddress, tokenId, side, price, size });
+    const balance = await dependencies.balanceAllowanceLookup({ userId, walletAddress: linkedWalletAddress, funderAddress: linkedWalletAddress, tokenId, side, price, size });
     if (!balance.balanceSufficient) appendReason(reasons, "insufficient_balance");
     if (!balance.allowanceSufficient) appendReason(reasons, "insufficient_allowance");
   } else if (!dependencies.allowNonProductionSubmissionForTests) {
@@ -754,14 +761,14 @@ const assertMarketTradable = (market: ExternalMarketView, outcomeExternalId: str
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_MARKET_UNSUPPORTED", "market is not a Polymarket source");
   }
   if (market.status !== "open" || market.resolvedAt) {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_MARKET_NOT_TRADABLE", "market is not open for Polymarket trading");
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_MARKET_NOT_TRADABLE", "market is not open for Polymarket trading");
   }
   if (market.closeTime && Date.parse(market.closeTime) <= now.getTime()) {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_MARKET_NOT_TRADABLE", "market is past close time");
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_MARKET_NOT_TRADABLE", "market is past close time");
   }
   const outcome = market.outcomes.find((candidate) => candidate.externalOutcomeId === outcomeExternalId);
   if (!outcome || outcome.externalOutcomeId !== tokenId) {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_TOKEN_OUTCOME_INVALID", "tokenId does not belong to the selected outcome");
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_TOKEN_OUTCOME_INVALID", "tokenId does not belong to the selected outcome");
   }
 };
 
@@ -795,7 +802,7 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   const userId = dependencies.requestUserId;
 
   if (!userId) {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 憑證");
+    throw new ExternalPolymarketRoutingError(401, "AUTHENTICATION_REQUIRED", "authentication required");
   }
 
   const userWalletAddress = normalizeAddress(toTrimmedString(input.userWalletAddress, "userWalletAddress"));
@@ -832,6 +839,9 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   if (linkedWalletAddress !== userWalletAddress || normalizeAddress(signedOrder.signer) !== linkedWalletAddress) {
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_SIGNER_MISMATCH", "signed order signer must match the linked user wallet");
   }
+  if (!ALLOWED_SIGNATURE_TYPES.has(signedOrder.signatureType)) {
+    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_SIGNATURE_TYPE_UNSUPPORTED", "unsupported Polymarket signature type");
+  }
 
   const signatureVerified = await dependencies.signatureVerifier?.({ signedOrder, expectedSigner: linkedWalletAddress, builderCode });
   if (signatureVerified !== true) {
@@ -839,11 +849,11 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   }
 
   const l2Lookup = await (dependencies.l2CredentialLookup ?? defaultL2CredentialLookup)(userId, linkedWalletAddress);
-  if (l2Lookup.status === "expired") {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_EXPIRED", "Polymarket credentials expired");
+  if (l2Lookup.status === "revoked") {
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_CREDENTIALS_REVOKED", "設定 Polymarket 憑證");
   }
   if (l2Lookup.status !== "present" || !l2Lookup.credentials) {
-    throw new ExternalPolymarketRoutingError(400, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 憑證");
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 憑證");
   }
 
   const market = await getExternalMarketRecord(marketSource, marketExternalId);
@@ -851,32 +861,15 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
     throw new ExternalPolymarketRoutingError(404, "POLYMARKET_MARKET_NOT_FOUND", "Polymarket market not found");
   }
   assertMarketTradable(market, outcomeExternalId, tokenId, now);
+  if (isMarketStale(market, now)) {
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_MARKET_STALE", "market data is stale");
+  }
 
   const submitter = getSubmitter(dependencies);
   const constraints = await submitter.getMarketConstraints(market.externalId, tokenId);
   assertMarketConstraints(constraints, orderInput);
 
-  if (!dependencies.allowNonProductionSubmissionForTests) {
-    if (!dependencies.balanceAllowanceLookup) {
-      throw new ExternalPolymarketRoutingError(503, "POLYMARKET_BALANCE_ALLOWANCE_UNAVAILABLE", "Polymarket balance and allowance checks are unavailable");
-    }
-    const balance = await dependencies.balanceAllowanceLookup({
-      userId,
-      walletAddress: linkedWalletAddress,
-      tokenId,
-      side: confirmation.side,
-      price: confirmation.price,
-      size: confirmation.size ?? confirmation.amount ?? 0,
-    });
-    if (!balance.balanceSufficient) {
-      throw new ExternalPolymarketRoutingError(400, "POLYMARKET_INSUFFICIENT_BALANCE", "insufficient pUSD/USDC balance for Polymarket order");
-    }
-    if (!balance.allowanceSufficient) {
-      throw new ExternalPolymarketRoutingError(400, "POLYMARKET_INSUFFICIENT_ALLOWANCE", "insufficient Polymarket allowance for order");
-    }
-  }
-
-  return {
+  const payload: ExternalPolymarketOrderRoutePayload = {
     userId,
     userWalletAddress,
     linkedWalletAddress,
@@ -890,6 +883,31 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
     orderType,
     userConfirmation: confirmation,
   };
+
+  if (!dependencies.allowNonProductionSubmissionForTests) {
+    if (!dependencies.balanceAllowanceLookup && !submitter.checkBalanceAllowance) {
+      throw new ExternalPolymarketRoutingError(503, "POLYMARKET_BALANCE_ALLOWANCE_UNAVAILABLE", "Polymarket balance and allowance checks are unavailable");
+    }
+    const balance = dependencies.balanceAllowanceLookup
+      ? await dependencies.balanceAllowanceLookup({
+          userId,
+          walletAddress: linkedWalletAddress,
+          funderAddress: normalizeAddress(signedOrder.maker),
+          tokenId,
+          side: confirmation.side,
+          price: confirmation.price,
+          size: confirmation.size ?? confirmation.amount ?? 0,
+        })
+      : await submitter.checkBalanceAllowance!(payload);
+    if (!balance.balanceSufficient) {
+      throw new ExternalPolymarketRoutingError(409, "POLYMARKET_INSUFFICIENT_BALANCE", "增值錢包");
+    }
+    if (!balance.allowanceSufficient) {
+      throw new ExternalPolymarketRoutingError(409, "POLYMARKET_INSUFFICIENT_ALLOWANCE", "授權不足");
+    }
+  }
+
+  return payload;
 };
 
 export const routeExternalPolymarketOrder = async (

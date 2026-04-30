@@ -67,6 +67,7 @@ const getTradeTicketActionLabel = (
   input: PolymarketRoutingReadinessInput,
   readiness: ReturnType<typeof getPolymarketRoutingReadiness>,
 ): string => {
+  if (!input.loggedIn) return "登入以交易";
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
   if (!input.hasCredentials) return "設定 Polymarket 憑證";
@@ -75,7 +76,8 @@ const getTradeTicketActionLabel = (
   if (!input.featureEnabled) return "交易功能尚未啟用";
   if (input.orderValid === false) return "請輸入有效價格及數量";
   if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
-  return "透過 Polymarket 交易";
+  if (input.submitted) return "訂單已提交";
+  return "提交已簽署訂單";
 };
 
 type PolymarketL2Credentials = { key: string; secret: string; passphrase: string };
@@ -150,7 +152,7 @@ export function PolymarketTradeTicket(props: Props) {
     tradeButtonLabel === "市場只供瀏覽" ||
     tradeButtonLabel === "交易功能尚未啟用" ||
     tradeButtonLabel === "實盤提交已停用" ||
-    (tradeButtonLabel === "透過 Polymarket 交易" && !finalConfirmation);
+    (tradeButtonLabel === "提交已簽署訂單" && !finalConfirmation);
   const publicTradingReady = Boolean(
     props.featureEnabled &&
     props.hasBuilderCode &&
@@ -186,7 +188,9 @@ export function PolymarketTradeTicket(props: Props) {
   const handlePrimaryAction = async () => {
     try {
       trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
-      if (tradeButtonLabel === "設定 Polymarket 憑證") {
+      if (tradeButtonLabel === "登入以交易") {
+        setFlowStatus("請先登入，然後使用你自己的錢包簽署訂單。");
+      } else if (tradeButtonLabel === "設定 Polymarket 憑證") {
         await setupCredentials();
       } else if (tradeButtonLabel === "連接錢包") {
         setFlowStatus("請使用錢包連接元件連接你的錢包；不需要登入帳戶。");
@@ -261,9 +265,11 @@ export function PolymarketTradeTicket(props: Props) {
           {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : props.submitModeEnabled ? "交易提交器未準備好" : "實盤提交已停用"}
         </span>
       </div>
-      <div className="badge badge-warning">內部預覽；實盤提交已停用</div>
+      <div className="badge badge-warning">{props.submitModeEnabled ? "公開路由交易" : "只供瀏覽"}</div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
+      <div className="muted">本平台不會代用戶下注或交易；訂單必須由你自己的錢包簽署。</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
+      <div className="muted">Polymarket 可能因市場、錢包、流動性、所在地區或合規檢查而拒絕訂單。</div>
       <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={walletConnected} />
       <BuilderFeeDisclosureCard
         locale={props.locale}

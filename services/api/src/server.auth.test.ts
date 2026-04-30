@@ -81,7 +81,7 @@ test("Polymarket public routes remain available while internal exchange is quara
       body: JSON.stringify({}),
     }));
     const payload = await response.json() as { code?: string };
-    assert.equal(response.status, 503);
+    assert.equal(response.status, 401);
     assert.notEqual(payload.code, "INTERNAL_EXCHANGE_DISABLED");
   } finally {
     if (previous === undefined) delete process.env.INTERNAL_EXCHANGE_ENABLED;

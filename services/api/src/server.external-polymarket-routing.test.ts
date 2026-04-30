@@ -235,6 +235,28 @@ test("beta routed trading flag is not enough without allowlist", async () => {
   });
 });
 
+test("public routed trading mode does not require the beta allowlist", async () => {
+  await withEnv({
+    POLY_BUILDER_CODE: VALID_BUILDER_CODE,
+    POLYMARKET_ROUTED_TRADING_ENABLED: "true",
+    POLYMARKET_ROUTED_TRADING_BETA_ENABLED: "false",
+    POLYMARKET_ROUTED_TRADING_ALLOWLIST: "someone-else@example.test",
+    POLYMARKET_CLOB_SUBMITTER: "real",
+  }, async () => {
+    await withMarket(baseMarket(), async () => {
+      const preflight = await evaluateExternalPolymarketOrderReadiness(baseInput({ signedOrder: undefined }), {
+        ...liveDeps(mockSubmitter()),
+        allowNonProductionSubmissionForTests: false,
+        serverRegionCheck: { status: "allowed", country: "HK", region: null, checkedAt: NOW.toISOString() },
+        balanceAllowanceLookup: async () => ({ balanceSufficient: true, allowanceSufficient: true }),
+      });
+      assert.equal(preflight.canaryAllowed, true);
+      assert.equal(preflight.disabledReasons.includes("beta_user_not_allowlisted"), false);
+      assert.equal(preflight.state, "ready_for_user_signature");
+    });
+  });
+});
+
 test("allowlist alone is not enough without beta flag", async () => {
   await withEnv({
     POLY_BUILDER_CODE: VALID_BUILDER_CODE,
@@ -519,6 +541,17 @@ test("missing L2 credentials block submission", async () => {
     await withMarket(baseMarket(), async () => {
       await assert.rejects(
         () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), l2CredentialLookup: async () => ({ status: "missing" }) }),
+        /設定 Polymarket 憑證/,
+      );
+    });
+  });
+});
+
+test("revoked L2 credentials block submission", async () => {
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+    await withMarket(baseMarket(), async () => {
+      await assert.rejects(
+        () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), l2CredentialLookup: async () => ({ status: "revoked" }) }),
         /設定 Polymarket 憑證/,
       );
     });
