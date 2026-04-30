@@ -1053,8 +1053,8 @@ test("Polymarket page does not call configured API when service lacks external m
   assert.match(markup, /API base URL configured<\/span><span class="kv-value">yes/);
   assert.match(markup, /same-origin API reachable<\/span><span class="kv-value">yes/);
   assert.match(markup, /external markets endpoint reachable<\/span><span class="kv-value">yes/);
-  assert.match(markup, /Polymarket fallback enabled<\/span><span class="kv-value">no/);
-  assert.match(markup, /交易功能<\/span><span class="kv-value">交易功能尚未啟用/);
+  assert.match(markup, /Polymarket fallback enabled<\/span><span class="kv-value">yes/);
+  assert.match(markup, /交易狀態<\/span><span class="kv-value">交易介面預覽；實盤提交停用/);
   assert.doesNotMatch(markup, /市場資料暫時未能更新/);
   assert.deepEqual(calls, ["https://bet.example.vercel.app/api/external/markets"]);
 });
@@ -1216,7 +1216,7 @@ test("Polymarket page defaults routed trading disabled", async () => {
 
   try {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /交易功能<\/span><span class="kv-value">交易功能尚未啟用/);
+    assert.match(markup, /交易狀態<\/span><span class="kv-value">交易介面預覽；實盤提交停用/);
   } finally {
     globalThis.fetch = originalFetch;
     if (original === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED; else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = original;
@@ -1323,7 +1323,7 @@ test("Polymarket page keeps routed trade CTA disabled when submitter is unavaila
 
   await withBuilderCode(VALID_BUILDER_CODE, async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /交易功能<\/span><span class="kv-value">交易功能尚未啟用/);
+    assert.match(markup, /交易狀態<\/span><span class="kv-value">交易介面預覽已啟用；實盤提交仍然停用/);
     assert.match(markup, /透過 Polymarket 交易/);
     assert.match(markup, /尚未登入/);
     assert.match(markup, /disabled=""/);

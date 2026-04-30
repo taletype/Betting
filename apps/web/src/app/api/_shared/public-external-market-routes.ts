@@ -9,6 +9,7 @@ import {
 } from "./external-market-cache";
 import { applyMarketTranslations, resolveMarketLocale } from "./market-translation";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "./external-market-read";
+import { readPolymarketGammaFallbackMarkets } from "./polymarket-gamma-fallback";
 
 const getAdminSupabase = () => createSupabaseAdminClient();
 
@@ -41,6 +42,25 @@ const filterMarketsByStatus = <Market extends { status?: unknown }>(
   ? markets
   : markets.filter((market) => market.status === status);
 
+const toTime = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+};
+
+const isMarketStale = (market: { sourceProvenance?: unknown; provenance?: unknown; lastUpdatedAt?: string; lastSyncedAt?: string | null }): boolean => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  const record = provenance && typeof provenance === "object" ? provenance as Record<string, unknown> : {};
+  if (record.stale === true) return true;
+  const staleAfter = typeof record.staleAfter === "string" ? toTime(record.staleAfter) : null;
+  if (staleAfter !== null) return staleAfter <= Date.now();
+  const lastUpdatedAt = toTime(market.lastUpdatedAt ?? market.lastSyncedAt ?? null);
+  return lastUpdatedAt === null || Date.now() - lastUpdatedAt > 15 * 60 * 1000;
+};
+
+const hasFreshOpenMarket = (markets: Array<{ status?: unknown; sourceProvenance?: unknown; provenance?: unknown; lastUpdatedAt?: string; lastSyncedAt?: string | null }>): boolean =>
+  markets.some((market) => market.status === "open" && !isMarketStale(market));
+
 const fallbackDiagnostics = (input?: Partial<ExternalMarketCacheDiagnostics>): ExternalMarketCacheDiagnostics => ({
   supabaseCacheReachable: false,
   marketCacheRowCount: null,
@@ -54,7 +74,7 @@ const fallbackDiagnostics = (input?: Partial<ExternalMarketCacheDiagnostics>): E
 });
 
 const marketsEnvelope = (input: {
-  source: "supabase_cache";
+  source: "supabase_cache" | "polymarket_gamma_fallback";
   fallbackUsed: boolean;
   stale: boolean;
   lastUpdatedAt: string | null;
@@ -89,6 +109,34 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
     const cached = await readExternalMarketsFromCache(supabase);
     if (cached.markets.length > 0) {
       const markets = await applyMarketTranslations(supabase, cached.markets, locale);
+      if (status === "open" && !hasFreshOpenMarket(markets)) {
+        try {
+          const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
+          const translatedFallbackMarkets = await applyMarketTranslations(supabase, fallbackMarkets, locale);
+          const openFallbackMarkets = filterMarketsByStatus(translatedFallbackMarkets, status);
+          if (hasFreshOpenMarket(openFallbackMarkets)) {
+            return NextResponse.json(marketsEnvelope({
+              source: "polymarket_gamma_fallback",
+              fallbackUsed: true,
+              stale: false,
+              lastUpdatedAt: openFallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+              markets: openFallbackMarkets,
+              diagnostics: {
+                ...cached.diagnostics,
+                fallbackUsedLastRequest: true,
+              },
+            }), {
+              headers: { "x-market-source": "polymarket_gamma_fallback" },
+            });
+          }
+        } catch (fallbackError) {
+          console.warn("public external markets fallback failed; returning cache state", {
+            source: "polymarket_gamma_fallback",
+            message: safeMessage(fallbackError),
+          });
+        }
+      }
+
       return NextResponse.json(marketsEnvelope({
         source: "supabase_cache",
         fallbackUsed: false,
@@ -98,6 +146,28 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
         diagnostics: cached.diagnostics,
       }), {
         headers: { "x-market-source": "supabase_cache" },
+      });
+    }
+
+    if (status === "open") {
+      const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
+      const translatedFallbackMarkets = await applyMarketTranslations(supabase, fallbackMarkets, locale);
+      return NextResponse.json(marketsEnvelope({
+        source: "polymarket_gamma_fallback",
+        fallbackUsed: true,
+        stale: !hasFreshOpenMarket(translatedFallbackMarkets),
+        lastUpdatedAt: translatedFallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+        markets: filterMarketsByStatus(translatedFallbackMarkets, status),
+        diagnostics: fallbackDiagnostics({
+          supabaseCacheReachable: true,
+          marketCacheRowCount: 0,
+          staleMarketCount: 0,
+          fallbackUsedLastRequest: true,
+        }),
+      }), {
+        headers: {
+          "x-market-source": "polymarket_gamma_fallback",
+        },
       });
     }
 

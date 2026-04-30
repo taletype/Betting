@@ -123,6 +123,11 @@ export function PolymarketTradeTicket(props: Props) {
     props.submitModeEnabled === true &&
     props.submitterAvailable,
   );
+  const tradingStatusLabel = publicTradingReady
+    ? "實盤提交已啟用"
+    : props.featureEnabled
+      ? "交易介面預覽已啟用；實盤提交仍然停用"
+      : "交易介面預覽；實盤提交停用";
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
@@ -196,6 +201,7 @@ export function PolymarketTradeTicket(props: Props) {
         locale={props.locale}
         hasBuilderCode={props.hasBuilderCode}
         routedTradingEnabled={publicTradingReady}
+        tradingStatusLabel={tradingStatusLabel}
         compact
       />
 

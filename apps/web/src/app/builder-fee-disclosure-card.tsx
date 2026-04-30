@@ -11,6 +11,7 @@ interface Props {
   locale: AppLocale;
   hasBuilderCode?: boolean;
   routedTradingEnabled?: boolean;
+  tradingStatusLabel?: string;
   compact?: boolean;
 }
 
@@ -18,6 +19,7 @@ export function BuilderFeeDisclosureCard({
   locale,
   hasBuilderCode,
   routedTradingEnabled,
+  tradingStatusLabel,
   compact = false,
 }: Props) {
   const statusLabel = getBuilderFeeStatusLabel(builderFeeDisclosure.status, locale);
@@ -32,7 +34,7 @@ export function BuilderFeeDisclosureCard({
           <div className="kv"><span className="kv-key">Builder Code status</span><span className="kv-value">{hasBuilderCode ? "configured" : "not configured"}</span></div>
         ) : null}
         {routedTradingEnabled !== undefined ? (
-          <div className="kv"><span className="kv-key">Routed trading</span><span className="kv-value">{routedTradingEnabled ? "enabled" : "disabled"}</span></div>
+          <div className="kv"><span className="kv-key">Routed trading</span><span className="kv-value">{tradingStatusLabel ?? (routedTradingEnabled ? "enabled" : "disabled")}</span></div>
         ) : null}
         <div className="kv"><span className="kv-key">Maker Builder fee</span><span className="kv-value">{statusLabel} {maker}</span></div>
         <div className="kv"><span className="kv-key">Taker Builder fee</span><span className="kv-value">{statusLabel} {taker}</span></div>
@@ -49,7 +51,7 @@ export function BuilderFeeDisclosureCard({
         <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
       ) : null}
       {routedTradingEnabled !== undefined ? (
-        <div className="kv"><span className="kv-key">交易功能</span><span className="kv-value">{routedTradingEnabled ? "交易功能已啟用" : "交易功能尚未啟用"}</span></div>
+        <div className="kv"><span className="kv-key">交易狀態</span><span className="kv-value">{tradingStatusLabel ?? (routedTradingEnabled ? "實盤提交已啟用" : "實盤提交尚未啟用")}</span></div>
       ) : null}
       <div className="kv"><span className="kv-key">Maker Builder 費率</span><span className="kv-value">{statusLabel} Maker 費率：{maker}</span></div>
       <div className="kv"><span className="kv-key">Taker Builder 費率</span><span className="kv-value">{statusLabel} Taker 費率：{taker}</span></div>

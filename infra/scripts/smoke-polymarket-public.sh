@@ -70,6 +70,25 @@ try {
 ' "$1"
 }
 
+open_market_health() {
+  node -e '
+const fs = require("fs");
+const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const markets = Array.isArray(payload) ? payload : Array.isArray(payload?.markets) ? payload.markets : [];
+const open = markets.filter((market) => market && market.status === "open");
+const stale = payload && typeof payload === "object" && payload.stale === true;
+if (stale) {
+  console.error("stale=true");
+  process.exit(10);
+}
+if (markets.length > 0 && open.length === 0) {
+  console.error("no open markets; statuses=" + [...new Set(markets.map((market) => market?.status || "unknown"))].join(","));
+  process.exit(11);
+}
+console.log(open.length);
+' "$1"
+}
+
 check_public_path() {
   local path="$1"
   local result
@@ -108,6 +127,10 @@ check_markets() {
       fi
       printf 'MARKETS url=%s status=%s market_count=%s diagnostic=%s\n' "$BASE_URL/api/external/markets" "$status" "$count" "${code:-none}"
       if [[ "$count" -gt 0 ]]; then
+        if ! open_count="$(open_market_health "$body" 2>"$tmp_dir/open-market-health.err")"; then
+          fail "/api/external/markets did not return fresh open markets url=$BASE_URL/api/external/markets detail=$(cat "$tmp_dir/open-market-health.err")"
+        fi
+        printf 'OPEN_MARKETS url=%s open_market_count=%s\n' "$BASE_URL/api/external/markets" "$open_count"
         echo "PASS: /api/external/markets returned public market data"
       else
         warn "/api/external/markets returned an empty array url=$BASE_URL/api/external/markets status=$status market_count=0 diagnostic=${code:-none}"

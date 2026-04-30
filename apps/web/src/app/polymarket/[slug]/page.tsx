@@ -226,7 +226,15 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
   const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
   const disabledReasons = getPolymarketRoutingDisabledReasons(routingInput);
-  const publicTradingReady = routedTradingEnabled && hasBuilderCode && submitterAvailable;
+  const publicSubmitEnabled = routedTradingEnabled &&
+    hasBuilderCode &&
+    submitterAvailable &&
+    process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY === "false";
+  const publicTradingStatusLabel = publicSubmitEnabled
+    ? "實盤提交已啟用"
+    : routedTradingEnabled
+      ? "交易介面預覽已啟用；實盤提交仍然停用"
+      : "交易介面預覽；實盤提交停用";
   const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const marketShareUrl = `${getSiteUrl()}${detailPath}`;
   const tradeTicketProps = {
@@ -302,7 +310,12 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       </section>
 
       <BetaLaunchDisclosure />
-      <BuilderFeeDisclosureCard locale={locale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={publicTradingReady} />
+      <BuilderFeeDisclosureCard
+        locale={locale}
+        hasBuilderCode={hasBuilderCode}
+        routedTradingEnabled={publicSubmitEnabled}
+        tradingStatusLabel={publicTradingStatusLabel}
+      />
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
       {!marketTradable ? (
         <section className="panel disclosure-card stack">

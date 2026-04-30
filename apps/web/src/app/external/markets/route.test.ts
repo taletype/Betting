@@ -26,7 +26,7 @@ const makeCacheRow = (overrides: Record<string, unknown> = {}) => ({
   first_seen_at: "2026-04-30T00:00:00.000Z",
   last_seen_at: "2026-04-30T00:00:00.000Z",
   last_synced_at: "2026-04-30T00:00:00.000Z",
-  stale_after: "2099-01-01T00:00:00.000Z",
+  stale_after: overrides.stale_after ?? "2099-01-01T00:00:00.000Z",
   is_active: overrides.is_active ?? true,
   is_tradable: overrides.is_tradable ?? true,
   created_at: "2026-04-30T00:00:00.000Z",
@@ -172,4 +172,76 @@ test("GET /external/markets defaults to open rows and supports explicit status f
   );
   const allPayload = await allResponse.json() as { markets: Array<{ title: string; status: string }> };
   assert.deepEqual(allPayload.markets.map((market) => market.status), ["open", "closed", "resolved"]);
+});
+
+test("GET /external/markets uses Gamma fallback when cache has only stale closed markets", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const rows = [
+    makeCacheRow({
+      id: "closed-stale",
+      external_id: "CLOSED-STALE-1",
+      slug: "closed-stale-1",
+      title: "Closed stale cache market",
+      close_time: "2000-01-01T00:00:00.000Z",
+      stale_after: "2000-01-01T00:00:00.000Z",
+      is_active: false,
+    }),
+  ];
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        {
+          id: "event-1",
+          slug: "fresh-event",
+          title: "Fresh fallback event",
+          question: "Fresh fallback event?",
+          description: "Fresh fallback description",
+          active: true,
+          closed: false,
+          endDate: "2099-01-01T00:00:00.000Z",
+          volume: "1000",
+          volume24hr: "100",
+          markets: [
+            {
+              id: "FRESH-FALLBACK-1",
+              slug: "fresh-fallback-1",
+              question: "Fresh fallback market?",
+              active: true,
+              closed: false,
+              endDate: "2099-01-01T00:00:00.000Z",
+              volume: "1000",
+              volume24hr: "100",
+              outcomes: ["Yes", "No"],
+              outcomePrices: ["0.55", "0.45"],
+              clobTokenIds: ["yes-token", "no-token"],
+            },
+          ],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const response = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?locale=en"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const payload = await response.json() as {
+    source: string;
+    fallbackUsed: boolean;
+    stale: boolean;
+    markets: Array<{ externalId: string; status: string; title: string }>;
+    diagnostics: { fallbackUsedLastRequest: boolean };
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.source, "polymarket_gamma_fallback");
+  assert.equal(payload.fallbackUsed, true);
+  assert.equal(payload.stale, false);
+  assert.deepEqual(payload.markets.map((market) => `${market.externalId}:${market.status}`), ["FRESH-FALLBACK-1:open"]);
+  assert.equal(payload.diagnostics.fallbackUsedLastRequest, true);
 });

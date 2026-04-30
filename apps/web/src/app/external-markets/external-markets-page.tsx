@@ -217,6 +217,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const routedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true" ? "enabled" : "disabled";
   const submitterAvailable = submitterMode === "enabled";
+  const publicSubmitEnabled = routedTradingEnabled &&
+    hasBuilderCode &&
+    submitterAvailable &&
+    process.env.POLYMARKET_ROUTED_TRADING_CANARY_ONLY === "false";
+  const publicTradingStatusLabel = publicSubmitEnabled
+    ? "實盤提交已啟用"
+    : routedTradingEnabled
+      ? "交易介面預覽已啟用；實盤提交仍然停用"
+      : "交易介面預覽；實盤提交停用";
   const refCode = normalizeReferralCode(params?.ref);
   const currentUser = await getCurrentWebUser();
   const normalizedParams: MarketFeedSearchParams = { ...params, ref: refCode ?? params?.ref ?? undefined };
@@ -266,7 +275,6 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const thirdwebClientConfigured = Boolean(process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim());
   const staleMarketsPresent = markets.some(isExternalMarketStale);
   const staleOpenMarketsPresent = markets.some((market) => isExternalMarketOpenNow(market) && isExternalMarketStale(market));
-  const publicTradingReady = routedTradingEnabled && hasBuilderCode && submitterAvailable;
 
   return (
     <main className="stack">
@@ -588,7 +596,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         <BuilderFeeDisclosureCard
           locale={locale}
           hasBuilderCode={hasBuilderCode}
-          routedTradingEnabled={publicTradingReady}
+          routedTradingEnabled={publicSubmitEnabled}
+          tradingStatusLabel={publicTradingStatusLabel}
         />
         <section className="panel disclosure-card stack">
           <strong>Builder / 交易安全狀態</strong>
@@ -604,7 +613,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">no</span></div>
-            <div className="kv"><span className="kv-key">交易功能</span><span className="kv-value">{publicTradingReady ? "交易功能已啟用" : "交易功能尚未啟用"}</span></div>
+            <div className="kv"><span className="kv-key">交易狀態</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
             <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
             <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
           </div>
