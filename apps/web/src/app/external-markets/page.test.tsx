@@ -797,6 +797,91 @@ test("Polymarket page uses same-site route when configured API base is unavailab
   assert.equal(calls.length, 2);
 });
 
+test("Polymarket page uses same-site route when configured API lacks external markets endpoint", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
+  const calls: string[] = [];
+
+  process.env.API_BASE_URL = "https://api.example.com";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    calls.push(url);
+
+    if (url === "https://api.example.com/external/markets") {
+      return new Response(JSON.stringify({ error: "Endpoint not implemented" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(
+      JSON.stringify([
+        {
+          id: "fallback-404-1",
+          source: "polymarket",
+          externalId: "POLY-FALLBACK-404",
+          slug: "poly-fallback-404",
+          title: "Fallback after missing backend endpoint",
+          description: "Same-site route should recover",
+          status: "open",
+          marketUrl: "https://polymarket.com/event/poly-fallback-404",
+          closeTime: null,
+          endTime: null,
+          resolvedAt: null,
+          bestBid: 0.41,
+          bestAsk: 0.44,
+          lastTradePrice: 0.43,
+          volume24h: 500,
+          volumeTotal: 10000,
+          lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          createdAt: "2026-05-01T01:00:00.000Z",
+          updatedAt: "2026-05-01T01:00:00.000Z",
+          outcomes: [],
+          recentTrades: [],
+        },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(markup, /Fallback after missing backend endpoint/);
+  assert.match(markup, /API base URL configured<\/span><span class="kv-value">yes/);
+  assert.match(markup, /same-origin API reachable<\/span><span class="kv-value">yes/);
+  assert.match(markup, /external markets endpoint reachable<\/span><span class="kv-value">yes/);
+  assert.match(markup, /Polymarket fallback enabled<\/span><span class="kv-value">yes/);
+  assert.match(markup, /routed trading enabled<\/span><span class="kv-value">no/);
+  assert.doesNotMatch(markup, /市場資料暫時未能更新/);
+  assert.deepEqual(calls, [
+    "https://api.example.com/external/markets",
+    "https://bet.example.vercel.app/api/external/markets",
+  ]);
+});
+
 test("Polymarket page renders operator-visible diagnostics when production API base is missing and fallback fails", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;

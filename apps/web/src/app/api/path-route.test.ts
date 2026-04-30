@@ -201,6 +201,36 @@ test("GET /api/external/markets falls back to public Gamma events when backend f
   assert.equal(payload[0]?.outcomes[0]?.lastPrice, 0.7);
 });
 
+test("GET /api/external/markets detail, orderbook, and trades return safe JSON", async (t) => {
+  setSupabaseAdminClientFactoryForTests(() => makeExternalMarketsSupabase() as never);
+
+  t.after(() => {
+    setSupabaseAdminClientFactoryForTests(null);
+  });
+
+  const detailResponse = await GET(new NextRequest("http://localhost/api/external/markets/polymarket/POLY-ROUTE-1?foo=bar"), {
+    params: Promise.resolve({ path: ["external", "markets", "polymarket", "POLY-ROUTE-1"] }),
+  });
+  const detailPayload = await detailResponse.json() as { market: { externalId: string } | null };
+  assert.equal(detailResponse.status, 200);
+  assert.equal(detailPayload.market?.externalId, "POLY-ROUTE-1");
+
+  const orderbookResponse = await GET(new NextRequest("http://localhost/api/external/markets/polymarket/POLY-ROUTE-1/orderbook?depth=20"), {
+    params: Promise.resolve({ path: ["external", "markets", "polymarket", "POLY-ROUTE-1", "orderbook"] }),
+  });
+  assert.equal(orderbookResponse.status, 200);
+  assert.deepEqual(await orderbookResponse.json(), { orderbook: [], depth: [] });
+
+  const tradesResponse = await GET(new NextRequest("http://localhost/api/external/markets/polymarket/POLY-ROUTE-1/trades?limit=20"), {
+    params: Promise.resolve({ path: ["external", "markets", "polymarket", "POLY-ROUTE-1", "trades"] }),
+  });
+  const tradesPayload = await tradesResponse.json() as { source: string; externalId: string; trades: Array<{ externalTradeId: string }> };
+  assert.equal(tradesResponse.status, 200);
+  assert.equal(tradesPayload.source, "polymarket");
+  assert.equal(tradesPayload.externalId, "POLY-ROUTE-1");
+  assert.equal(tradesPayload.trades[0]?.externalTradeId, "trade-1");
+});
+
 test("public health, version, and external markets survive missing Supabase config", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>

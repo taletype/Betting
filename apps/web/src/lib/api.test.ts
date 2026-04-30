@@ -492,19 +492,32 @@ test("listExternalMarkets classifies market source unavailable with sanitized so
   );
 });
 
-test("listExternalMarkets classifies missing /external/markets route", async (t) => {
+test("listExternalMarkets falls back to same-site route when configured /external/markets is missing", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalApiBaseUrl = process.env.API_BASE_URL;
   const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
+  const calls: string[] = [];
 
   process.env.API_BASE_URL = "https://api.example.com";
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
 
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ error: "Endpoint not implemented" }), {
-      status: 404,
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url === "https://api.example.com/external/markets") {
+      return new Response(JSON.stringify({ error: "Endpoint not implemented" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify([]), {
+      status: 200,
       headers: { "content-type": "application/json" },
-    })) as typeof globalThis.fetch;
+    });
+  }) as typeof globalThis.fetch;
 
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -518,14 +531,20 @@ test("listExternalMarkets classifies missing /external/markets route", async (t)
     } else {
       process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
     }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
   });
 
-  await assert.rejects(
-    () => listExternalMarkets(),
-    (error: unknown) =>
-      error instanceof ExternalMarketsLoadError &&
-      error.diagnostics.includes("external_markets_not_implemented"),
-  );
+  const markets = await listExternalMarkets();
+
+  assert.deepEqual(markets, []);
+  assert.deepEqual(calls, [
+    "https://api.example.com/external/markets",
+    "https://bet.example.vercel.app/api/external/markets",
+  ]);
 });
 
 test("getAmbassadorDashboard uses local Next API route when API base is not configured", async (t) => {

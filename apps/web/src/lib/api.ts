@@ -251,6 +251,14 @@ const shouldRetryViaLocalRoute = (error: unknown): boolean => {
   );
 };
 
+const shouldRetryPublicReadViaLocalRoute = (error: unknown): boolean => {
+  if (error instanceof ApiResponseError) {
+    return [404, 501, 502, 503, 504].includes(error.status);
+  }
+
+  return shouldRetryViaLocalRoute(error);
+};
+
 const executePublicRouteRequest = async <T>(
   path: string,
   init?: RequestInit & { allowNotFound?: boolean },
@@ -261,7 +269,7 @@ const executePublicRouteRequest = async <T>(
     return await executeApiRequest<T>(primaryUrl, init);
   } catch (error) {
     const fallbackUrl = getLocalApiUrl(path);
-    if (!getConfiguredApiBaseUrl() || fallbackUrl === primaryUrl || !shouldRetryViaLocalRoute(error)) {
+    if (!getConfiguredApiBaseUrl() || fallbackUrl === primaryUrl || !shouldRetryPublicReadViaLocalRoute(error)) {
       throw error;
     }
 
@@ -609,6 +617,20 @@ export interface ExternalMarketApiRecord {
   recentTrades: ExternalMarketApiTrade[];
   latestOrderbook?: ExternalMarketApiOrderbookSnapshot[];
 }
+
+export const getPublicExternalMarketsReadiness = () => {
+  const configuredApiBaseUrl = getConfiguredApiBaseUrl();
+  const sameOriginUrl = getLocalApiUrl("/external/markets");
+  const dataUrl = getPublicRouteUrl("/external/markets");
+
+  return {
+    dataUrl,
+    sameOriginUrl,
+    apiBaseUrlConfigured: Boolean(configuredApiBaseUrl),
+    sameOriginApiSelected: dataUrl === sameOriginUrl,
+    polymarketFallbackEnabled: true,
+  };
+};
 
 export const listExternalMarkets = async (): Promise<ExternalMarketApiRecord[]> => {
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];

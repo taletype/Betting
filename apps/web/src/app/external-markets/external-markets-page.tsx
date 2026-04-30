@@ -18,6 +18,7 @@ import {
 } from "./polymarket-routing-readiness";
 import {
   ExternalMarketsLoadError,
+  getPublicExternalMarketsReadiness,
   listExternalMarkets,
   type ExternalMarketApiRecord,
   type ExternalMarketsLoadErrorCode,
@@ -40,6 +41,13 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
   }
 
   return market.source;
+};
+
+const isPolymarketFallbackMarket = (market: ExternalMarketApiRecord): boolean => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  if (!provenance || typeof provenance !== "object") return false;
+  const upstream = (provenance as Record<string, unknown>).upstream;
+  return typeof upstream === "string" && upstream.includes("gamma-api.polymarket.com");
 };
 
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
@@ -151,6 +159,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const refCode = normalizeReferralCode(params?.ref);
   const currentUser = await getCurrentWebUser();
   const normalizedParams: MarketFeedSearchParams = { ...params, ref: refCode ?? params?.ref ?? undefined };
+  const dataReadiness = getPublicExternalMarketsReadiness();
 
   try {
     markets = (await listExternalMarkets()).filter((market) => market.source === "polymarket");
@@ -180,6 +189,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   };
   const disabledReasonLabel = (reason: PolymarketRoutingReadiness) => copy.readinessCopy[reason] ?? reason;
   const shareUrl = refCode ? `${siteUrl()}/polymarket?ref=${encodeURIComponent(refCode)}` : `${siteUrl()}/polymarket`;
+  const externalMarketsEndpointReachable = !loadFailed;
+  const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
 
   return (
     <main className="stack">
@@ -207,6 +218,18 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       <section className="panel disclosure-card stack">
         <strong>Builder / 交易安全狀態</strong>
         <p className="muted">單純瀏覽市場不會產生 Builder 費用。只適用於合資格並成功成交的 Polymarket 路由訂單；實際訂單提交預設停用。</p>
+      </section>
+      <section className="panel disclosure-card stack" aria-label="Polymarket data readiness">
+        <strong>市場資料連線狀態</strong>
+        <div className="grid">
+          <div className="kv"><span className="kv-key">資料 URL</span><span className="kv-value mono">{dataReadiness.dataUrl}</span></div>
+          <div className="kv"><span className="kv-key">API base URL configured</span><span className="kv-value">{dataReadiness.apiBaseUrlConfigured ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">same-origin API reachable</span><span className="kv-value">{sameOriginApiReachable ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{routedTradingEnabled ? "yes" : "no"}</span></div>
+          <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{hasBuilderCode ? "yes" : "no"}</span></div>
+        </div>
       </section>
       <ThirdwebWalletFundingCard surface="polymarket_feed" walletConnected={false} />
       <form className="panel filters market-feed-controls" action="/polymarket">
@@ -320,6 +343,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="market-card-meta">
                     <div className="badge badge-neutral">{market.source}</div>
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
+                    {isPolymarketFallbackMarket(market) ? <div className="badge badge-warning">Gamma fallback</div> : null}
                   </div>
                   <strong className="market-card-title">{market.title}</strong>
                   <div className="outcome-pill-row">
