@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { createSupabaseServerClient } from "@bet/supabase";
+import { createSupabaseServerClient } from "@bet/supabase/server";
 
 import { captureAmbassadorReferral } from "../lib/api";
 import { pendingReferralCookieName } from "../lib/referral-capture";
+import { isPublicSupabaseConfigError } from "../lib/supabase/config";
 
 const getSiteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
@@ -36,8 +37,8 @@ export const sendMagicLinkAction = async (formData: FormData) => {
       },
     });
   } catch (error) {
-    console.warn("magic link auth is not configured", error);
-    redirect("/login?auth=unavailable");
+    console.warn("magic link auth failed", error);
+    redirect(isPublicSupabaseConfigError(error) ? "/login?auth=unavailable" : "/login?auth=failed");
   }
 
   redirect("/login?sent=1");

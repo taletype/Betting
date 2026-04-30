@@ -1,1 +1,1 @@
-export { createSupabaseBrowserClient as createClient } from "@bet/supabase";
+export { createSupabaseBrowserClient as createClient } from "@bet/supabase/browser";

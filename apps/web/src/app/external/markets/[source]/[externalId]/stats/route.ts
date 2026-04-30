@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { createSupabaseAdminClient } from "@bet/supabase/admin";
 
 import { readExternalMarketBySourceAndId } from "../../../../../api/_shared/external-market-read";
 

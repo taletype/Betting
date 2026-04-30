@@ -26,6 +26,9 @@
       "@bet/observability": ["./packages/observability/src"],
       "@bet/settlement": ["./packages/settlement/src"],
       "@bet/supabase": ["./packages/supabase/src"],
+      "@bet/supabase/browser": ["./packages/supabase/src/client/browser"],
+      "@bet/supabase/server": ["./packages/supabase/src/client/server"],
+      "@bet/supabase/admin": ["./packages/supabase/src/client/admin"],
       "@bet/test-utils": ["./packages/test-utils/src"],
       "@bet/trading": ["./packages/trading/src"],
       "@bet/wallet": ["./packages/wallet/src"]

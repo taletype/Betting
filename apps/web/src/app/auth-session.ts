@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-import { createSupabaseServerClient } from "@bet/supabase";
+import { createSupabaseServerClient } from "@bet/supabase/server";
 
 export interface WebSessionUser {
   id: string;

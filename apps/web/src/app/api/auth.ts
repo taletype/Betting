@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { createSupabaseServerClient } from "@bet/supabase";
+import { createSupabaseServerClient } from "@bet/supabase/server";
 
 export interface AuthenticatedUser {
   id: string;

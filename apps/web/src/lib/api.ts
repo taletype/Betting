@@ -30,7 +30,7 @@ const getServerSupabaseAccessToken = async (): Promise<string | null> => {
   try {
     const [{ cookies }, { createSupabaseServerClient }] = await Promise.all([
       import("next/headers"),
-      import("@bet/supabase"),
+      import("@bet/supabase/server"),
     ]);
     const cookieStore = await cookies();
     const supabase = createSupabaseServerClient({

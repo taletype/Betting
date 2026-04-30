@@ -1,5 +1,6 @@
 import React from "react";
 import { getAmbassadorDashboard } from "../../lib/api";
+import { formatUsdc } from "../../lib/format";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { applyReferralCodeAction, logoutAction } from "../auth-actions";
 import { getCurrentWebUser } from "../auth-session";
@@ -12,6 +13,7 @@ import { getSiteUrl } from "../../lib/site-url";
 
 export default async function AccountPage() {
   const copy = getLocaleCopy(defaultLocale).auth;
+  const rewardsCopy = getLocaleCopy(defaultLocale).rewards;
   const walletCopy = getLocaleCopy(defaultLocale).wallet;
   const user = await getCurrentWebUser();
   const dashboard = user ? await getAmbassadorDashboard().catch(() => null) : null;
@@ -73,10 +75,33 @@ export default async function AccountPage() {
 
           <section className="panel stack">
             <strong>{copy.pendingReferral}</strong>
+            {dashboard?.attribution ? (
+              <div className="kv">
+                <span className="kv-key">已套用推薦碼</span>
+                <span className="kv-value mono">{dashboard.attribution.ambassadorCode}</span>
+              </div>
+            ) : (
+              <PendingReferralNotice prefix="待套用推薦碼：" />
+            )}
             <form action={applyReferralCodeAction} className="stack">
               <input name="code" placeholder={getLocaleCopy(defaultLocale).ambassador.manualCodePlaceholder} />
               <button type="submit">{copy.applyReferral}</button>
             </form>
+          </section>
+
+          <section className="panel stack">
+            <strong>獎勵摘要</strong>
+            {dashboard ? (
+              <>
+                <div className="kv"><span className="kv-key">直接推薦</span><span className="kv-value">{dashboard.rewards.directReferralCount.toLocaleString(defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">{rewardsCopy.statuses.pending}</span><span className="kv-value">{formatUsdc(dashboard.rewards.pendingRewards, defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">{rewardsCopy.statuses.payable}</span><span className="kv-value">{formatUsdc(dashboard.rewards.payableRewards, defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">{rewardsCopy.payouts}</span><span className="kv-value">{dashboard.payouts.length.toLocaleString(defaultLocale)}</span></div>
+                <div className="muted">獎勵只屬帳務紀錄，不會加入或修改交易餘額；支付需要管理員人手審批。</div>
+              </>
+            ) : (
+              <div className="empty-state">登入後可查看推薦、獎勵及支付申請狀態。</div>
+            )}
           </section>
         </>
       )}

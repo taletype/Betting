@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { normalizeReferralCode } from "../../lib/referral-capture";
+import { hasPublicSupabaseConfig } from "../../lib/supabase/config";
 import { sendMagicLinkAction } from "../auth-actions";
 import { PendingReferralNotice } from "../pending-referral-notice";
 
@@ -15,6 +16,7 @@ export default async function LoginPage({
   const copy = getLocaleCopy(defaultLocale).auth;
   const next = params?.next?.startsWith("/") ? params.next : "/account";
   const refCode = normalizeReferralCode(params?.ref);
+  const authUnavailable = params?.auth === "unavailable" && !hasPublicSupabaseConfig();
 
   return (
     <main className="stack">
@@ -24,7 +26,7 @@ export default async function LoginPage({
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
       </section>
 
-      {params?.auth === "unavailable" ? <div className="error-state">{copy.authUnavailable}</div> : null}
+      {authUnavailable ? <div className="error-state">{copy.authUnavailable}</div> : null}
       {params?.sent === "1" ? <div className="banner banner-success">{copy.magicLinkNotice}</div> : null}
 
       <section className="panel stack">

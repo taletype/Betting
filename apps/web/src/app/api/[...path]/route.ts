@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseClient } from "@bet/db";
-import { createSupabaseAdminClient, createSupabaseServerClient } from "@bet/supabase";
+import { createSupabaseAdminClient } from "@bet/supabase/admin";
+import { createSupabaseServerClient } from "@bet/supabase/server";
 import { normalizeApiPayload } from "../_shared/api-serialization";
 import { adminPolymarketStatusResponse } from "../_shared/admin-polymarket-status";
 import { readExternalMarkets } from "../_shared/external-market-read";

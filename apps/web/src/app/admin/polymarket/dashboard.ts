@@ -1,4 +1,4 @@
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { createSupabaseAdminClient } from "@bet/supabase/admin";
 
 import { readPolymarketGammaFallbackMarkets } from "../../api/_shared/polymarket-gamma-fallback";
 import { getSafeLaunchStatus } from "../../api/_shared/launch-status";

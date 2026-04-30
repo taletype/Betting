@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { createSupabaseAdminClient } from "@bet/supabase/admin";
 
 import { evaluateAdminAccess, getAuthenticatedUser } from "../auth";
 import { getSafeLaunchStatus } from "./launch-status";

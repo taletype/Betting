@@ -65,7 +65,7 @@ const makeFakeSupabaseFactory = (rows: ReturnType<typeof makeCacheRow>[]) => () 
   },
 });
 
-test("GET /external/markets works without login but does not call Polymarket directly", async (t) => {
+test("GET /external/markets works without login and attempts Gamma fallback when cache config is missing", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalSupabaseUrl = process.env.SUPABASE_URL;
   const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -100,7 +100,7 @@ test("GET /external/markets works without login but does not call Polymarket dir
   assert.equal(payload.source, "supabase_cache");
   assert.equal(payload.fallbackUsed, false);
   assert.deepEqual(payload.markets, []);
-  assert.equal(fetchCalled, false);
+  assert.equal(fetchCalled, true);
 });
 
 test("GET /external/markets returns clear JSON error when backend and Gamma fail", async (t) => {

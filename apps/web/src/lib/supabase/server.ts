@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
-import { createSupabaseServerClient } from "@bet/supabase";
+import { createSupabaseServerClient } from "@bet/supabase/server";
 
 export interface CurrentUser {
   id: string;

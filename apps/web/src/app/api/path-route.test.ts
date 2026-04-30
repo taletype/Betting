@@ -357,7 +357,7 @@ test("GET /api/external/markets accepts locale and returns localized market cont
   assert.equal(payload.markets[0]?.outcomes[0]?.title, "會");
 });
 
-test("GET /api/external/markets does not call Polymarket when backend cache fails", async (t) => {
+test("GET /api/external/markets attempts Gamma fallback when backend cache fails", async (t) => {
   const originalFetch = globalThis.fetch;
   let fetchCalled = false;
   setSupabaseAdminClientFactoryForTests(() => {
@@ -389,7 +389,7 @@ test("GET /api/external/markets does not call Polymarket when backend cache fail
   assert.equal(payload.source, "supabase_cache");
   assert.equal(payload.fallbackUsed, false);
   assert.deepEqual(payload.markets, []);
-  assert.equal(fetchCalled, false);
+  assert.equal(fetchCalled, true);
 });
 
 test("GET /api/external/markets detail, orderbook, and trades return safe JSON", async (t) => {
@@ -442,7 +442,7 @@ test("public health, version, and external markets survive missing Supabase conf
     assert.equal(listResponse.status, 503);
     const listPayload = await listResponse.json() as { markets?: unknown[] };
     assert.ok(Array.isArray(listPayload.markets));
-    assert.equal(fetchCalled, false);
+    assert.equal(fetchCalled, true);
 
     const detailResponse = await externalMarketGET(new Request("http://localhost/api/external/markets/polymarket/missing"), {
       params: Promise.resolve({ source: "polymarket", externalId: "missing" }),
@@ -477,6 +477,19 @@ test("admin launch status rejects anonymous users and does not expose secrets", 
     assert.equal(response.status, 401);
     assert.doesNotMatch(text, /do-not-show|POLYMARKET_API_SECRET/);
   });
+});
+
+test("admin catch-all endpoints reject spoofed admin headers", async () => {
+  const response = await GET(new NextRequest("http://localhost/api/admin/ambassador", {
+    headers: {
+      "x-user-id": "11111111-1111-4111-8111-111111111111",
+      "x-admin": "true",
+      "x-role": "admin",
+    },
+  }), { params: Promise.resolve({ path: ["admin", "ambassador"] }) });
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Authentication required" });
 });
 
 test("admin Polymarket status is protected and reports cache sync audit", async () => {

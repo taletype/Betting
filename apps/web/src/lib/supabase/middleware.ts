@@ -1,25 +1,17 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { createSupabaseServerClient } from "@bet/supabase";
+import { createSupabaseServerClient } from "@bet/supabase/server";
+import { hasPublicSupabaseConfig } from "./config";
 
-const privatePrefixes = ["/account"];
 const adminPrefix = "/admin";
-const supabaseConfigKeys = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"] as const;
 
 const isProtectedPath = (pathname: string): boolean =>
-  privatePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) ||
   pathname === adminPrefix ||
   pathname.startsWith(`${adminPrefix}/`);
 
-const hasSupabaseMiddlewareConfig = (): boolean =>
-  supabaseConfigKeys.every((name) => {
-    const value = process.env[name]?.trim();
-    return Boolean(value && value !== "replace-me" && value !== "changeme");
-  });
-
 const createMiddlewareSupabaseClient = (request: NextRequest, response: NextResponse) => {
-  if (!hasSupabaseMiddlewareConfig()) return null;
+  if (!hasPublicSupabaseConfig()) return null;
 
   try {
     return createSupabaseServerClient({

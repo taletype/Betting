@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { createSupabaseAdminClient } from "@bet/supabase/admin";
 
 import {
   readExternalMarketByIdFromCache,
@@ -193,6 +193,30 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
       source: "supabase_cache",
       message: safeMessage(error),
     });
+    if (resolveStatusFilter(request) === "open") {
+      try {
+        const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
+        return NextResponse.json(marketsEnvelope({
+          source: "polymarket_gamma_fallback",
+          fallbackUsed: true,
+          stale: !hasFreshOpenMarket(fallbackMarkets),
+          lastUpdatedAt: fallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+          markets: filterMarketsByStatus(fallbackMarkets, "open"),
+          diagnostics: fallbackDiagnostics({
+            supabaseCacheReachable: false,
+            fallbackUsedLastRequest: true,
+            errorCode: "SUPABASE_CACHE_UNAVAILABLE",
+          }),
+        }), {
+          headers: { "x-market-source": "polymarket_gamma_fallback" },
+        });
+      } catch (fallbackError) {
+        console.warn("public external markets fallback failed after cache source failure", {
+          source: "polymarket_gamma_fallback",
+          message: safeMessage(fallbackError),
+        });
+      }
+    }
     return NextResponse.json(
       {
         ...unavailablePayload("supabase_cache"),

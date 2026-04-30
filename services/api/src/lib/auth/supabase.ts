@@ -1,4 +1,4 @@
-import { createSupabaseAdminClient } from "@bet/supabase";
+import { createSupabaseAdminClient } from "@bet/supabase/admin";
 
 export interface AuthenticatedApiUser {
   id: string;
