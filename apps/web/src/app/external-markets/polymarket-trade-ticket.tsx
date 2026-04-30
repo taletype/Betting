@@ -80,7 +80,6 @@ const getTradeTicketActionLabel = (
   return "提交已簽署訂單";
 };
 
-type PolymarketL2Credentials = { key: string; secret: string; passphrase: string };
 type SignedPolymarketOrder = Record<string, unknown> & {
   signer: string;
   tokenId: string;
@@ -96,7 +95,7 @@ export function PolymarketTradeTicket(props: Props) {
   const thirdweb = useThirdwebWalletStatus();
   const walletConnected = thirdweb.configured ? thirdweb.connected : props.walletConnected;
   const walletAddressKnown = thirdweb.configured ? Boolean(thirdweb.address) : props.walletConnected;
-  const [l2Credentials, setL2Credentials] = useState<PolymarketL2Credentials | null>(null);
+  const [l2CredentialReady] = useState(false);
   const [signedOrder, setSignedOrder] = useState<SignedPolymarketOrder | null>(null);
   const [flowStatus, setFlowStatus] = useState<string | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
@@ -138,8 +137,8 @@ export function PolymarketTradeTicket(props: Props) {
     walletAddressKnown,
     fundingAvailable: thirdweb.configured ? true : undefined,
     walletFundsSufficient: walletConnected ? props.walletFundsSufficient === true : props.walletFundsSufficient,
-    hasCredentials: props.hasCredentials || Boolean(l2Credentials),
-    userSigningAvailable: props.userSigningAvailable ?? Boolean(walletConnected && l2Credentials),
+    hasCredentials: props.hasCredentials || l2CredentialReady,
+    userSigningAvailable: props.userSigningAvailable ?? Boolean(walletConnected && l2CredentialReady),
     userSigned: props.userSigned || Boolean(signedOrder),
     orderValid,
   };
