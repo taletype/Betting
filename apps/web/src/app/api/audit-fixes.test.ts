@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { NextRequest } from "next/server";
-
 import { DELETE as legacyOrderDELETE } from "./orders/[orderId]/route";
 import { GET as legacyPortfolioGET } from "./portfolio/route";
 import { GET as legacyWithdrawalsGET, POST as legacyWithdrawalsPOST } from "./withdrawals/route";
@@ -85,12 +83,8 @@ test("legacy custodial API routes return 410 before auth", async () => {
     await legacyWithdrawalsPOST(),
     await legacyDepositVerifyPOST(),
     await legacyOrdersPOST(),
-    await legacyOrderDELETE(new NextRequest("http://localhost/api/orders/order-1"), {
-      params: Promise.resolve({ orderId: "order-1" }),
-    }),
-    await legacyClaimsPOST(new NextRequest("http://localhost/api/claims/market-1"), {
-      params: Promise.resolve({ marketId: "market-1" }),
-    }),
+    await legacyOrderDELETE(),
+    await legacyClaimsPOST(),
   ];
 
   for (const response of responses) {
