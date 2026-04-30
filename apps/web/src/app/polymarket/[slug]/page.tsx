@@ -408,7 +408,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
         {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
         <div className="market-actions">
-          {market.marketUrl ? <Link className="button-link primary-cta" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : null}
+          <button type="button" className="button-link primary-cta" disabled>{copy.tradeViaPolymarket}</button>
           <TrackedCopyButton
             value={marketShareUrl}
             label={shareLabel}
@@ -504,7 +504,9 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">{market.source}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
         <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
-        {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+        <div className="muted">來源：Polymarket</div>
+        <div className="muted">資料來源：Gamma API</div>
+        <div className="muted">市場資料由 Polymarket 提供</div>
       </section>
 
       {debugVisible ? (
@@ -528,6 +530,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <section className="panel stack">
         <h2 className="section-title">推薦分成 / 推薦分享</h2>
         <p className="muted">分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
+        <p className="muted">交易回贈：合資格交易如產生已確認 Builder 費用收入，交易用戶可獲得交易回贈。實際支付需要人手審批。</p>
         <TrackedCopyButton
           value={marketShareUrl}
           label={shareLabel}
@@ -587,6 +590,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
           <section className="panel sticky-ticket stack">
             <div className="stack">
               <strong>分享此市場</strong>
+              <p className="muted">登入以保存推薦獎勵</p>
+              <p className="muted">登入後可查看推薦、獎勵及支付狀態</p>
               <p className="muted">複製市場邀請連結，讓朋友直接查看同一個 Polymarket 市場。</p>
               <TrackedCopyButton
                 value={marketShareUrl}
@@ -595,7 +600,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                 eventName="market_share_link_copied"
                 metadata={refCode ? { code: refCode, market: market.slug || market.externalId, surface: "detail_panel" } : { market: market.slug || market.externalId, surface: "detail_panel" }}
               />
-              {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+              
             </div>
             <div className="readiness-checklist stack">
               <div className="section-heading-row">

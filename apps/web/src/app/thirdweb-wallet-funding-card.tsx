@@ -14,7 +14,7 @@ interface ThirdwebWalletFundingCardProps {
 }
 
 const thirdwebDisclosure =
-  "資金會進入你的錢包。本平台不會託管你的資金。第三方增值服務可能收取費用，實際費用會在交易前顯示。單純增值錢包不代表已完成 Polymarket 交易。";
+  "資金會進入你的錢包。本平台不會託管你的資金。第三方增值或兌換服務可能收取費用，實際費用會在交易前顯示。單純增值錢包不代表已完成 Polymarket 交易。";
 
 export function ThirdwebWalletFundingCard({
   walletConnected = false,
@@ -38,7 +38,7 @@ export function ThirdwebWalletFundingCard({
   return (
     <section className={compact ? "disclosure-card stack" : "panel disclosure-card stack"} data-testid="thirdweb-wallet-funding">
       <div className="section-heading-row">
-        <strong>增值錢包 / Add funds</strong>
+        <strong>增值錢包</strong>
         <span className={`badge badge-${!providerAvailable ? "warning" : effectiveWalletConnected ? "success" : "neutral"}`}>
           {!providerAvailable ? "錢包功能暫未啟用" : effectiveWalletConnected ? "錢包已連接" : "尚未連接錢包"}
         </span>
@@ -58,15 +58,7 @@ export function ThirdwebWalletFundingCard({
             }}
           />
         ) : (
-          <button
-            type="button"
-            disabled
-            onClick={() => {
-              trackFunnelEvent("wallet_connect_started", { surface, provider: "thirdweb", configured: false });
-            }}
-          >
-            錢包功能暫未啟用
-          </button>
+          <button type="button">連接錢包</button>
         )}
         <button type="button" onClick={openFunding} disabled={!providerAvailable}>
           增值錢包
