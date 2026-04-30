@@ -22,6 +22,7 @@ import { FunnelEventTracker } from "../../funnel-analytics";
 import { PendingReferralNotice } from "../../pending-referral-notice";
 import { ThirdwebWalletFundingCard } from "../../thirdweb-wallet-funding-card";
 import { TrackedCopyButton } from "../../tracked-copy-button";
+import { BetaLaunchDisclosure } from "../../product-ui";
 import { getExternalMarket, getExternalMarketHistory, getExternalMarketOrderbook, getExternalMarketStats, getExternalMarketTrades, listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
 import {
   hasExternalMarketPriceData,
@@ -297,6 +298,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         </div>
       </section>
 
+      <BetaLaunchDisclosure />
       <BuilderFeeDisclosureCard locale={locale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={publicTradingReady} />
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
       {!marketTradable ? (
@@ -364,7 +366,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
         <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
-        {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+        {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
       </section>
 
       <section className="panel stack">
@@ -437,7 +439,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                 eventName="market_share_link_copied"
                 metadata={refCode ? { code: refCode, market: market.slug || market.externalId, surface: "detail_panel" } : { market: market.slug || market.externalId, surface: "detail_panel" }}
               />
-              {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+              {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
             </div>
             <div className="readiness-checklist stack">
               <div className="section-heading-row">

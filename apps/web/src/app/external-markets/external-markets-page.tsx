@@ -10,6 +10,7 @@ import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
+import { BetaLaunchDisclosure } from "../product-ui";
 
 import {
   getPolymarketTopBlockingReason,
@@ -286,6 +287,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           />
         </div>
       </section>
+      <BetaLaunchDisclosure />
       <form className="panel filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
         {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
         <label className="stack">
@@ -454,7 +456,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <td>
                         <div className="table-actions">
                           <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
-                          {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                          {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
                           <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
                         </div>
                       </td>
@@ -530,7 +532,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
                 <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
                 <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>

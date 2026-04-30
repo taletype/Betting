@@ -1,6 +1,7 @@
 import React from "react";
 import { getLocaleCopy, getLocaleHref, type AppLocale } from "../lib/locale";
 import { siteCopy } from "../lib/i18n";
+import { getPublicBetaLaunchState } from "../lib/launch-mode";
 import { LanguageSwitcher } from "./language-switcher";
 
 export function AppShell({
@@ -16,6 +17,7 @@ export function AppShell({
 }>) {
   const copy = getLocaleCopy(locale);
   const shortCopy = siteCopy[locale];
+  const launch = getPublicBetaLaunchState();
   const navItems = [
     { href: "/", label: copy.shell.nav.home, mobileLabel: copy.shell.nav.home, showMobile: false },
     { href: "/polymarket", label: copy.shell.nav.research, mobileLabel: "市場", showMobile: true },
@@ -49,6 +51,7 @@ export function AppShell({
       </nav>
       {children}
       <footer className="footer-disclosure">
+        <span>{launch.isBeta ? "Beta 公開預覽" : "正式模式"}</span>
         <span>{shortCopy.nonCustodial}</span>
         <span>{shortCopy.userSignedOrder}</span>
         <span>{copy.research.disabled}</span>

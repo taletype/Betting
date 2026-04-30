@@ -6,7 +6,7 @@ import { applyReferralCodeAction } from "../auth-actions";
 import { ReferralFunnelChart, RewardSplitChart } from "../charts/market-charts";
 import { PendingReferralApplier } from "../pending-referral-applier";
 import { PendingReferralNotice } from "../pending-referral-notice";
-import { EmptyState, MetricCard, SafetyDisclosure, StatusChip } from "../product-ui";
+import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure, StatusChip } from "../product-ui";
 import { TrackedCopyButton } from "../tracked-copy-button";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export default async function AmbassadorPage() {
         <div className="hero-copy stack">
           <h1>分享有用市場，直接邀請朋友</h1>
           <p>分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
-          <p>本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。</p>
+          <p>參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。</p>
           <p>獎勵計算可自動記錄，但實際支付需要管理員審批。</p>
           <div className="trust-badge-row">
             <StatusChip>直接推薦</StatusChip>
@@ -36,6 +36,7 @@ export default async function AmbassadorPage() {
           <PendingReferralNotice />
         </div>
       </section>
+      <BetaLaunchDisclosure />
       <SafetyDisclosure title="推薦規則">
         推薦獎勵只來自直接推薦及已確認的 Builder 費用收入，不設多層推薦，不代表任何交易盈利或保證收入。
       </SafetyDisclosure>

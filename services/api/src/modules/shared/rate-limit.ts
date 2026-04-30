@@ -28,6 +28,18 @@ export const rateLimitConfig = {
     windowMs: defaultWindowMs,
     maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_POLYMARKET_ROUTE_MAX, 30),
   },
+  publicMarkets: {
+    windowMs: defaultWindowMs,
+    maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_PUBLIC_MARKETS_MAX, 240),
+  },
+  ambassadorReferral: {
+    windowMs: defaultWindowMs,
+    maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_AMBASSADOR_REFERRAL_MAX, 20),
+  },
+  ambassadorPayout: {
+    windowMs: defaultWindowMs,
+    maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_AMBASSADOR_PAYOUT_MAX, 10),
+  },
   claims: {
     windowMs: defaultWindowMs,
     maxRequests: parsePositiveNumber(process.env.RATE_LIMIT_CLAIM_MAX, 30),

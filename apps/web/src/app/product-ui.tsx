@@ -1,5 +1,7 @@
 import React from "react";
 
+import { getPublicBetaLaunchState } from "../lib/launch-mode";
+
 export type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
 export function StatusChip({
@@ -43,6 +45,31 @@ export function SafetyDisclosure({
     <section className="panel disclosure-card stack">
       <strong>{title}</strong>
       <div className="muted">{children}</div>
+    </section>
+  );
+}
+
+export function BetaLaunchDisclosure() {
+  const launch = getPublicBetaLaunchState();
+
+  return (
+    <section className="panel disclosure-card stack" data-testid="beta-launch-disclosure">
+      <div className="section-heading-row">
+        <strong>{launch.isBeta ? "Beta 公開預覽" : "正式模式"}</strong>
+        <StatusChip tone={launch.isBeta ? "info" : "success"}>{launch.mode}</StatusChip>
+      </div>
+      <div className="trust-badge-row" aria-label="Beta launch safety state">
+        <StatusChip tone={launch.routedTradingEnabled ? "warning" : "success"}>
+          {launch.routedTradingEnabled ? "交易路由需覆核" : "交易路由已停用"}
+        </StatusChip>
+        <StatusChip tone="success">非託管</StatusChip>
+        <StatusChip tone={launch.autoPayoutEnabled ? "warning" : "success"}>
+          {launch.autoPayoutEnabled ? "自動支付需覆核" : "人工審批支付"}
+        </StatusChip>
+      </div>
+      <div className="muted">
+        公開 Beta 只供瀏覽 Polymarket 市場、推薦歸因及獎勵帳務預覽。本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金；獎勵支付不會自動執行。
+      </div>
     </section>
   );
 }

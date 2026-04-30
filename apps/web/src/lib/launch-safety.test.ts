@@ -9,6 +9,9 @@ import PolymarketPage from "../app/polymarket/page";
 import { PolymarketTradeTicket } from "../app/external-markets/polymarket-trade-ticket";
 import { ThirdwebWalletFundingCard, thirdwebDisclosure } from "../app/thirdweb-wallet-funding-card";
 import RewardsPage from "../app/rewards/page";
+import TermsPage from "../app/terms/page";
+import PrivacyPage from "../app/privacy/page";
+import RiskPage from "../app/risk/page";
 import { ambassadorRewardRevenueKinds, revenueSourcePolicies } from "./revenue-model";
 
 const repoRoot = resolve(process.cwd(), "../..");
@@ -53,7 +56,57 @@ test("builder code stays out of client components and public env variables", () 
   const envExample = readFileSync(resolve(repoRoot, ".env.example"), "utf8");
   assert.doesNotMatch(envExample, /NEXT_PUBLIC_.*POLY.*BUILDER|NEXT_PUBLIC_POLYMARKET_ROUTED_TRADING_ENABLED/);
   assert.match(envExample, /POLY_BUILDER_CODE=\n/);
+  assert.match(envExample, /NEXT_PUBLIC_APP_LAUNCH_MODE=beta/);
   assert.match(envExample, /POLYMARKET_ROUTED_TRADING_ENABLED=false/);
+  assert.match(envExample, /AMBASSADOR_AUTO_PAYOUT_ENABLED=false/);
+});
+
+test("public beta launch mode renders explicit disabled trading and manual payout state", async (t) => {
+  const previousMode = process.env.NEXT_PUBLIC_APP_LAUNCH_MODE;
+  const previousTrading = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  const previousPayout = process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+  process.env.NEXT_PUBLIC_APP_LAUNCH_MODE = "beta";
+  delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+
+  t.after(() => {
+    if (previousMode === undefined) delete process.env.NEXT_PUBLIC_APP_LAUNCH_MODE;
+    else process.env.NEXT_PUBLIC_APP_LAUNCH_MODE = previousMode;
+    if (previousTrading === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+    else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = previousTrading;
+    if (previousPayout === undefined) delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+    else process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED = previousPayout;
+  });
+
+  const markup = renderToStaticMarkup(await RewardsPage());
+  assert.match(markup, /Beta 公開預覽/);
+  assert.match(markup, /交易路由已停用/);
+  assert.match(markup, /非託管/);
+  assert.match(markup, /人工審批支付/);
+});
+
+test("safe launch status reports beta mode with routed trading and auto payout disabled by default", async (t) => {
+  const previousMode = process.env.NEXT_PUBLIC_APP_LAUNCH_MODE;
+  const previousTrading = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  const previousPayout = process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+  process.env.NEXT_PUBLIC_APP_LAUNCH_MODE = "beta";
+  delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+  delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+
+  t.after(() => {
+    if (previousMode === undefined) delete process.env.NEXT_PUBLIC_APP_LAUNCH_MODE;
+    else process.env.NEXT_PUBLIC_APP_LAUNCH_MODE = previousMode;
+    if (previousTrading === undefined) delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
+    else process.env.POLYMARKET_ROUTED_TRADING_ENABLED = previousTrading;
+    if (previousPayout === undefined) delete process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED;
+    else process.env.AMBASSADOR_AUTO_PAYOUT_ENABLED = previousPayout;
+  });
+
+  const { getSafeLaunchStatus } = await import("../app/api/_shared/launch-status");
+  const status = getSafeLaunchStatus();
+  assert.equal(status.launchMode, "beta");
+  assert.equal(status.routedTradingEnabled, false);
+  assert.equal(status.autoPayoutEnabled, false);
 });
 
 test("external Polymarket UI and read API do not import internal ledger or balance mutation modules", () => {
@@ -283,6 +336,21 @@ test("rewards page presents rewards as manual approval accounting", async () => 
   assert.match(markup, /不會自動從金庫轉帳/);
 });
 
+test("required beta disclosure pages render risk, privacy, and terms copy", () => {
+  const pages = [
+    renderToStaticMarkup(React.createElement(TermsPage)),
+    renderToStaticMarkup(React.createElement(PrivacyPage)),
+    renderToStaticMarkup(React.createElement(RiskPage)),
+  ].join("\n");
+
+  assert.match(pages, /服務條款/);
+  assert.match(pages, /私隱政策/);
+  assert.match(pages, /風險披露/);
+  assert.match(pages, /年齡及地區限制/);
+  assert.match(pages, /所在地區/);
+  assert.match(pages, /本平台不會代用戶下注或交易/);
+});
+
 test("Builder fee disclosures show pending 0.5 percent maker and 1 percent taker without browsing fees", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -331,11 +399,10 @@ test("forbidden reward and trading wording does not appear in non-test product f
     "managed betting",
   ];
   const pattern = new RegExp(forbiddenTerms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "i");
-  const approvedReferralSafetyCopy = "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。";
   const offenders = walkTextFiles(repoRoot)
     .filter((file) => !/(\.test\.|\/node_modules\/|\/\.next\/)/.test(file))
     .filter((file) => !/docs\/(mvp-scope|invite-referral-funnel|ambassador-rewards-hk)\.md$/.test(file))
-    .filter((file) => pattern.test(readFileSync(file, "utf8").replaceAll(approvedReferralSafetyCopy, "")));
+    .filter((file) => pattern.test(readFileSync(file, "utf8")));
 
   assert.deepEqual(offenders.map((file) => file.replace(`${repoRoot}/`, "")), []);
 });

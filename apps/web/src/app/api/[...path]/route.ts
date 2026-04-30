@@ -64,6 +64,40 @@ const getVersionPayload = () => ({
 const safeErrorMessage = (error: unknown): string =>
   process.env.NODE_ENV === "production" ? "Request failed" : error instanceof Error ? error.message : "Failed to fetch data";
 
+const rateLimitState = new Map<string, { windowStartedAtMs: number; count: number }>();
+
+const checkLocalRateLimit = (
+  scope: "publicMarkets" | "ambassadorReferral" | "ambassadorPayout",
+  identity: string,
+  maxRequests: number,
+) => {
+  const windowMs = 60_000;
+  const key = `${scope}:${identity}`;
+  const now = Date.now();
+  const existing = rateLimitState.get(key);
+
+  if (!existing || now - existing.windowStartedAtMs >= windowMs) {
+    rateLimitState.set(key, { windowStartedAtMs: now, count: 1 });
+    return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+  }
+
+  if (existing.count >= maxRequests) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(Math.ceil((windowMs - (now - existing.windowStartedAtMs)) / 1000), 1),
+    };
+  }
+
+  existing.count += 1;
+  return {
+    allowed: true,
+    retryAfterSeconds: Math.max(Math.ceil((windowMs - (now - existing.windowStartedAtMs)) / 1000), 1),
+  };
+};
+
+const rateLimitResponse = (retryAfterSeconds: number) =>
+  NextResponse.json({ error: "rate limit exceeded" }, { status: 429, headers: { "retry-after": String(retryAfterSeconds) } });
+
 const recordAdminAuditLog = async (input: {
   actorUserId: string;
   action: string;
@@ -102,6 +136,8 @@ async function handleRequest(
     const adminSupabase = () => supabaseAdminClientFactory();
 
     if (apiPath === "external/markets" && request.method === "GET") {
+      const rateLimit = checkLocalRateLimit("publicMarkets", request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "anonymous", 240);
+      if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
       return externalMarketsResponse(request, adminSupabase);
     }
 
@@ -362,11 +398,15 @@ async function handleRequest(
     }
 
     if (apiPath === "ambassador/capture" && request.method === "POST") {
+      const rateLimit = checkLocalRateLimit("ambassadorReferral", userId, 20);
+      if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
       const body = (await request.json().catch(() => ({}))) as { code?: string };
       return NextResponse.json(normalizeApiPayload(await captureAmbassadorReferralDb(userId, body.code ?? "")));
     }
 
     if (apiPath === "ambassador/payouts" && request.method === "POST") {
+      const rateLimit = checkLocalRateLimit("ambassadorPayout", userId, 10);
+      if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
       const body = (await request.json().catch(() => ({}))) as {
         destinationType?: "wallet" | "manual";
         destinationValue?: string;

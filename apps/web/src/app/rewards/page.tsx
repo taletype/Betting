@@ -4,7 +4,7 @@ import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
 import { PayoutStatusChart, RewardSplitChart, VolumeHistoryChart } from "../charts/market-charts";
 import { PendingReferralNotice } from "../pending-referral-notice";
-import { EmptyState, MetricCard, SafetyDisclosure } from "../product-ui";
+import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure } from "../product-ui";
 import { requestRewardPayoutAction } from "./reward-actions";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,7 @@ export default async function RewardsPage() {
         <p>獎勵計算可自動記錄，但實際支付不會自動執行，不會自動從金庫轉帳，需要人工審批。</p>
         <PendingReferralNotice />
       </section>
+      <BetaLaunchDisclosure />
       <SafetyDisclosure title="帳務提示">
         本頁不顯示可用交易資金，亦不代表盈利。所有項目均為推薦獎勵紀錄，支付前需經人工審批。
       </SafetyDisclosure>

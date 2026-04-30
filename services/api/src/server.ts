@@ -381,6 +381,14 @@ const handleRequest = async (request: Request): Promise<Response> => {
     }
 
     if (request.method === "GET" && url.pathname === "/external/markets") {
+      const rateLimit = checkRateLimit("publicMarkets", actorIdentity);
+      if (!rateLimit.allowed) {
+        incrementCounter("rate_limited_total", { scope: "public_markets" });
+        return Response.json(
+          { error: "rate limit exceeded" },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
+        );
+      }
       const payload = await listExternalMarkets();
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },
@@ -743,6 +751,15 @@ const handleRequest = async (request: Request): Promise<Response> => {
         return unauthorized;
       }
 
+      const rateLimit = checkRateLimit("ambassadorReferral", actorIdentity);
+      if (!rateLimit.allowed) {
+        incrementCounter("rate_limited_total", { scope: "ambassador_referral" });
+        return Response.json(
+          { error: "rate limit exceeded" },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
+        );
+      }
+
       const body = await parseBody(request);
       const payload = await captureAmbassadorReferralHandler({
         userId: requestUserId,
@@ -757,6 +774,15 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
         return unauthorized;
+      }
+
+      const rateLimit = checkRateLimit("ambassadorPayout", actorIdentity);
+      if (!rateLimit.allowed) {
+        incrementCounter("rate_limited_total", { scope: "ambassador_payout" });
+        return Response.json(
+          { error: "rate limit exceeded" },
+          { status: 429, headers: { "retry-after": String(rateLimit.retryAfterSeconds) } },
+        );
       }
 
       const body = await parseBody(request);

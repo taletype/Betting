@@ -15,6 +15,7 @@ const hasBuilderCode = (): boolean => {
 };
 
 export const getSafeLaunchStatus = () => ({
+  launchMode: process.env.NEXT_PUBLIC_APP_LAUNCH_MODE === "production" ? "production" : "beta",
   externalMarketData: {
     status: "available_or_empty",
   },

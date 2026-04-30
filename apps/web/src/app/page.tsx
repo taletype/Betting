@@ -4,7 +4,7 @@ import React from "react";
 import { MarketSparkline } from "./charts/market-charts";
 import { FunnelEventTracker } from "./funnel-analytics";
 import { PendingReferralNotice } from "./pending-referral-notice";
-import { EmptyState, SafetyDisclosure, StatusChip } from "./product-ui";
+import { BetaLaunchDisclosure, EmptyState, SafetyDisclosure, StatusChip } from "./product-ui";
 import { TrackedCopyButton } from "./tracked-copy-button";
 import { listExternalMarkets, type ExternalMarketApiRecord } from "../lib/api";
 import {
@@ -109,6 +109,8 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
           )}
         </aside>
       </section>
+
+      <BetaLaunchDisclosure />
 
       <SafetyDisclosure title="安全披露">
         本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。
