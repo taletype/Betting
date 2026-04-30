@@ -56,8 +56,8 @@ export const validateApiEnvironment = (): void => {
   readRequiredStringLike("GROQ_TRANSLATION_MODEL", "qwen/qwen3-32b");
   readRequiredStringLike("MARKET_TRANSLATION_DEFAULT_LOCALE", "zh-HK");
   readStringList("MARKET_TRANSLATION_LOCALES", {
-    defaultValue: ["zh-HK", "zh-TW", "zh-CN"],
-    allowed: ["zh-HK", "zh-TW", "zh-CN"],
+    defaultValue: ["zh-HK", "zh-CN"],
+    allowed: ["zh-HK", "zh-CN"],
   });
   getAmbassadorRewardsConfig();
 };

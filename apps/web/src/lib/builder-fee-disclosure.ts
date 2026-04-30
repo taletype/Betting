@@ -19,7 +19,7 @@ export const formatBpsPercent = (bps: number): string => {
   return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%`;
 };
 
-export const getBuilderFeeStatusLabel = (status: BuilderFeeStatus, locale: "zh-HK" | "zh-TW" | "zh-CN" | "en"): string => {
+export const getBuilderFeeStatusLabel = (status: BuilderFeeStatus, locale: "zh-HK" | "zh-CN" | "en"): string => {
   if (locale !== "en") return status === "active" ? "已生效" : "待生效";
   return status === "active" ? "active" : "pending";
 };

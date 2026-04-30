@@ -561,7 +561,7 @@ export interface ExternalMarketApiRecord {
   descriptionLocalized?: string;
   outcomesOriginal?: ExternalMarketApiOutcome[];
   outcomesLocalized?: ExternalMarketApiOutcome[];
-  locale?: "zh-HK" | "zh-TW" | "zh-CN" | "en";
+  locale?: "zh-HK" | "zh-CN" | "en";
   translationStatus?: ExternalMarketTranslationStatus;
 }
 

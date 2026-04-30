@@ -104,7 +104,7 @@ test("translation worker detects stale source hashes", async () => {
   const { db } = createDb(oldHash);
   const result = await runPolymarketMarketTranslationSyncJobWithDependencies(db, translator);
   assert.equal(result.stale, 1);
-  assert.equal(result.translated, 3);
+  assert.equal(result.translated, 2);
 });
 
 test("malformed translator output is handled as a failed translation", async () => {

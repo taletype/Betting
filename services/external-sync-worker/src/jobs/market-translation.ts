@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { createDatabaseClient, type DatabaseExecutor } from "@bet/db";
 
 const provider = "groq";
-const supportedLocales = ["zh-HK", "zh-TW", "zh-CN"] as const;
+const supportedLocales = ["zh-HK", "zh-CN"] as const;
 type TranslationLocale = (typeof supportedLocales)[number];
 type TranslationStatus = "pending" | "translated" | "reviewed" | "failed" | "stale" | "skipped";
 
@@ -66,9 +66,9 @@ const readPositiveInteger = (name: string, fallback: number): number => {
 };
 
 const getConfiguredLocales = (): TranslationLocale[] => {
-  const configured = (process.env.MARKET_TRANSLATION_LOCALES ?? "zh-HK,zh-TW,zh-CN")
+  const configured = (process.env.MARKET_TRANSLATION_LOCALES ?? "zh-HK,zh-CN")
     .split(",")
-    .map((value) => value.trim())
+    .map((value) => value.trim() === "zh-TW" ? "zh-HK" : value.trim())
     .filter(Boolean);
   const locales = configured.filter((value): value is TranslationLocale =>
     supportedLocales.includes(value as TranslationLocale),
@@ -95,7 +95,6 @@ export const getMarketSourceContentHash = (input: { title: string; description: 
 
 const localeInstruction = (locale: TranslationLocale): string => {
   if (locale === "zh-HK") return "Use Hong Kong Traditional Chinese.";
-  if (locale === "zh-TW") return "Use Taiwan Traditional Chinese.";
   return "Use Simplified Chinese.";
 };
 
@@ -316,4 +315,3 @@ export const runPolymarketMarketTranslationSyncJobWithDependencies = async (
 
 export const polymarket_market_translation_sync = async (): Promise<MarketTranslationSyncSummary> =>
   runPolymarketMarketTranslationSyncJobWithDependencies(createDatabaseClient());
-

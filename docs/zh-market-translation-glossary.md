@@ -10,8 +10,7 @@ Preserve these terms exactly:
 
 Locale guidance:
 
-- `zh-HK`: Hong Kong Traditional Chinese
-- `zh-TW`: Taiwan Traditional Chinese
+- `zh-HK`: Traditional Chinese
 - `zh-CN`: Simplified Chinese
 
 Preferred terms:

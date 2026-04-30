@@ -49,7 +49,7 @@ export function ThirdwebWalletFundingCard({
             connectButton={{ label: "連接錢包" }}
             connectModal={{ title: "連接你的錢包", size: "compact" }}
             detailsButton={{ displayBalanceToken: { [polygon.id]: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" } }}
-            theme="light"
+            theme="dark"
             onConnect={(wallet) => {
               trackFunnelEvent("wallet_connect_started", { surface, provider: "thirdweb" });
               trackFunnelEvent("wallet_connected", { surface, provider: "thirdweb", walletId: wallet.id });
@@ -91,7 +91,7 @@ export function ThirdwebWalletFundingCard({
           {thirdweb.client ? (
             <PayEmbed
               client={thirdweb.client}
-              theme="light"
+              theme="dark"
               payOptions={{
                 mode: "fund_wallet",
                 metadata: { name: "為你的錢包增值" },

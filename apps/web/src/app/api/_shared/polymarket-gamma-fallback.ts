@@ -62,7 +62,7 @@ export interface PublicExternalMarketRecord {
   descriptionLocalized?: string;
   outcomesOriginal?: PublicExternalMarketRecord["outcomes"];
   outcomesLocalized?: PublicExternalMarketRecord["outcomes"];
-  locale?: "zh-HK" | "zh-TW" | "zh-CN" | "en";
+  locale?: "zh-HK" | "zh-CN" | "en";
   translationStatus?: "pending" | "translated" | "reviewed" | "failed" | "stale" | "skipped" | "original";
 }
 

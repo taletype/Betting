@@ -6,11 +6,11 @@ import { formatDateTime, getLocaleCopy, getLocaleHref, isSupportedLocale, locale
 test("locale helpers validate and resolve locales", () => {
   assert.equal(isSupportedLocale("en"), true);
   assert.equal(isSupportedLocale("zh-HK"), true);
-  assert.equal(isSupportedLocale("zh-TW"), true);
   assert.equal(isSupportedLocale("zh-CN"), true);
   assert.equal(resolveLocale("zh-HK"), "zh-HK");
+  assert.equal(resolveLocale("zh-TW"), "zh-HK");
   assert.equal(normalizeLocale("zh-cn"), "zh-CN");
-  assert.equal(localeToHtmlLang("zh-TW"), "zh-TW");
+  assert.equal(localeToHtmlLang("zh-HK"), "zh-HK");
   assert.equal(localeToDisplayName("zh-CN"), "简中");
   assert.equal(resolveLocale("unknown"), "zh-HK");
 });

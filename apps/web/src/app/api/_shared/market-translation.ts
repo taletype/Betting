@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
 
-export const marketTranslationLocales = ["zh-HK", "zh-TW", "zh-CN"] as const;
+export const marketTranslationLocales = ["zh-HK", "zh-CN"] as const;
 export type MarketTranslationLocale = (typeof marketTranslationLocales)[number];
 export type MarketResponseLocale = MarketTranslationLocale | "en";
 export type MarketTranslationStatus = "pending" | "translated" | "reviewed" | "failed" | "stale" | "skipped" | "original";
@@ -25,6 +25,7 @@ interface TranslationRow {
 }
 
 export const resolveMarketLocale = (value: string | null | undefined): MarketResponseLocale => {
+  if (value === "zh-TW") return "zh-HK";
   if (value === "en" || marketTranslationLocales.includes(value as MarketTranslationLocale)) {
     return value as MarketResponseLocale;
   }
@@ -32,9 +33,9 @@ export const resolveMarketLocale = (value: string | null | undefined): MarketRes
 };
 
 export const getConfiguredMarketTranslationLocales = (): MarketTranslationLocale[] => {
-  const configured = (process.env.MARKET_TRANSLATION_LOCALES ?? "zh-HK,zh-TW,zh-CN")
+  const configured = (process.env.MARKET_TRANSLATION_LOCALES ?? "zh-HK,zh-CN")
     .split(",")
-    .map((value) => value.trim())
+    .map((value) => value.trim() === "zh-TW" ? "zh-HK" : value.trim())
     .filter(Boolean);
   const locales = configured.filter((value): value is MarketTranslationLocale =>
     marketTranslationLocales.includes(value as MarketTranslationLocale),

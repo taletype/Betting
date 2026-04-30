@@ -1,4 +1,4 @@
-export const supportedLocales = ["zh-HK", "zh-TW", "zh-CN", "en"] as const;
+export const supportedLocales = ["zh-HK", "zh-CN", "en"] as const;
 
 export type AppLocale = (typeof supportedLocales)[number];
 
@@ -13,9 +13,9 @@ const localeAliases: Record<string, AppLocale> = {
   "zh-hk": "zh-HK",
   "zh_hk": "zh-HK",
   "zhhk": "zh-HK",
-  "zh-tw": "zh-TW",
-  "zh_tw": "zh-TW",
-  "zhtw": "zh-TW",
+  "zh-tw": "zh-HK",
+  "zh_tw": "zh-HK",
+  "zhtw": "zh-HK",
   "zh-cn": "zh-CN",
   "zh_cn": "zh-CN",
   "zhcn": "zh-CN",
@@ -33,8 +33,7 @@ export const resolveLocale = normalizeLocale;
 export const localeToHtmlLang = (locale: AppLocale): string => locale;
 
 export const localeToDisplayName = (locale: AppLocale): string => ({
-  "zh-HK": "繁中 HK",
-  "zh-TW": "繁中 TW",
+  "zh-HK": "繁中",
   "zh-CN": "简中",
   en: "English",
 })[locale];
@@ -1231,7 +1230,6 @@ const mergeLocaleCopy = <T>(fallback: T, override: DeepPartial<T> | undefined): 
 const localizedCopy: Record<AppLocale, DeepPartial<LocaleCopy>> = {
   en,
   "zh-HK": zhHK,
-  "zh-TW": zhHK,
   "zh-CN": zhHK,
 };
 
@@ -1240,7 +1238,6 @@ export const getLocaleCopy = (locale: AppLocale): LocaleCopy => mergeLocaleCopy(
 export const localeCopy: Record<AppLocale, LocaleCopy> = {
   en: getLocaleCopy("en"),
   "zh-HK": getLocaleCopy("zh-HK"),
-  "zh-TW": getLocaleCopy("zh-TW"),
   "zh-CN": getLocaleCopy("zh-CN"),
 };
 
