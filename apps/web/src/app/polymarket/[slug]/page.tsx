@@ -4,7 +4,6 @@ import React from "react";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 
 import { resolvePolymarketDetailSlug } from "../../api/_shared/polymarket-detail-slug";
-import { BuilderFeeDisclosureCard } from "../../builder-fee-disclosure-card";
 import {
   LiquidityHistoryChart,
   OrderBookDepthChart,
@@ -22,9 +21,8 @@ import {
 import { PolymarketTradeTicket } from "../../external-markets/polymarket-trade-ticket";
 import { FunnelEventTracker } from "../../funnel-analytics";
 import { PendingReferralNotice } from "../../pending-referral-notice";
-import { ThirdwebWalletFundingCard } from "../../thirdweb-wallet-funding-card";
 import { TrackedCopyButton } from "../../tracked-copy-button";
-import { BetaLaunchDisclosure, SharedRewardDisclosure, SharedSafetyDisclosure } from "../../product-ui";
+import { Breadcrumb, SectionAccordion } from "../../product-ui";
 import { getExternalMarket, getExternalMarketHistory, getExternalMarketOrderbook, getExternalMarketStats, getExternalMarketTrades, listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
 import {
   hasExternalMarketPriceData,
@@ -33,7 +31,6 @@ import {
 } from "../../../lib/external-market-status";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../../lib/locale";
 import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../../../lib/market-localization";
-import { siteCopy } from "../../../lib/i18n";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
 import { getSiteUrl } from "../../../lib/site-url";
 
@@ -240,7 +237,6 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const query = await searchParams;
   const refCode = normalizeReferralCode(query?.ref);
   const copy = getLocaleCopy(locale).research;
-  const shortCopy = siteCopy[locale];
   const hasBuilderCode = hasPolymarketBuilderCode();
   const globallyRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const betaRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
@@ -424,250 +420,231 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     price: market.lastTradePrice ?? market.outcomes[0]?.lastPrice ?? market.outcomes[0]?.bestAsk ?? market.outcomes[0]?.bestBid ?? null,
     size: 10,
   };
+  const priceSpread = stats?.spread ?? market.spread ?? (market.bestBid !== null && market.bestAsk !== null ? market.bestAsk - market.bestBid : null);
+  const lastUpdated = market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never;
+  const outcomeChance = (price: number | null): string => price === null || price <= 0 ? "暫無機會率" : `${Math.round(price * 100)}% 機會率`;
 
   return (
     <main className="stack">
       <FunnelEventTracker name="market_detail_view" metadata={{ market: market.slug || market.externalId }} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
-      <section className="hero">
-        <MarketHeroImage market={market} alt={localizedTitle} />
-        <div className="market-card-meta">
-          <div className="badge badge-info">Polymarket</div>
-          <div className="badge badge-success">非託管</div>
-          {browseOnly ? <div className="badge badge-warning">只供瀏覽</div> : null}
-          {!submitModeEnabled ? <div className="badge badge-warning">實盤提交已停用</div> : null}
-          {restricted ? <div className="badge badge-warning">市場受限制</div> : null}
-        </div>
-        <h1>{localizedTitle}</h1>
-        <div className="market-hero-facts">
-          <div className="kv"><span className="kv-key">狀態</span><span className="kv-value">{copy.statuses[market.status] ?? market.status}</span></div>
-          <div className="kv"><span className="kv-key">截止時間</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>
-          <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{toDisplay(market.volume24h ?? market.volumeTotal)}</span></div>
-          <div className="kv"><span className="kv-key">流動性</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal)}</span></div>
-          <div className="kv"><span className="kv-key">來源</span><span className="kv-value">來源：Polymarket</span></div>
-          <div className="kv"><span className="kv-key">最後更新</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
-        </div>
-        <div className="grid">
-          <article className="metric-card">
-            <span className="metric-label">Yes</span>
-            <strong>{toPriceDisplay(yesPrice)}</strong>
-          </article>
-          <article className="metric-card">
-            <span className="metric-label">No</span>
-            <strong>{toPriceDisplay(noPrice)}</strong>
-          </article>
-        </div>
-        <div className="trust-badge-row" aria-label="市場重點">
-          <span className="badge badge-neutral">成交量：{toDisplay(market.volume24h ?? market.volumeTotal)}</span>
-          <span className="badge badge-neutral">流動性：{toDisplay(market.liquidity ?? market.volumeTotal)}</span>
-          <span className="badge badge-neutral">結束：{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span>
-        </div>
-        {market.description ? <p>{market.description}</p> : null}
-        <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
-        {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
-        <div className="market-actions">
-          <button type="button" className="button-link primary-cta" disabled>{tradeActionLabel(topBlockingReason)}</button>
-          <TrackedCopyButton
-            value={baseMarketShareUrl}
-            label="複製市場連結"
-            copiedLabel="已複製"
-            eventName="market_share_link_copied"
-            metadata={{ market: market.slug || market.externalId, surface: "hero_plain" }}
-          />
-          <TrackedCopyButton
-            value={referralMarketShareUrl}
-            label="複製市場推薦連結"
-            copiedLabel="已複製"
-            eventName="market_share_link_copied"
-            metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
-          />
-        </div>
-      </section>
-
-      <BetaLaunchDisclosure />
-      <SharedSafetyDisclosure />
-      <SharedRewardDisclosure />
-      <BuilderFeeDisclosureCard
-        locale={locale}
-        hasBuilderCode={hasBuilderCode}
-        routedTradingEnabled={publicSubmitEnabled}
-        tradingStatusLabel={publicTradingStatusLabel}
+      <Breadcrumb
+        items={[
+          { label: "首頁", href: getLocaleHref(locale, "/") },
+          { label: "Polymarket 市場", href: `${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}` },
+          { label: localizedTitle },
+        ]}
       />
-      <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
-      {!marketTradable ? (
-        <section className="panel disclosure-card stack">
-          <strong>{restricted ? "只供瀏覽 / 市場受限制" : "市場暫時不可交易"}</strong>
-          <p className="muted">此市場目前只供瀏覽。實際交易是否可提交，將由 Polymarket 的市場、錢包、憑證及合規檢查判斷。</p>
-        </section>
-      ) : null}
-      {externalDataUnavailable ? (
-        <section className="panel disclosure-card stack">
-          <strong>外部資料可能過時或暫時不可用</strong>
-          <p className="muted">市場資料可能已過期，請稍後再試。頁面會顯示已同步的市場資料；Gamma / CLOB 即時資料不可用時，圖表、訂單簿或近期成交會以安全空狀態顯示。</p>
-        </section>
-      ) : null}
 
       <section className="market-detail-layout">
         <div className="market-detail-primary stack">
-      <section className="grid">
-        <article className="panel stack">
-          <strong>{copy.price}</strong>
-          <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toPriceDisplay(market.lastTradePrice)}</span></div>
-          <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(market.bestBid)}</span></div>
-          <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk)}</span></div>
-          <div className="kv"><span className="kv-key">買賣差價</span><span className="kv-value">{toPriceDisplay(stats?.spread ?? market.spread ?? (market.bestBid !== null && market.bestAsk !== null ? market.bestAsk - market.bestBid : null))}</span></div>
-        </article>
-        <article className="panel stack">
-          <strong>{copy.volume24h} / {copy.liquidity}</strong>
-          <div className="kv"><span className="kv-key">{copy.volume24h}</span><span className="kv-value">{toDisplay(market.volume24h)}</span></div>
-          <div className="kv"><span className="kv-key">{copy.totalVolume}</span><span className="kv-value">{toDisplay(market.volumeTotal)}</span></div>
-          <div className="kv"><span className="kv-key">{copy.liquidity}</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal)}</span></div>
-        </article>
-        <article className="panel stack">
-          <strong>{copy.resolution}</strong>
-          <div className="kv"><span className="kv-key">{copy.statuses[market.status] ?? market.status}</span><span className="kv-value">{market.resolvedAt ? formatDateTime(locale, market.resolvedAt, "UTC") : "—"}</span></div>
-          <div className="kv"><span className="kv-key">{copy.closeTime}</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>
-        </article>
-      </section>
-
-      <section className="panel stack">
-        <h2 className="section-title">{copy.outcomes}</h2>
-        {market.outcomes.length === 0 ? (
-          <div className="empty-state">{copy.outcomesUnavailable}</div>
-        ) : (
-          <div className="grid">
-            {market.outcomes.map((outcome) => (
-              <article className="outcome-card stack" key={outcome.externalOutcomeId}>
-                <strong>{localizeOutcomeLabel(outcome.title, locale)}</strong>
-                {localizeOutcomeLabel(outcome.title, locale) !== outcome.title ? <span className="muted">原文：{outcome.title}</span> : null}
-                <div className="kv"><span className="kv-key">{copy.price}</span><span className="kv-value">{toPriceDisplay(outcome.lastPrice)}</span></div>
-                <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(outcome.bestBid)}</span></div>
-                <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(outcome.bestAsk)}</span></div>
+          <section className="market-header stack">
+            <div className="market-card-meta">
+              <div className="badge badge-neutral"><span className="source-dot" aria-hidden="true" />POLYMARKET</div>
+              <div className={`badge badge-${browseOnly ? "warning" : "success"}`}>{copy.statuses[market.status] ?? market.status}</div>
+              <div className="badge badge-info">Beta</div>
+              <div className="badge badge-success">非託管</div>
+              {!submitModeEnabled ? <div className="badge badge-warning">實盤提交已停用</div> : null}
+              {restricted ? <div className="badge badge-warning">市場受限制</div> : null}
+            </div>
+            <h1 className="market-title">{localizedTitle}</h1>
+            <MarketHeroImage market={market} alt={localizedTitle} />
+            <div className="grid outcomes">
+              <article className="outcome-card yes" data-outcome="yes">
+                <span className="outcome-label">YES · <strong>是</strong></span>
+                <strong className="outcome-price">{toPriceDisplay(yesPrice)}</strong>
+                <span className="outcome-pct">{outcomeChance(yesPrice)}</span>
               </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="grid">
-        <PriceHistoryChart points={historyPoints} stale={stale} />
-        <VolumeHistoryChart points={volumePoints} stale={stale} />
-        <LiquidityHistoryChart points={liquidityPoints} stale={stale} />
-      </section>
-
-      <section className="panel stack">
-        <h2 className="section-title">市場規則 / Resolution rules</h2>
-        <details className="advanced-ticket-settings">
-          <summary>查看原始英文規則</summary>
-          <section className="original-copy" aria-label="原始市場問題">
-            <strong>原始市場問題：</strong>
-            <p className="muted">{originalQuestion || market.title}</p>
-            {market.descriptionOriginal || market.description ? <p className="muted">{market.descriptionOriginal ?? market.description}</p> : null}
+              <article className="outcome-card no" data-outcome="no">
+                <span className="outcome-label">NO · <strong>否</strong></span>
+                <strong className="outcome-price">{toPriceDisplay(noPrice)}</strong>
+                <span className="outcome-pct">{outcomeChance(noPrice)}</span>
+              </article>
+            </div>
+            <div className="market-hero-facts">
+              <div className="kv"><span className="kv-key">成交量</span><span className="kv-value">{toDisplay(market.volume24h ?? market.volumeTotal)}</span></div>
+              <div className="kv"><span className="kv-key">流動性</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal)}</span></div>
+              <div className="kv"><span className="kv-key">截止時間</span><span className="kv-value">{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span></div>
+              <div className="kv"><span className="kv-key">最後更新</span><span className="kv-value">{lastUpdated}</span></div>
+            </div>
+            {market.description ? <p className="muted">{market.description}</p> : null}
+            <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
+            {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
+            <div className="market-actions">
+              <button type="button" className="button-link primary-cta" disabled>{tradeActionLabel(topBlockingReason)}</button>
+              <TrackedCopyButton
+                value={baseMarketShareUrl}
+                label="複製市場連結"
+                copiedLabel="已複製"
+                eventName="market_share_link_copied"
+                metadata={{ market: market.slug || market.externalId, surface: "hero_plain" }}
+              />
+              <TrackedCopyButton
+                value={referralMarketShareUrl}
+                label="複製市場推薦連結"
+                copiedLabel="已複製"
+                eventName="market_share_link_copied"
+                metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
+              />
+            </div>
           </section>
-        </details>
-      </section>
 
-      <section className="panel stack">
-        <h2 className="section-title">{copy.provenance}</h2>
-        <div className="kv"><span className="kv-key">{copy.source}</span><span className="kv-value">來源：Polymarket</span></div>
-        <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">資料來源：Polymarket API</span></div>
-        <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
-        <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
-      </section>
+          {!marketTradable ? (
+            <section className="panel disclosure-card stack">
+              <strong>{restricted ? "只供瀏覽 / 市場受限制" : "市場暫時不可交易"}</strong>
+              <p className="muted">此市場目前只供瀏覽。實際交易是否可提交，將由 Polymarket 的市場、錢包、憑證及合規檢查判斷。</p>
+            </section>
+          ) : null}
+          {externalDataUnavailable ? (
+            <section className="panel disclosure-card stack">
+              <strong>外部資料可能過時或暫時不可用</strong>
+              <p className="muted">市場資料可能已過期，請稍後再試。頁面會顯示已同步的市場資料；Gamma / CLOB 即時資料不可用時，圖表、訂單簿或近期成交會以安全空狀態顯示。</p>
+            </section>
+          ) : null}
 
-      {debugVisible ? (
-        <section className="panel stack">
-          <h2 className="section-title">市場資料健康狀態</h2>
-          <div className="grid">
-            <div className="kv"><span className="kv-key">feed cache available</span><span className="kv-value">{market.sourceProvenance || market.provenance ? "yes" : "unknown"}</span></div>
-            <div className="kv"><span className="kv-key">detail fallback available</span><span className="kv-value">yes</span></div>
-            <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{failed ? "no" : "yes"}</span></div>
-            <div className="kv"><span className="kv-key">Gamma fallback enabled/used</span><span className="kv-value">{formatProvenance(market).includes("gamma-api.polymarket.com") ? "yes" : "enabled"}</span></div>
-            <div className="kv"><span className="kv-key">stale cache</span><span className="kv-value">{stale ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">detail not found</span><span className="kv-value">no</span></div>
-            <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
-            <div className="kv"><span className="kv-key">原始 route slug</span><span className="kv-value mono">{slugResolution.decodedSlug}</span></div>
-            <div className="kv"><span className="kv-key">Gamma canonical slug</span><span className="kv-value mono">{market.slug}</span></div>
-            <div className="kv"><span className="kv-key">active / closed / archived / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.restricted)}</span></div>
-          </div>
-        </section>
-      ) : null}
+          <SectionAccordion title="價格走勢" badge={historyPoints.length < 2 ? "暫無資料" : undefined} defaultOpen>
+            <section className="grid">
+              <PriceHistoryChart points={historyPoints} stale={stale} />
+              <VolumeHistoryChart points={volumePoints} stale={stale} />
+              <LiquidityHistoryChart points={liquidityPoints} stale={stale} />
+            </section>
+          </SectionAccordion>
 
-      <section className="panel stack">
-        <h2 className="section-title">推薦分成 / 推薦分享</h2>
-        <p className="muted">分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
-        <p className="muted">交易回贈：合資格交易如產生已確認 Builder 費用收入，交易用戶可獲得交易回贈。實際支付需要人手審批。</p>
-        <TrackedCopyButton
-          value={baseMarketShareUrl}
-          label="複製市場連結"
-          copiedLabel="已複製"
-          eventName="market_share_link_copied"
-          metadata={{ market: market.slug || market.externalId, surface: "detail_plain" }}
-        />
-        <TrackedCopyButton
-          value={referralMarketShareUrl}
-          label="複製市場推薦連結"
-          copiedLabel="已複製"
-          eventName="market_share_link_copied"
-          metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
-        />
-      </section>
+          <SectionAccordion title="價格詳情" defaultOpen>
+            <div className="price-table">
+              <div className="price-group">
+                <div className="price-row"><span className="price-row-label">{copy.lastTrade}</span><span className="price-row-val">{toPriceDisplay(market.lastTradePrice)}</span></div>
+                <div className="price-row"><span className="price-row-label">{copy.bestBid}</span><span className="price-row-val bid">{toPriceDisplay(market.bestBid)}</span></div>
+                <div className="price-row"><span className="price-row-label">{copy.bestAsk}</span><span className="price-row-val ask">{toPriceDisplay(market.bestAsk)}</span></div>
+                <div className="price-row"><span className="price-row-label">買賣差價</span><span className="price-row-val">{toPriceDisplay(priceSpread)}</span></div>
+              </div>
+              <div className="price-group">
+                <div className="price-row"><span className="price-row-label">{copy.volume24h}</span><span className="price-row-val">{toDisplay(market.volume24h)}</span></div>
+                <div className="price-row"><span className="price-row-label">{copy.totalVolume}</span><span className="price-row-val">{toDisplay(market.volumeTotal)}</span></div>
+                <div className="price-row"><span className="price-row-label">{copy.liquidity}</span><span className="price-row-val">{toDisplay(market.liquidity ?? market.volumeTotal)}</span></div>
+                <div className="price-row"><span className="price-row-label">{copy.resolution}</span><span className={`price-row-val ${browseOnly ? "warning" : "success"}`}>{copy.statuses[market.status] ?? market.status}</span></div>
+              </div>
+            </div>
+          </SectionAccordion>
 
-      <section className="grid">
-        <article className="panel stack">
-          <h2 className="section-title">訂單簿 Orderbook snapshot</h2>
-          <OrderBookDepthChart points={orderbookPayload.depth} stale={stale} />
-          <div className="kv"><span className="kv-key">Bid depth</span><span className="kv-value">{orderbookPayload.depth.filter((point) => point.side === "bid").length.toLocaleString(locale)}</span></div>
-          <div className="kv"><span className="kv-key">Ask depth</span><span className="kv-value">{orderbookPayload.depth.filter((point) => point.side === "ask").length.toLocaleString(locale)}</span></div>
-          {visibleOrderbook.length > 0 ? (
-            <table className="table compact-table">
-              <thead><tr><th>{copy.outcome}</th><th>{copy.bestBid}</th><th>{copy.bestAsk}</th><th>{copy.lastSynced}</th></tr></thead>
-              <tbody>
-                {visibleOrderbook.map((book) => (
-                  <tr key={`${book.externalOutcomeId}:${book.capturedAt}`}>
-                    <td>{book.externalOutcomeId}</td>
-                    <td>{toPriceDisplay(book.bestBid)}</td>
-                    <td>{toPriceDisplay(book.bestAsk)}</td>
-                    <td>{formatDateTime(locale, book.capturedAt, "UTC")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-state">暫時未有訂單簿資料</div>
-          )}
-        </article>
-        <article className="panel stack">
-          <h2 className="section-title">近期成交</h2>
-          <RecentTradesChart points={tradePoints} stale={stale} />
-          {visibleTrades.length > 0 ? (
-            <table className="table compact-table">
-              <thead><tr><th>{copy.tradeTime}</th><th>{copy.side}</th><th>{copy.price}</th><th>{copy.size}</th></tr></thead>
-              <tbody>
-                {visibleTrades.map((trade) => (
-                  <tr key={trade.externalTradeId}>
-                    <td>{formatDateTime(locale, trade.tradedAt, "UTC")}</td>
-                    <td>{trade.side ? copy.sides[trade.side] ?? trade.side : "—"}</td>
-                    <td>{toPriceDisplay(trade.price)}</td>
-                    <td>{toDisplay(trade.size)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-state">暫時未有近期成交資料</div>
-          )}
-        </article>
-      </section>
-
-        </div>
-        <aside className="market-detail-sidebar">
-          <section className="panel sticky-ticket stack">
+          <SectionAccordion title="訂單簿" badge={visibleOrderbook.length === 0 ? "暫無資料" : undefined}>
             <div className="stack">
+              <h2 className="section-title">訂單簿 Orderbook snapshot</h2>
+              <OrderBookDepthChart points={orderbookPayload.depth} stale={stale} />
+              <div className="grid">
+                <div className="kv"><span className="kv-key">Bid depth</span><span className="kv-value">{orderbookPayload.depth.filter((point) => point.side === "bid").length.toLocaleString(locale)}</span></div>
+                <div className="kv"><span className="kv-key">Ask depth</span><span className="kv-value">{orderbookPayload.depth.filter((point) => point.side === "ask").length.toLocaleString(locale)}</span></div>
+              </div>
+              {visibleOrderbook.length > 0 ? (
+                <table className="table compact-table">
+                  <thead><tr><th>{copy.outcome}</th><th>{copy.bestBid}</th><th>{copy.bestAsk}</th><th>{copy.lastSynced}</th></tr></thead>
+                  <tbody>
+                    {visibleOrderbook.map((book) => (
+                      <tr key={`${book.externalOutcomeId}:${book.capturedAt}`}>
+                        <td>{book.externalOutcomeId}</td>
+                        <td>{toPriceDisplay(book.bestBid)}</td>
+                        <td>{toPriceDisplay(book.bestAsk)}</td>
+                        <td>{formatDateTime(locale, book.capturedAt, "UTC")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state">暫時未有訂單簿資料</div>
+              )}
+            </div>
+          </SectionAccordion>
+
+          <SectionAccordion title="市場規則">
+            <section className="original-copy rules-text" aria-label="原始市場問題">
+              <strong>原始市場問題：</strong>
+              <p className="muted">{originalQuestion || market.title}</p>
+              {market.descriptionOriginal || market.description ? <p className="muted">{market.descriptionOriginal ?? market.description}</p> : null}
+            </section>
+          </SectionAccordion>
+
+          <SectionAccordion title="資料來源">
+            <div className="meta-grid">
+              <div className="meta-item"><div className="meta-key">{copy.source}</div><div className="meta-val">來源：Polymarket</div></div>
+              <div className="meta-item"><div className="meta-key">{copy.provenance}</div><div className="meta-val">資料來源：Polymarket API</div></div>
+              <div className="meta-item"><div className="meta-key">{copy.externalId}</div><div className="meta-val mono">{market.externalId}</div></div>
+              <div className="meta-item"><div className="meta-key">{copy.lastSynced}</div><div className="meta-val">{lastUpdated}</div></div>
+              <div className="meta-item"><div className="meta-key">交易狀態</div><div className="meta-val">{publicTradingStatusLabel}</div></div>
+              <div className="meta-item"><div className="meta-key">Builder Code</div><div className="meta-val">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</div></div>
+            </div>
+          </SectionAccordion>
+
+          <SectionAccordion title="推薦分成 / 推薦分享" badge="獲取獎勵" defaultOpen>
+            <div className="share-block">
+              <strong className="share-title">分享市場連結</strong>
+              <p className="share-desc">分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
+              <p className="share-desc">交易回贈：合資格交易如產生已確認 Builder 費用收入，交易用戶可獲得交易回贈。實際支付需要人手審批。</p>
+              <div className="share-btns">
+                <TrackedCopyButton
+                  value={baseMarketShareUrl}
+                  label="複製市場連結"
+                  copiedLabel="已複製"
+                  eventName="market_share_link_copied"
+                  metadata={{ market: market.slug || market.externalId, surface: "detail_plain" }}
+                />
+                <TrackedCopyButton
+                  value={referralMarketShareUrl}
+                  label="複製市場推薦連結"
+                  copiedLabel="已複製"
+                  eventName="market_share_link_copied"
+                  metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
+                />
+              </div>
+            </div>
+          </SectionAccordion>
+
+          <SectionAccordion title="近期成交" badge={visibleTrades.length === 0 ? "暫無資料" : undefined}>
+            <RecentTradesChart points={tradePoints} stale={stale} />
+            {visibleTrades.length > 0 ? (
+              <table className="table compact-table">
+                <thead><tr><th>{copy.tradeTime}</th><th>{copy.side}</th><th>{copy.price}</th><th>{copy.size}</th></tr></thead>
+                <tbody>
+                  {visibleTrades.map((trade) => (
+                    <tr key={trade.externalTradeId}>
+                      <td>{formatDateTime(locale, trade.tradedAt, "UTC")}</td>
+                      <td>{trade.side ? copy.sides[trade.side] ?? trade.side : "—"}</td>
+                      <td>{toPriceDisplay(trade.price)}</td>
+                      <td>{toDisplay(trade.size)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="empty-state">暫時未有近期成交資料</div>
+            )}
+          </SectionAccordion>
+
+          {debugVisible ? (
+            <section className="panel stack">
+              <h2 className="section-title">市場資料健康狀態</h2>
+              <div className="grid">
+                <div className="kv"><span className="kv-key">feed cache available</span><span className="kv-value">{market.sourceProvenance || market.provenance ? "yes" : "unknown"}</span></div>
+                <div className="kv"><span className="kv-key">detail fallback available</span><span className="kv-value">yes</span></div>
+                <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{failed ? "no" : "yes"}</span></div>
+                <div className="kv"><span className="kv-key">Gamma fallback enabled/used</span><span className="kv-value">{formatProvenance(market).includes("gamma-api.polymarket.com") ? "yes" : "enabled"}</span></div>
+                <div className="kv"><span className="kv-key">stale cache</span><span className="kv-value">{stale ? "yes" : "no"}</span></div>
+                <div className="kv"><span className="kv-key">detail not found</span><span className="kv-value">no</span></div>
+                <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
+                <div className="kv"><span className="kv-key">原始 route slug</span><span className="kv-value mono">{slugResolution.decodedSlug}</span></div>
+                <div className="kv"><span className="kv-key">Gamma canonical slug</span><span className="kv-value mono">{market.slug}</span></div>
+                <div className="kv"><span className="kv-key">active / closed / archived / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.restricted)}</span></div>
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        <aside className="market-detail-sidebar">
+          <section className="sticky-ticket stack">
+            <PolymarketTradeTicket {...tradeTicketProps} />
+            <div className="panel stack">
               <strong>分享此市場</strong>
               <p className="muted">登入以保存推薦獎勵</p>
               <p className="muted">登入後可查看推薦、獎勵及支付狀態</p>
-              <p className="muted">複製市場邀請連結，讓朋友直接查看同一個 Polymarket 市場。</p>
               <TrackedCopyButton
                 value={baseMarketShareUrl}
                 label="複製市場連結"
@@ -695,7 +672,6 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               </ul>
               <p className="muted">交易介面預覽；只有所有生產準備檢查通過且實盤提交啟用後，才會允許提交用戶自行簽署的訂單。</p>
             </div>
-            <PolymarketTradeTicket {...tradeTicketProps} />
           </section>
         </aside>
       </section>

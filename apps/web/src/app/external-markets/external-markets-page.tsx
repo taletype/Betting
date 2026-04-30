@@ -302,16 +302,6 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     submitterAvailable,
   };
   const disabledReasonLabel = (reason: PolymarketRoutingReadiness) => copy.readinessCopy[reason] ?? reason;
-  const tradeActionLabel = (reason: PolymarketRoutingReadiness | null): string => {
-    if (reason === "wallet_not_connected") return "連接錢包";
-    if (reason === "wallet_funds_insufficient") return "增值錢包";
-    if (reason === "credentials_missing") return "設定 Polymarket 憑證";
-    if (reason === "market_not_tradable" || reason === "invalid_order") return "市場只供瀏覽";
-    if (reason === "submit_mode_disabled" || reason === "submitter_unavailable") return "實盤提交已停用";
-    if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
-    if (reason === "feature_disabled") return "交易功能尚未啟用";
-    return copy.tradeViaPolymarket;
-  };
   const shareUrl = refCode ? `${getSiteUrl()}/polymarket?ref=${encodeURIComponent(refCode)}` : `${getSiteUrl()}/polymarket`;
   const externalMarketsEndpointReachable = !loadFailed;
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
@@ -479,7 +469,6 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                     orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && (market.lastTradePrice ?? market.bestAsk ?? market.bestBid)),
                   });
                   const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
-                  const marketActionLabel = tradeActionLabel(marketTopReason);
                   const stale = isExternalMarketStale(market);
 
                   return (
@@ -538,7 +527,6 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
             });
             const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
-            const marketActionLabel = tradeActionLabel(marketTopReason);
             const marketShareUrl = `${getSiteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
             const closeState = getCloseState(market);
@@ -551,7 +539,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               <div className="market-card-main">
                 <div className="stack">
                   <div className="market-card-meta">
-                    <div className="badge badge-neutral">{market.source}</div>
+                    <div className="badge badge-neutral"><span className="source-dot" aria-hidden="true" />POLYMARKET</div>
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
                     {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
                     {noTradeData ? <div className="badge badge-warning">暫無成交資料</div> : null}

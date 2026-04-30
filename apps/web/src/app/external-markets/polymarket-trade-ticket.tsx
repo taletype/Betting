@@ -67,7 +67,6 @@ const getTradeTicketActionLabel = (
   input: PolymarketRoutingReadinessInput,
   readiness: ReturnType<typeof getPolymarketRoutingReadiness>,
 ): string => {
-  if (!input.loggedIn) return "登入以交易";
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
   if (!input.hasCredentials) return "設定 Polymarket 憑證";
@@ -77,7 +76,7 @@ const getTradeTicketActionLabel = (
   if (input.orderValid === false) return "請輸入有效價格及數量";
   if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
   if (input.submitted) return "訂單已提交";
-  return "提交已簽署訂單";
+  return "準備自行簽署訂單";
 };
 
 type SignedPolymarketOrder = Record<string, unknown> & {
@@ -144,14 +143,20 @@ export function PolymarketTradeTicket(props: Props) {
   };
   const readiness = getPolymarketRoutingReadiness(readinessInput);
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
+  const visibleReadinessChecklist = readinessChecklist.filter((item) =>
+    item.id === "wallet" ||
+    item.id === "credentials" ||
+    item.id === "builder_code" ||
+    item.id === "market_status" ||
+    item.id === "submitter"
+  );
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
   const tradeButtonLabel = getTradeTicketActionLabel(readinessInput, readiness);
   const disabled =
     tradeButtonLabel === "請輸入有效價格及數量" ||
     tradeButtonLabel === "市場只供瀏覽" ||
     tradeButtonLabel === "交易功能尚未啟用" ||
-    tradeButtonLabel === "實盤提交已停用" ||
-    (tradeButtonLabel === "提交已簽署訂單" && !finalConfirmation);
+    tradeButtonLabel === "實盤提交已停用";
   const publicTradingReady = Boolean(
     props.featureEnabled &&
     props.hasBuilderCode &&
@@ -187,9 +192,7 @@ export function PolymarketTradeTicket(props: Props) {
   const handlePrimaryAction = async () => {
     try {
       trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
-      if (tradeButtonLabel === "登入以交易") {
-        setFlowStatus("請先登入，然後使用你自己的錢包簽署訂單。");
-      } else if (tradeButtonLabel === "設定 Polymarket 憑證") {
+      if (tradeButtonLabel === "設定 Polymarket 憑證") {
         await setupCredentials();
       } else if (tradeButtonLabel === "連接錢包") {
         setFlowStatus("請使用錢包連接元件連接你的錢包；不需要登入帳戶。");
@@ -258,13 +261,12 @@ export function PolymarketTradeTicket(props: Props) {
       <div className="ticket-header">
         <div>
           <strong>{copy.tradeViaPolymarket}</strong>
-          <div className="muted">{props.submitModeEnabled ? "交易介面預覽" : "交易介面預覽；實盤提交已停用"}</div>
         </div>
-        <span className="badge badge-warning">
-          {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : props.submitModeEnabled ? "交易提交器未準備好" : "實盤提交已停用"}
-        </span>
+        <span className="badge badge-neutral">非託管</span>
       </div>
-      <div className="badge badge-warning">{props.submitModeEnabled ? "公開路由交易" : "只供瀏覽"}</div>
+      <div className="badge badge-warning">
+        {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : props.submitModeEnabled ? "交易提交器未準備好" : "實盤提交已停用"}
+      </div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
       <div className="muted">本平台不會代用戶下注或交易；訂單必須由你自己的錢包簽署。</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
@@ -286,7 +288,7 @@ export function PolymarketTradeTicket(props: Props) {
           </span>
         </div>
         <div className="checklist-list" data-testid="readiness-checklist">
-          {readinessChecklist.map((item) => (
+          {visibleReadinessChecklist.map((item) => (
             <div className="checklist-item" key={item.id} data-status={item.status}>
               <span className={`status-dot status-dot-${item.status}`} aria-hidden="true" />
               <div>
@@ -408,7 +410,7 @@ export function PolymarketTradeTicket(props: Props) {
           {readinessLabel}
         </div>
       ) : null}
-      {!props.loggedIn ? <a className="secondary-cta" href="/login">登入以保存推薦獎勵</a> : null}
+      <a className="secondary-cta" href={props.loggedIn ? "/rewards" : "/login"}>登入以保存推薦獎勵</a>
       {flowStatus ? <div className="badge badge-success">{flowStatus}</div> : null}
       {flowError ? <div className="ticket-disabled-reason">{flowError}</div> : null}
       {tradeButtonLabel === "連接錢包" && thirdweb.client ? (

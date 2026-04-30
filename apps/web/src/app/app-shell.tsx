@@ -10,11 +10,13 @@ export function AppShell({
   children,
   showAdmin = false,
   authenticated = false,
+  currentPath = "/",
 }: Readonly<{
   locale: AppLocale;
   children: React.ReactNode;
   showAdmin?: boolean;
   authenticated?: boolean;
+  currentPath?: string;
 }>) {
   const copy = getLocaleCopy(locale);
   const shortCopy = siteCopy[locale];
@@ -24,9 +26,12 @@ export function AppShell({
     { href: "/polymarket", label: copy.shell.nav.research, mobileLabel: "市場", showMobile: true },
     { href: "/ambassador", label: copy.shell.nav.invite, mobileLabel: "邀請", showMobile: true },
     { href: "/rewards", label: copy.shell.nav.rewards, mobileLabel: "獎勵", showMobile: true },
+    { href: "/guides", label: copy.shell.nav.guides, mobileLabel: "指南", showMobile: true },
     { href: "/account", label: copy.shell.nav.account, mobileLabel: "帳戶", showMobile: true },
     ...(showAdmin ? [{ href: "/admin", label: copy.shell.nav.admin, mobileLabel: "管理員", showMobile: true }] : []),
   ];
+  const normalizedPath = currentPath === "/" ? "/" : currentPath.replace(/^\/(zh-hk|zh-cn|en)(?=\/|$)/i, "") || "/";
+  const isActive = (href: string): boolean => href === "/" ? normalizedPath === "/" : normalizedPath === href || normalizedPath.startsWith(`${href}/`);
 
   return (
     <div className="shell">
@@ -34,9 +39,19 @@ export function AppShell({
         <a className="brand-link" href={getLocaleHref(locale, "/")}><strong>{copy.shell.brand}</strong></a>
         <div className="topbar-actions">
           <nav className="nav desktop-nav" aria-label="主導覽">
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href === "/admin" ? item.href : getLocaleHref(locale, item.href)}>{item.label}</a>
-            ))}
+            {navItems.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <a
+                  key={item.href}
+                  className={active ? "active" : undefined}
+                  aria-current={active ? "page" : undefined}
+                  href={item.href === "/admin" ? item.href : getLocaleHref(locale, item.href)}
+                >
+                  {item.label}
+                </a>
+              );
+            })}
           </nav>
           <a className="auth-state-button" href={getLocaleHref(locale, authenticated ? "/account" : "/login")}>
             {authenticated ? copy.shell.nav.account : copy.auth.login}
@@ -45,9 +60,19 @@ export function AppShell({
         </div>
       </header>
       <nav className="mobile-nav" aria-label="主導覽">
-        {navItems.filter((item) => item.showMobile).map((item) => (
-          <a key={item.href} href={item.href === "/admin" ? item.href : getLocaleHref(locale, item.href)}>{item.mobileLabel}</a>
-        ))}
+        {navItems.filter((item) => item.showMobile).map((item) => {
+          const active = isActive(item.href);
+          return (
+            <a
+              key={item.href}
+              className={active ? "active" : undefined}
+              aria-current={active ? "page" : undefined}
+              href={item.href === "/admin" ? item.href : getLocaleHref(locale, item.href)}
+            >
+              {item.mobileLabel}
+            </a>
+          );
+        })}
       </nav>
       {children}
       <footer className="footer-disclosure">

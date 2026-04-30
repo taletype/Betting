@@ -254,7 +254,7 @@ export const getPolymarketReadinessChecklist = (
     },
     {
       id: "submitter",
-      label: "提交器",
+      label: "實盤提交器",
       explanation: input.submitModeEnabled === true && input.submitterAvailable && input.submitterEndpointAvailable !== false ? "實盤提交器已啟用。" : "實盤提交暫未啟用。",
       status: input.submitModeEnabled === true && input.submitterAvailable && input.submitterEndpointAvailable !== false ? "complete" : "disabled",
     },

@@ -30,13 +30,14 @@ export default async function RootLayout({
   const showAdmin = user?.role === "admin";
   const requestHeaders = await headers();
   const locale = normalizeLocale(requestHeaders.get(localeHeaderName) ?? defaultLocale);
+  const currentPath = requestHeaders.get("x-bet-pathname") ?? "/";
 
   return (
     <html lang={localeToHtmlLang(locale)}>
       <body>
         <ReferralCapture />
         <OptionalThirdwebProvider>
-          <AppShell locale={locale} showAdmin={showAdmin} authenticated={Boolean(user)}>{children}</AppShell>
+          <AppShell locale={locale} showAdmin={showAdmin} authenticated={Boolean(user)} currentPath={currentPath}>{children}</AppShell>
         </OptionalThirdwebProvider>
       </body>
     </html>

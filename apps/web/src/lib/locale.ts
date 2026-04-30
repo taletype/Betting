@@ -1005,7 +1005,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
   ambassador: {
     title: "大使推薦獎勵",
     subtitle: "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。",
-    safeNotice: "參與推薦毋須付費；獎勵只限直接推薦及已確認 Builder 費用收入，平台不承諾收益，亦不會替用戶下單。",
+    safeNotice: "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。",
     approvalNotice: "獎勵計算可自動記錄，但實際支付需要管理員審批。",
     code: "推薦碼",
     link: "推薦連結",

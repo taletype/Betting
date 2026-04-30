@@ -12,6 +12,7 @@ export async function proxy(request: NextRequest) {
   const locale = pathSegmentToLocale(firstSegment) ?? (cookieLocale ? normalizeLocale(cookieLocale) : acceptLanguage ? normalizeLocale(acceptLanguage) : defaultLocale);
 
   requestHeaders.set(localeHeaderName, locale);
+  requestHeaders.set("x-bet-pathname", request.nextUrl.pathname);
 
   const response = NextResponse.next({
     request: {
