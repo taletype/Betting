@@ -20,7 +20,9 @@ export default async function RewardsPage() {
     <main className="stack">
       <section className="hero">
         <h1>推薦獎勵帳務紀錄</h1>
-        <p>此頁只顯示推薦獎勵的會計紀錄，與交易結餘分開。獎勵在管理員審批並完成 Polygon 上的 pUSD 支付前，並不是可自由使用的交易資金。</p>
+        <p>當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。</p>
+        <p>獎勵不是交易餘額，不能用作平台內下注或交易。</p>
+        <p>獎勵以人手審批方式處理，審批後可透過 Polygon 上的 pUSD 向指定錢包支付。</p>
         <p>獎勵計算可自動記錄，但實際支付不會自動執行，必須由管理員審批及記錄交易哈希。不會自動從金庫轉帳。</p>
         <div className="trust-badge-row">
           <span className="badge badge-warning">待確認獎勵</span>
@@ -74,7 +76,7 @@ export default async function RewardsPage() {
 
           <section className="panel stack">
             <h2 className="section-title">申請人工支付</h2>
-            <p className="muted">請輸入 Polygon 錢包地址。支付資產為 pUSD；提交後需由管理員審批，並在完成後記錄 Polygon 交易雜湊。</p>
+            <p className="muted">請輸入 Polygon 錢包地址。支付資產為 pUSD；提交後需由管理員審批，並在完成後記錄 Polygon 交易哈希。請確認你的收款地址支援 Polygon 網絡。</p>
             <form action={requestRewardPayoutAction} className="stack">
               <label className="stack">
                 Polygon wallet address

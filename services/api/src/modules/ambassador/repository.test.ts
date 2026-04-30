@@ -71,7 +71,7 @@ const payoutReviewerId = "77777777-7777-4777-8777-777777777777";
 
 const createPayoutApprovalFakeRepository = (riskStatus: AmbassadorRiskStatus) => {
   let payoutStatus: "requested" | "approved" = "requested";
-  let ledgerStatus: "payable" = "payable";
+  let ledgerStatus: "approved" = "approved";
   const queries: string[] = [];
   const payoutRow = () => ({
     id: payoutId,
@@ -98,8 +98,16 @@ const createPayoutApprovalFakeRepository = (riskStatus: AmbassadorRiskStatus) =>
       const normalized = statement.replace(/\s+/g, " ").trim();
       queries.push(normalized);
 
+      if (/select recipient_user_id, amount_usdc_atoms, status from public\.ambassador_reward_payouts/.test(normalized)) {
+        return [{ recipient_user_id: payoutRecipientId, amount_usdc_atoms: 500_000n, status: payoutStatus }] as T[];
+      }
+
       if (/select recipient_user_id, status from public\.ambassador_reward_payouts/.test(normalized)) {
         return [{ recipient_user_id: payoutRecipientId, status: payoutStatus }] as T[];
+      }
+
+      if (/from public\.ambassador_reward_ledger where recipient_user_id/.test(normalized) && /status = 'approved'/.test(normalized)) {
+        return [{ amount: ledgerStatus === "approved" ? 500_000n : 0n }] as T[];
       }
 
       if (/from public\.ambassador_risk_flags flag/.test(normalized)) {
@@ -243,7 +251,8 @@ test("payout workflow enforces threshold and admin approval before paid", () => 
   assert.match(source, /status = 'requested'/);
   assert.match(source, /'requested',\s*\$3,/);
   assert.match(source, /status = 'approved'/);
-  assert.doesNotMatch(source, /ambassador_reward_ledger\s+set status = 'approved'/);
+  assert.match(source, /ambassador_reward_ledger[\s\S]+set status = 'approved'/);
+  assert.match(source, /status = 'approved'/);
   assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
   assert.match(source, /recipient already has an open reward payout request/);
   assert.match(source, /payout requires admin approval before it can be marked paid/);
@@ -287,7 +296,7 @@ test("payout approval uses repository risk flags to block only open high-severit
     },
   );
   assert.equal(openRiskRepo.payoutStatus, "requested");
-  assert.equal(openRiskRepo.ledgerStatus, "payable");
+  assert.equal(openRiskRepo.ledgerStatus, "approved");
   assert.ok(openRiskRepo.queries.some((query) => /from public\.ambassador_risk_flags flag/.test(query)));
 
   for (const riskStatus of ["reviewed", "dismissed"] as const) {
@@ -297,7 +306,7 @@ test("payout approval uses repository risk flags to block only open high-severit
     assert.equal(payout.status, "approved");
     assert.equal(payout.reviewedBy, payoutReviewerId);
     assert.equal(repo.payoutStatus, "approved");
-    assert.equal(repo.ledgerStatus, "payable");
+    assert.equal(repo.ledgerStatus, "approved");
     assert.ok(repo.queries.some((query) => /flag\.status = 'open'/.test(query)));
   }
 });

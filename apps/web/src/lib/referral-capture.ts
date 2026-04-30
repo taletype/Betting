@@ -1,6 +1,12 @@
 export const pendingReferralStorageKey = "bet_pending_referral_code";
 export const pendingReferralCookieName = "bet_pending_ref";
 export const referralAttributionResultStorageKey = "bet_referral_attribution_result";
+export const referralSessionStorageKey = "bet_referral_session_id";
+
+export const createReferralApplyIdempotencyKey = (userScopedCode: string): string | null => {
+  const code = normalizeReferralCode(userScopedCode);
+  return code ? `referral-apply:${code}` : null;
+};
 
 export const normalizeReferralCode = (value: string | null | undefined): string | null => {
   const normalized = value?.trim().toUpperCase();

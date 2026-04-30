@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 
 import { clearPendingReferralCode } from "./referral-capture";
 import {
+  createReferralApplyIdempotencyKey,
   pendingReferralCookieName,
   pendingReferralStorageKey,
   referralAttributionResultStorageKey,
+  referralSessionStorageKey,
   normalizeReferralCode,
 } from "../lib/referral-capture";
 import { trackFunnelEvent } from "./funnel-analytics";
@@ -30,12 +32,20 @@ export function PendingReferralApplier() {
   useEffect(() => {
     const code = normalizeReferralCode(window.localStorage.getItem(pendingReferralStorageKey)) ?? readCookieCode();
     if (!code) return;
+    const sessionId = (() => {
+      const existing = window.localStorage.getItem(referralSessionStorageKey);
+      if (existing) return existing;
+      const created = crypto.randomUUID();
+      window.localStorage.setItem(referralSessionStorageKey, created);
+      return created;
+    })();
+    const idempotencyKey = createReferralApplyIdempotencyKey(code);
 
     let cancelled = false;
     void fetch("/api/ambassador/capture", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, idempotencyKey, sessionId }),
     }).then(async (response) => {
       if (cancelled) return;
       if (!response.ok) {

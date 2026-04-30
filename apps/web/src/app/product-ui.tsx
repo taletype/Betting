@@ -65,7 +65,7 @@ export function BetaLaunchDisclosure() {
         </StatusChip>
         <StatusChip tone="success">非託管</StatusChip>
         <StatusChip tone={launch.autoPayoutEnabled ? "warning" : "success"}>
-          {launch.autoPayoutEnabled ? "自動支付需覆核" : "人手審批"}
+          {launch.autoPayoutEnabled ? "自動支付必須停用" : "人手審批"}
         </StatusChip>
         <StatusChip tone="warning">待確認獎勵</StatusChip>
       </div>

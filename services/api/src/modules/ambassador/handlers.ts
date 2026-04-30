@@ -1,6 +1,6 @@
 import { createDatabaseClient } from "@bet/db";
 
-import { insertAuditRecord } from "../shared/audit";
+import { insertAdminAuditRecord, insertAuditRecord } from "../shared/audit";
 import {
   accountConfirmedBuilderTradeRewards,
   approveRewardPayout,
@@ -46,6 +46,10 @@ export const getAmbassadorDashboard = async (userId?: string): Promise<Ambassado
 export const captureAmbassadorReferral = async (input: {
   userId?: string;
   code: string;
+  idempotencyKey?: string | null;
+  sessionId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }): Promise<AmbassadorDashboard> => {
   if (!input.userId) {
     throw new Error("authentication required");
@@ -58,6 +62,12 @@ export const captureAmbassadorReferral = async (input: {
     const attribution = await createReferralAttribution(transaction, {
       referredUserId,
       code: input.code,
+      context: {
+        idempotencyKey: input.idempotencyKey,
+        sessionId: input.sessionId,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      },
     });
 
     await insertAuditRecord(transaction, {
@@ -104,6 +114,16 @@ export const createAdminAmbassadorCode = async (input: {
         code: code.code,
       },
     });
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "ambassador.code_created",
+      entityType: "ambassador_code",
+      entityId: code.id,
+      metadata: {
+        ownerUserId: input.ownerUserId,
+        code: code.code,
+      },
+    });
 
     return code;
   });
@@ -121,6 +141,15 @@ export const disableAdminAmbassadorCode = async (input: {
     const code = await disableAmbassadorCode(transaction, input.codeId);
 
     await insertAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "ambassador.code_disabled",
+      entityType: "ambassador_code",
+      entityId: code.id,
+      metadata: {
+        reason: input.reason,
+      },
+    });
+    await insertAdminAuditRecord(transaction, {
       actorUserId: adminUserId,
       action: "ambassador.code_disabled",
       entityType: "ambassador_code",
@@ -150,6 +179,17 @@ export const overrideAdminReferralAttribution = async (input: {
     });
 
     await insertAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "ambassador.referral_override",
+      entityType: "referral_attribution",
+      entityId: attribution.id,
+      metadata: {
+        referredUserId: input.referredUserId,
+        ambassadorCode: input.ambassadorCode,
+        reason: input.reason,
+      },
+    });
+    await insertAdminAuditRecord(transaction, {
       actorUserId: adminUserId,
       action: "ambassador.referral_override",
       entityType: "referral_attribution",
@@ -216,6 +256,17 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
         builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString(),
       },
     });
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "ambassador.mock_builder_trade_recorded",
+      entityType: "builder_trade_attribution",
+      entityId: tradeAttribution.id,
+      metadata: {
+        userId: input.userId,
+        status: input.status,
+        builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString(),
+      },
+    });
 
     return {
       tradeAttribution,
@@ -243,6 +294,15 @@ export const voidAdminBuilderTradeAttribution = async (input: {
         reason: input.reason,
       },
     });
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "ambassador.builder_trade_voided",
+      entityType: "builder_trade_attribution",
+      entityId: input.tradeAttributionId,
+      metadata: {
+        reason: input.reason,
+      },
+    });
   });
 };
 
@@ -250,9 +310,19 @@ export const markAdminBuilderTradeRewardsPayable = async (input: {
   adminUserId?: string;
   tradeAttributionId: string;
 }) => {
-  requireAdminUser(input.adminUserId);
+  const adminUserId = requireAdminUser(input.adminUserId);
   const db = createDatabaseClient();
-  return db.transaction((transaction) => markRewardsPayable(transaction, input.tradeAttributionId));
+  return db.transaction(async (transaction) => {
+    const ledger = await markRewardsPayable(transaction, input.tradeAttributionId);
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "reward_ledger.mark_payable",
+      entityType: "builder_trade_attribution",
+      entityId: input.tradeAttributionId,
+      metadata: { rewardLedgerCount: ledger.length },
+    });
+    return ledger;
+  });
 };
 
 export const requestAmbassadorRewardPayout = async (input: {
@@ -283,13 +353,21 @@ export const approveAdminRewardPayout = async (input: {
 }) => {
   const adminUserId = requireAdminUser(input.adminUserId);
   const db = createDatabaseClient();
-  return db.transaction((transaction) =>
-    approveRewardPayout(transaction, {
+  return db.transaction(async (transaction) => {
+    const payout = await approveRewardPayout(transaction, {
       payoutId: input.payoutId,
       reviewedBy: adminUserId,
       notes: input.notes,
-    }),
-  );
+    });
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "payout.approve",
+      entityType: "payout_request",
+      entityId: input.payoutId,
+      metadata: { beforeStatus: "requested", afterStatus: "approved", notes: input.notes ?? null },
+    });
+    return payout;
+  });
 };
 
 export const markAdminRewardPayoutPaid = async (input: {
@@ -300,14 +378,22 @@ export const markAdminRewardPayoutPaid = async (input: {
 }) => {
   const adminUserId = requireAdminUser(input.adminUserId);
   const db = createDatabaseClient();
-  return db.transaction((transaction) =>
-    markRewardPayoutPaid(transaction, {
+  return db.transaction(async (transaction) => {
+    const payout = await markRewardPayoutPaid(transaction, {
       payoutId: input.payoutId,
       reviewedBy: adminUserId,
       txHash: input.txHash,
       notes: input.notes,
-    }),
-  );
+    });
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: "payout.mark_paid",
+      entityType: "payout_request",
+      entityId: input.payoutId,
+      metadata: { beforeStatus: "approved", afterStatus: "paid", txHash: payout.txHash },
+    });
+    return payout;
+  });
 };
 
 export const updateAdminRewardPayoutFailureState = async (input: {
@@ -318,12 +404,20 @@ export const updateAdminRewardPayoutFailureState = async (input: {
 }) => {
   const adminUserId = requireAdminUser(input.adminUserId);
   const db = createDatabaseClient();
-  return db.transaction((transaction) =>
-    updateRewardPayoutFailureState(transaction, {
+  return db.transaction(async (transaction) => {
+    const payout = await updateRewardPayoutFailureState(transaction, {
       payoutId: input.payoutId,
       reviewedBy: adminUserId,
       status: input.status,
       notes: input.notes,
-    }),
-  );
+    });
+    await insertAdminAuditRecord(transaction, {
+      actorUserId: adminUserId,
+      action: input.status === "failed" ? "payout.mark_failed" : "payout.cancel",
+      entityType: "payout_request",
+      entityId: input.payoutId,
+      metadata: { afterStatus: input.status, notes: input.notes },
+    });
+    return payout;
+  });
 };

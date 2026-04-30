@@ -222,6 +222,33 @@ export default async function AdminPayoutsPage({
           </table>
           <div className="muted">Updated {formatDateTime(locale, new Date().toISOString())}</div>
         </section>
+        <section className="panel stack">
+          <h2 className="section-title">審批紀錄</h2>
+          {(overview.adminAuditLog ?? []).length === 0 ? (
+            <EmptyState title={copy.noRows} />
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>{rewardCopy.created}</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(overview.adminAuditLog ?? []).filter((entry) => entry.action.startsWith("payout.")).map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{formatDateTime(locale, entry.createdAt)}</td>
+                    <td className="mono">{entry.actorUserId ?? "-"}</td>
+                    <td>{entry.action}</td>
+                    <td className="mono">{entry.entityId}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
         </>
       )}
     </main>

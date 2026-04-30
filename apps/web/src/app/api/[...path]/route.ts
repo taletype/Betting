@@ -407,8 +407,13 @@ async function handleRequest(
     if (apiPath === "ambassador/capture" && request.method === "POST") {
       const rateLimit = checkLocalRateLimit("ambassadorReferral", userId, 20);
       if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
-      const body = (await request.json().catch(() => ({}))) as { code?: string };
-      return NextResponse.json(normalizeApiPayload(await captureAmbassadorReferralDb(userId, body.code ?? "")));
+      const body = (await request.json().catch(() => ({}))) as { code?: string; idempotencyKey?: string; sessionId?: string };
+      return NextResponse.json(normalizeApiPayload(await captureAmbassadorReferralDb(userId, body.code ?? "", {
+        idempotencyKey: body.idempotencyKey ?? null,
+        sessionId: body.sessionId ?? null,
+        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
+        userAgent: request.headers.get("user-agent"),
+      })));
     }
 
     if (apiPath === "ambassador/payouts" && request.method === "POST") {

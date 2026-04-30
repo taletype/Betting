@@ -764,6 +764,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const payload = await captureAmbassadorReferralHandler({
         userId: requestUserId,
         code: String(body.code ?? body.ref ?? ""),
+        ...(body.idempotencyKey ? { idempotencyKey: String(body.idempotencyKey) } : {}),
+        ...(body.sessionId ? { sessionId: String(body.sessionId) } : {}),
+        ...(request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip")
+          ? { ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") }
+          : {}),
+        ...(request.headers.get("user-agent") ? { userAgent: request.headers.get("user-agent") } : {}),
       });
       return new Response(toJson(payload), {
         headers: { "content-type": "application/json" },

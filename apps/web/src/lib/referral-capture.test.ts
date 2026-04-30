@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   appendReferralToInternalHref,
+  createReferralApplyIdempotencyKey,
   normalizeReferralCode,
   readReferralCodeFromSearch,
   selectReferralCodeToPersist,
@@ -37,4 +38,9 @@ test("pending referral survives internal navigation and existing refs win", () =
     appendReferralToInternalHref("https://polymarket.com/event/abc", "http://127.0.0.1:3000/", "friend001"),
     "https://polymarket.com/event/abc",
   );
+});
+
+test("referral apply idempotency key is code-scoped and normalized", () => {
+  assert.equal(createReferralApplyIdempotencyKey("friend001"), "referral-apply:FRIEND001");
+  assert.equal(createReferralApplyIdempotencyKey("x"), null);
 });

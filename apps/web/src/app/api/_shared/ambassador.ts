@@ -6,12 +6,24 @@ import { isAddress } from "ethers";
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
 const platformRecipientUuid = zeroUuid;
 const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
+const referralCodePattern = /^[A-Z0-9_-]{3,64}$/;
 
-type RewardStatus = "pending" | "payable" | "paid" | "void";
+type RewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
 type TradeStatus = "pending" | "confirmed" | "void";
 type PayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
 type RiskSeverity = "low" | "medium" | "high";
 type RiskStatus = "open" | "reviewed" | "dismissed";
+
+const normalizeReferralCode = (value: string | null | undefined): string | null => {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && referralCodePattern.test(normalized) ? normalized : null;
+};
+
+const hashNullable = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return crypto.createHash("sha256").update(trimmed).digest("hex");
+};
 
 export const ambassadorPayoutRiskReviewRequiredCode = "AMBASSADOR_PAYOUT_RISK_REVIEW_REQUIRED";
 export const ambassadorPayoutRiskReviewRequiredMessage = "high-severity risk review is required before payout approval";
@@ -103,6 +115,8 @@ const getRewardConfig = () => {
 const calculateBps = (amount: bigint, bps: number): bigint => (amount * BigInt(bps)) / 10000n;
 
 const readCodeByCode = async (transaction: DatabaseExecutor, code: string) => {
+  const normalizedCode = normalizeReferralCode(code);
+  if (!normalizedCode) return null;
   const [row] = await transaction.query<{
     id: string;
     code: string;
@@ -112,7 +126,7 @@ const readCodeByCode = async (transaction: DatabaseExecutor, code: string) => {
     disabled_at: Date | string | null;
   }>(
     `select id, code, owner_user_id, status, created_at, disabled_at from public.ambassador_codes where upper(code) = upper($1) limit 1`,
-    [code.trim()],
+    [normalizedCode],
   );
   return row ?? null;
 };
@@ -143,6 +157,41 @@ const insertRiskFlag = async (
       input.severity,
       input.reasonCode,
       JSON.stringify(input.details ?? {}),
+    ],
+  );
+};
+
+const insertReferralAuditEvent = async (
+  executor: DatabaseExecutor,
+  input: {
+    actorUserId: string | null;
+    action: "ambassador.referral_seen" | "ambassador.referral_captured" | "ambassador.referral_applied" | "ambassador.referral_rejected";
+    code: string;
+    reason?: string | null;
+    referralAttributionId?: string | null;
+    idempotencyKey?: string | null;
+    sessionId?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  },
+) => {
+  await executor.query(
+    `
+      insert into public.audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+      values ($1::uuid, $2, 'referral_attribution', $3, $4::jsonb, now())
+    `,
+    [
+      input.actorUserId,
+      input.action,
+      input.referralAttributionId ?? input.actorUserId ?? zeroUuid,
+      JSON.stringify({
+        ambassadorCode: input.code,
+        reason: input.reason ?? null,
+        idempotencyKey: input.idempotencyKey?.trim() || null,
+        sessionHash: hashNullable(input.sessionId),
+        ipHash: hashNullable(input.ipAddress),
+        userAgentHash: hashNullable(input.userAgent),
+      }),
     ],
   );
 };
@@ -313,7 +362,7 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
     rewards: {
       pendingRewards: amountFor("pending"),
       payableRewards: amountFor("payable"),
-      approvedRewards: 0n,
+      approvedRewards: amountFor("approved"),
       paidRewards: amountFor("paid"),
       voidRewards: amountFor("void"),
       directReferralCount: directRows.length,
@@ -355,33 +404,84 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
   };
 };
 
-export const captureAmbassadorReferralDb = async (userId: string, code: string) => {
+export const captureAmbassadorReferralDb = async (userId: string, code: string, context: {
+  idempotencyKey?: string | null;
+  sessionId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+} = {}) => {
   const db = getDb();
   await db.transaction(async (transaction) => {
-    const [existing] = await transaction.query<{ id: string }>(
-      `select id from public.referral_attributions where referred_user_id = $1::uuid limit 1`,
+    const normalizedCode = normalizeReferralCode(code);
+    if (!normalizedCode) {
+      await insertReferralAuditEvent(transaction, {
+        actorUserId: userId,
+        action: "ambassador.referral_rejected",
+        code: code.trim().slice(0, 64),
+        reason: "malformed_referral_code",
+        ...context,
+      });
+      await insertRiskFlag(transaction, { userId, severity: "low", reasonCode: "malformed_referral_code", details: { codePrefix: code.trim().slice(0, 8), sessionHash: hashNullable(context.sessionId) } });
+      throw new Error("ambassador code is malformed");
+    }
+
+    await insertReferralAuditEvent(transaction, { actorUserId: userId, action: "ambassador.referral_seen", code: normalizedCode, ...context });
+    await insertReferralAuditEvent(transaction, { actorUserId: userId, action: "ambassador.referral_captured", code: normalizedCode, ...context });
+
+    const [existing] = await transaction.query<{ id: string; ambassador_code: string }>(
+      `select id, ambassador_code from public.referral_attributions where referred_user_id = $1::uuid limit 1`,
       [userId],
     );
-    if (existing) return;
+    if (existing) {
+      const reason = existing.ambassador_code === normalizedCode ? "duplicate_referral_application" : "same_user_multiple_ref_codes";
+      await insertReferralAuditEvent(transaction, {
+        actorUserId: userId,
+        action: "ambassador.referral_rejected",
+        code: normalizedCode,
+        reason,
+        referralAttributionId: existing.id,
+        ...context,
+      });
+      await insertRiskFlag(transaction, {
+        userId,
+        referralAttributionId: existing.id,
+        severity: reason === "duplicate_referral_application" ? "low" : "medium",
+        reasonCode: reason,
+        details: { existingAmbassadorCode: existing.ambassador_code, attemptedAmbassadorCode: normalizedCode, sessionHash: hashNullable(context.sessionId) },
+      });
+      return;
+    }
 
-    const codeRecord = await readCodeByCode(transaction, code);
+    const codeRecord = await readCodeByCode(transaction, normalizedCode);
     if (!codeRecord) {
-      await insertRiskFlag(transaction, { userId, severity: "low", reasonCode: "invalid_referral_code", details: { code: code.trim().slice(0, 24) } });
+      await insertReferralAuditEvent(transaction, { actorUserId: userId, action: "ambassador.referral_rejected", code: normalizedCode, reason: "invalid_referral_code", ...context });
+      await insertRiskFlag(transaction, { userId, severity: "low", reasonCode: "invalid_referral_code", details: { code: normalizedCode } });
       throw new Error("invalid ambassador code");
     }
     if (codeRecord.status !== "active") {
+      await insertReferralAuditEvent(transaction, { actorUserId: userId, action: "ambassador.referral_rejected", code: normalizedCode, reason: "disabled_referral_code", ...context });
       await insertRiskFlag(transaction, { userId, severity: "medium", reasonCode: "disabled_referral_code", details: { codeId: codeRecord.id } });
       throw new Error("ambassador code is disabled");
     }
     if (codeRecord.owner_user_id === userId) {
+      await insertReferralAuditEvent(transaction, { actorUserId: userId, action: "ambassador.referral_rejected", code: normalizedCode, reason: "self_referral_attempt", ...context });
       await insertRiskFlag(transaction, { userId, severity: "high", reasonCode: "self_referral_attempt", details: { codeId: codeRecord.id } });
       throw new Error("self-referrals are not allowed");
     }
 
-    await transaction.query(
-      `insert into public.referral_attributions (referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason) values ($1::uuid, $2::uuid, $3, now(), 'pending', null)`,
+    const [inserted] = await transaction.query<{ id: string }>(
+      `insert into public.referral_attributions (referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason)
+       values ($1::uuid, $2::uuid, $3, now(), 'pending', null)
+       returning id`,
       [userId, codeRecord.owner_user_id, codeRecord.code],
     );
+    await insertReferralAuditEvent(transaction, {
+      actorUserId: userId,
+      action: "ambassador.referral_applied",
+      code: normalizedCode,
+      referralAttributionId: inserted?.id ?? userId,
+      ...context,
+    });
   });
 
   return readAmbassadorDashboardDb(userId);
@@ -420,12 +520,20 @@ export const requestAmbassadorPayoutDb = async (userId: string, input: { destina
       config.polygonPusdAddress,
     ],
   );
+  await db.query(
+    `update public.ambassador_reward_ledger
+        set status = 'approved',
+            approved_at = coalesce(approved_at, now())
+      where recipient_user_id = $1::uuid
+        and status = 'payable'`,
+    [userId],
+  );
   return { id: row?.id ?? "" };
 };
 
 export const readAdminAmbassadorOverviewDb = async () => {
   const db = getDb();
-  const [codes, attributions, trades, rewardLedger, payouts, riskFlags] = await Promise.all([
+  const [codes, attributions, trades, rewardLedger, payouts, riskFlags, adminAuditLog] = await Promise.all([
     db.query(`select id, code, owner_user_id, status, created_at, disabled_at from public.ambassador_codes order by created_at desc limit 100`),
     db.query(`select id, referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason from public.referral_attributions order by attributed_at desc limit 100`),
     db.query(`select id, user_id, direct_referrer_user_id, polymarket_order_id, polymarket_trade_id, condition_id, market_slug, notional_usdc_atoms, builder_fee_usdc_atoms, status, raw_json, observed_at, confirmed_at from public.builder_trade_attributions order by observed_at desc limit 100`),
@@ -442,6 +550,15 @@ export const readAdminAmbassadorOverviewDb = async () => {
       select id, user_id, referral_attribution_id, trade_attribution_id, payout_id,
              severity, reason_code, details, status, created_at, reviewed_by, reviewed_at, review_notes
         from public.ambassador_risk_flags
+       order by created_at desc
+       limit 100
+    `).catch(() => []),
+    db.query(`
+      select id, actor_user_id, action, entity_type, entity_id, metadata, created_at
+        from public.admin_audit_log
+       where action like 'ambassador.%'
+          or action like 'payout.%'
+          or action like 'reward_ledger.%'
        order by created_at desc
        limit 100
     `).catch(() => []),
@@ -520,6 +637,15 @@ export const readAdminAmbassadorOverviewDb = async () => {
       reviewedBy: row.reviewed_by,
       reviewedAt: toIso(row.reviewed_at),
       reviewNotes: row.review_notes,
+    })),
+    adminAuditLog: adminAuditLog.map((row) => ({
+      id: row.id,
+      actorUserId: row.actor_user_id,
+      action: row.action,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      metadata: row.metadata,
+      createdAt: toIso(row.created_at),
     })),
     suspiciousAttributions: [],
   };
@@ -711,6 +837,14 @@ const maybeCreateAutoPayoutRequest = async (transaction: DatabaseTransaction, re
       config.polygonPusdAddress,
     ],
   );
+  await transaction.query(
+    `update public.ambassador_reward_ledger
+        set status = 'approved',
+            approved_at = coalesce(approved_at, now())
+      where recipient_user_id = $1::uuid
+        and status = 'payable'`,
+    [recipientUserId],
+  );
   return row ?? null;
 };
 
@@ -857,7 +991,7 @@ export const hasOpenHighSeverityRiskForPayoutApprovalDb = async (
         select distinct ledger.source_trade_attribution_id as id
         from public.ambassador_reward_ledger ledger
         join payout on payout.recipient_user_id = ledger.recipient_user_id
-        where ledger.status = 'payable'
+        where ledger.status in ('payable', 'approved')
       ),
       related_referral_attributions as (
         select attribution.id
@@ -918,12 +1052,12 @@ const updatePayoutStatusDb = async (input: {
     const [hasBlockingRisk, [payable]] = await Promise.all([
       hasOpenHighSeverityRiskForPayoutApprovalDb(db, input.payoutId),
       db.query<{ amount: bigint }>(
-        `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'payable'`,
+        `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'approved'`,
         [row.recipient_user_id],
       ).then((rows) => [rows[0]]),
     ]);
     if (hasBlockingRisk) throw new AmbassadorPayoutRiskReviewRequiredError();
-    if ((payable?.amount ?? 0n) < row.amount_usdc_atoms) throw new Error("payout amount exceeds payable rewards");
+    if ((payable?.amount ?? 0n) < row.amount_usdc_atoms) throw new Error("payout amount exceeds locked rewards");
     await db.query(
       `update public.ambassador_reward_payouts
           set status = 'approved',
@@ -960,13 +1094,16 @@ const updatePayoutStatusDb = async (input: {
           set status = 'paid',
               paid_at = coalesce(paid_at, now())
         where recipient_user_id = $1::uuid
-          and status = 'payable'`,
+          and status = 'approved'`,
       [row.recipient_user_id],
     );
     return { ok: true };
   }
 
   if (input.status === "failed" || input.status === "cancelled") {
+    if (!["requested", "approved"].includes(row.status)) {
+      throw new Error("payout must be requested or approved before it can be failed or cancelled");
+    }
     await db.query(
       `update public.ambassador_reward_payouts
           set status = $3,
@@ -976,6 +1113,14 @@ const updatePayoutStatusDb = async (input: {
         where id = $1::uuid
           and status in ('requested', 'approved')`,
       [input.payoutId, input.reviewedBy, input.status, input.notes ?? ""],
+    );
+    await db.query(
+      `update public.ambassador_reward_ledger
+          set status = 'payable',
+              approved_at = null
+        where recipient_user_id = $1::uuid
+          and status = 'approved'`,
+      [row.recipient_user_id],
     );
     return { ok: true };
   }

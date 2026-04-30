@@ -6,7 +6,7 @@ import { isAddress } from "ethers";
 export type AmbassadorCodeStatus = "active" | "disabled";
 export type ReferralQualificationStatus = "pending" | "qualified" | "rejected";
 export type BuilderTradeAttributionStatus = "pending" | "confirmed" | "void";
-export type AmbassadorRewardStatus = "pending" | "payable" | "paid" | "void";
+export type AmbassadorRewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
 export type AmbassadorPayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
 export type AmbassadorPayoutDestinationType = "wallet" | "manual";
 export type AmbassadorRiskSeverity = "low" | "medium" | "high";
@@ -127,6 +127,16 @@ export interface AmbassadorRiskFlagRecord {
   reviewNotes: string | null;
 }
 
+export interface AdminAuditLogRecord {
+  id: string;
+  actorUserId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface AmbassadorRewardSummary {
   pendingRewards: bigint;
   payableRewards: bigint;
@@ -153,6 +163,7 @@ export interface AdminAmbassadorOverview {
   rewardLedger: AmbassadorRewardLedgerRecord[];
   payouts: AmbassadorRewardPayoutRecord[];
   riskFlags: AmbassadorRiskFlagRecord[];
+  adminAuditLog: AdminAuditLogRecord[];
   suspiciousAttributions: ReferralAttributionRecord[];
 }
 
@@ -178,6 +189,13 @@ export interface RewardLedgerDraft {
   recipientUserId: string | null;
   rewardType: AmbassadorRewardType;
   amountUsdcAtoms: bigint;
+}
+
+export interface ReferralApplyContext {
+  idempotencyKey?: string | null;
+  sessionId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }
 
 interface AmbassadorCodeRow {
@@ -282,8 +300,30 @@ interface RiskFlagRow {
   review_notes: string | null;
 }
 
+interface AdminAuditLogRow {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  metadata: Record<string, unknown> | string;
+  created_at: Date | string;
+}
+
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
 const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
+const referralCodePattern = /^[A-Z0-9_-]{3,64}$/;
+
+export const normalizeReferralCode = (value: string | null | undefined): string | null => {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && referralCodePattern.test(normalized) ? normalized : null;
+};
+
+const hashNullable = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return crypto.createHash("sha256").update(trimmed).digest("hex");
+};
 
 const toIso = (value: Date | string | null): string | null =>
   value === null ? null : value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -375,13 +415,116 @@ const mapRiskFlag = (row: RiskFlagRow): AmbassadorRiskFlagRecord => ({
   payoutId: row.payout_id,
   severity: row.severity,
   reasonCode: row.reason_code,
-  details: {},
+  details: typeof row.details === "string" ? JSON.parse(row.details) as Record<string, unknown> : row.details,
   status: row.status,
   createdAt: toIso(row.created_at) ?? new Date().toISOString(),
   reviewedBy: row.reviewed_by,
   reviewedAt: toIso(row.reviewed_at),
   reviewNotes: row.review_notes,
 });
+
+const mapAdminAuditLog = (row: AdminAuditLogRow): AdminAuditLogRecord => ({
+  id: row.id,
+  actorUserId: row.actor_user_id,
+  action: row.action,
+  entityType: row.entity_type,
+  entityId: row.entity_id,
+  metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) as Record<string, unknown> : row.metadata,
+  createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+});
+
+export const insertRiskFlag = async (
+  executor: DatabaseExecutor,
+  input: {
+    userId?: string | null;
+    referralAttributionId?: string | null;
+    tradeAttributionId?: string | null;
+    payoutId?: string | null;
+    severity: AmbassadorRiskSeverity;
+    reasonCode: string;
+    details?: Record<string, unknown>;
+  },
+): Promise<void> => {
+  await executor.query(
+    `
+      insert into public.ambassador_risk_flags (
+        user_id,
+        referral_attribution_id,
+        trade_attribution_id,
+        payout_id,
+        severity,
+        reason_code,
+        details,
+        status,
+        created_at
+      ) values (
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        $4::uuid,
+        $5,
+        $6,
+        $7::jsonb,
+        'open',
+        now()
+      )
+    `,
+    [
+      input.userId ?? null,
+      input.referralAttributionId ?? null,
+      input.tradeAttributionId ?? null,
+      input.payoutId ?? null,
+      input.severity,
+      input.reasonCode,
+      JSON.stringify(input.details ?? {}),
+    ],
+  );
+};
+
+const insertReferralAuditEvent = async (
+  executor: DatabaseExecutor,
+  input: {
+    actorUserId: string | null;
+    action: "ambassador.referral_seen" | "ambassador.referral_captured" | "ambassador.referral_applied" | "ambassador.referral_rejected";
+    code: string;
+    reason?: string | null;
+    referralAttributionId?: string | null;
+    context?: ReferralApplyContext;
+  },
+): Promise<void> => {
+  await executor.query(
+    `
+      insert into public.audit_logs (
+        actor_user_id,
+        action,
+        entity_type,
+        entity_id,
+        metadata,
+        created_at
+      ) values (
+        $1::uuid,
+        $2,
+        'referral_attribution',
+        $3,
+        $4::jsonb,
+        now()
+      )
+    `,
+    [
+      input.actorUserId,
+      input.action,
+      input.referralAttributionId ?? input.actorUserId ?? zeroUuid,
+      JSON.stringify({
+        ambassadorCode: input.code,
+        reason: input.reason ?? null,
+        idempotencyKey: input.context?.idempotencyKey?.trim() || null,
+        sessionHash: hashNullable(input.context?.sessionId),
+        ipHash: hashNullable(input.context?.ipAddress),
+        userAgentHash: hashNullable(input.context?.userAgent),
+      }),
+    ],
+  );
+};
 
 const parseBooleanEnv = (name: string, defaultValue: boolean): boolean => {
   const value = process.env[name]?.trim().toLowerCase();
@@ -630,7 +773,8 @@ export const createAmbassadorCodeForUser = async (
   transaction: DatabaseTransaction,
   input: { ownerUserId: string; code?: string | null },
 ): Promise<AmbassadorCodeRecord> => {
-  const normalizedCode = input.code?.trim().toUpperCase() || generateAmbassadorCode();
+  const normalizedCode = input.code ? normalizeReferralCode(input.code) : generateAmbassadorCode();
+  if (!normalizedCode) throw new Error("ambassador code is malformed");
   const [row] = await transaction.query<AmbassadorCodeRow>(
     `
       insert into public.ambassador_codes (code, owner_user_id, status, created_at, disabled_at)
@@ -665,6 +809,9 @@ export const getAmbassadorCodeByCode = async (
   executor: DatabaseExecutor,
   code: string,
 ): Promise<AmbassadorCodeRecord | null> => {
+  const normalizedCode = normalizeReferralCode(code);
+  if (!normalizedCode) return null;
+
   const [row] = await executor.query<AmbassadorCodeRow>(
     `
       select id, code, owner_user_id, status, created_at, disabled_at
@@ -672,7 +819,7 @@ export const getAmbassadorCodeByCode = async (
       where upper(code) = upper($1)
       limit 1
     `,
-    [code.trim()],
+    [normalizedCode],
   );
   return row ? mapCode(row) : null;
 };
@@ -693,21 +840,212 @@ export const getReferralAttributionForUser = async (
   return row ? mapAttribution(row) : null;
 };
 
+const flagReferralApplyAbuse = async (
+  transaction: DatabaseTransaction,
+  input: {
+    referredUserId: string;
+    referrerUserId: string;
+    referralAttributionId: string;
+    ambassadorCode: string;
+    context?: ReferralApplyContext;
+  },
+): Promise<void> => {
+  const sessionHash = hashNullable(input.context?.sessionId);
+  const ipHash = hashNullable(input.context?.ipAddress);
+  const [sharedLinkedWallet] = await transaction.query<{ wallet_address: string }>(
+    `
+      select lower(referred.wallet_address) as wallet_address
+      from public.linked_wallets referred
+      join public.linked_wallets referrer
+        on lower(referrer.wallet_address) = lower(referred.wallet_address)
+       and referrer.user_id = $2::uuid
+      where referred.user_id = $1::uuid
+      limit 1
+    `,
+    [input.referredUserId, input.referrerUserId],
+  ).catch(() => []);
+
+  if (sharedLinkedWallet) {
+    await insertRiskFlag(transaction, {
+      userId: input.referredUserId,
+      referralAttributionId: input.referralAttributionId,
+      severity: "high",
+      reasonCode: "same_wallet_referral",
+      details: { walletHash: hashNullable(sharedLinkedWallet.wallet_address), ambassadorCode: input.ambassadorCode },
+    });
+  }
+
+  const [sharedPayoutWallet] = await transaction.query<{ wallet_address: string }>(
+    `
+      select lower(referred.wallet_address) as wallet_address
+      from public.ambassador_payout_wallets referred
+      join public.ambassador_payout_wallets referrer
+        on lower(referrer.wallet_address) = lower(referred.wallet_address)
+       and referrer.user_id = $2::uuid
+      where referred.user_id = $1::uuid
+      limit 1
+    `,
+    [input.referredUserId, input.referrerUserId],
+  ).catch(() => []);
+
+  if (sharedPayoutWallet) {
+    await insertRiskFlag(transaction, {
+      userId: input.referredUserId,
+      referralAttributionId: input.referralAttributionId,
+      severity: "high",
+      reasonCode: "referrer_referred_share_payout_wallet",
+      details: { walletHash: hashNullable(sharedPayoutWallet.wallet_address), ambassadorCode: input.ambassadorCode },
+    });
+  }
+
+  if (sessionHash) {
+    const [sessionAttempts] = await transaction.query<{ attempt_count: number }>(
+      `
+        select count(*)::int as attempt_count
+        from public.audit_logs
+        where action in ('ambassador.referral_captured', 'ambassador.referral_rejected', 'ambassador.referral_applied')
+          and metadata->>'sessionHash' = $1
+          and created_at > now() - interval '1 hour'
+      `,
+      [sessionHash],
+    );
+    if ((sessionAttempts?.attempt_count ?? 0) >= 5) {
+      await insertRiskFlag(transaction, {
+        userId: input.referredUserId,
+        referralAttributionId: input.referralAttributionId,
+        severity: "medium",
+        reasonCode: "same_session_many_referral_attempts",
+        details: { sessionHash, attemptCount: sessionAttempts?.attempt_count ?? 0 },
+      });
+    }
+  }
+
+  if (ipHash) {
+    const [ipAttempts] = await transaction.query<{ attempt_count: number }>(
+      `
+        select count(distinct actor_user_id)::int as attempt_count
+        from public.audit_logs
+        where action in ('ambassador.referral_captured', 'ambassador.referral_rejected', 'ambassador.referral_applied')
+          and metadata->>'ipHash' = $1
+          and created_at > now() - interval '1 day'
+      `,
+      [ipHash],
+    );
+    if ((ipAttempts?.attempt_count ?? 0) >= 5) {
+      await insertRiskFlag(transaction, {
+        userId: input.referredUserId,
+        referralAttributionId: input.referralAttributionId,
+        severity: "medium",
+        reasonCode: "same_ip_many_referral_accounts",
+        details: { ipHash, attemptCount: ipAttempts?.attempt_count ?? 0 },
+      });
+    }
+  }
+};
+
 export const createReferralAttribution = async (
   transaction: DatabaseTransaction,
-  input: { referredUserId: string; code: string },
+  input: { referredUserId: string; code: string; context?: ReferralApplyContext },
 ): Promise<ReferralAttributionRecord> => {
-  const [existing, codeRecord] = await Promise.all([
-    getReferralAttributionForUser(transaction, input.referredUserId),
-    getAmbassadorCodeByCode(transaction, input.code),
-  ]);
-  const decision = decideReferralAttribution({
-    referredUserId: input.referredUserId,
-    existingAttribution: existing,
-    codeRecord,
+  const normalizedCode = normalizeReferralCode(input.code);
+  const context = input.context ?? {};
+  if (!normalizedCode) {
+    await insertReferralAuditEvent(transaction, {
+      actorUserId: input.referredUserId,
+      action: "ambassador.referral_rejected",
+      code: input.code.trim().slice(0, 64),
+      reason: "malformed_referral_code",
+      context,
+    });
+    await insertRiskFlag(transaction, {
+      userId: input.referredUserId,
+      severity: "low",
+      reasonCode: "malformed_referral_code",
+      details: {
+        codePrefix: input.code.trim().slice(0, 8),
+        idempotencyKey: context.idempotencyKey ?? null,
+        sessionHash: hashNullable(context.sessionId),
+      },
+    });
+    throw new Error("ambassador code is malformed");
+  }
+
+  await insertReferralAuditEvent(transaction, {
+    actorUserId: input.referredUserId,
+    action: "ambassador.referral_seen",
+    code: normalizedCode,
+    context,
+  });
+  await insertReferralAuditEvent(transaction, {
+    actorUserId: input.referredUserId,
+    action: "ambassador.referral_captured",
+    code: normalizedCode,
+    context,
   });
 
-  if (decision.action === "existing") return decision.attribution;
+  const [existing, codeRecord] = await Promise.all([
+    getReferralAttributionForUser(transaction, input.referredUserId),
+    getAmbassadorCodeByCode(transaction, normalizedCode),
+  ]);
+
+  const reject = async (reason: string, severity: AmbassadorRiskSeverity, details: Record<string, unknown> = {}) => {
+    await insertReferralAuditEvent(transaction, {
+      actorUserId: input.referredUserId,
+      action: "ambassador.referral_rejected",
+      code: normalizedCode,
+      reason,
+      referralAttributionId: existing?.id ?? null,
+      context,
+    });
+    await insertRiskFlag(transaction, {
+      userId: input.referredUserId,
+      referralAttributionId: existing?.id ?? null,
+      severity,
+      reasonCode: reason,
+      details: {
+        ...details,
+        idempotencyKey: context.idempotencyKey ?? null,
+        sessionHash: hashNullable(context.sessionId),
+        ipHash: hashNullable(context.ipAddress),
+      },
+    });
+  };
+
+  if (existing) {
+    if (existing.ambassadorCode !== normalizedCode) {
+      await reject("same_user_multiple_ref_codes", "medium", {
+        existingAmbassadorCode: existing.ambassadorCode,
+        attemptedAmbassadorCode: normalizedCode,
+      });
+    } else {
+      await reject("duplicate_referral_application", "low", {
+        ambassadorCode: normalizedCode,
+      });
+    }
+    return existing;
+  }
+
+  if (!codeRecord) {
+    await reject("invalid_referral_code", "low", { attemptedAmbassadorCode: normalizedCode });
+    throw new Error("invalid ambassador code");
+  }
+
+  if (codeRecord.status !== "active") {
+    await reject("disabled_referral_code", "medium", { codeId: codeRecord.id });
+    throw new Error("ambassador code is disabled");
+  }
+
+  if (codeRecord.ownerUserId === input.referredUserId) {
+    await reject("self_referral_attempt", "high", { codeId: codeRecord.id });
+    throw new Error("self-referrals are not allowed");
+  }
+
+  const decision = decideReferralAttribution({
+    referredUserId: input.referredUserId,
+    existingAttribution: null,
+    codeRecord,
+  });
+  if (decision.action !== "create") throw new Error("invalid referral attribution decision");
 
   const [inserted] = await transaction.query<ReferralAttributionRow>(
     `
@@ -731,7 +1069,25 @@ export const createReferralAttribution = async (
     [input.referredUserId, decision.referrerUserId, decision.ambassadorCode],
   );
   if (!inserted) throw new Error("failed to create referral attribution");
-  return mapAttribution(inserted);
+  const attribution = mapAttribution(inserted);
+
+  await insertReferralAuditEvent(transaction, {
+    actorUserId: input.referredUserId,
+    action: "ambassador.referral_applied",
+    code: normalizedCode,
+    referralAttributionId: attribution.id,
+    context,
+  });
+
+  await flagReferralApplyAbuse(transaction, {
+    referredUserId: input.referredUserId,
+    referrerUserId: attribution.referrerUserId,
+    referralAttributionId: attribution.id,
+    ambassadorCode: normalizedCode,
+    context,
+  });
+
+  return attribution;
 };
 
 export const overrideReferralAttribution = async (
@@ -846,7 +1202,7 @@ export const getRewardSummaryForUser = async (
   return {
     pendingRewards: amountFor("pending"),
     payableRewards: amountFor("payable"),
-    approvedRewards: 0n,
+    approvedRewards: amountFor("approved"),
     paidRewards: amountFor("paid"),
     voidRewards: amountFor("void"),
     directReferralCount: directStats?.direct_referral_count ?? 0,
@@ -1374,13 +1730,53 @@ export const maybeCreateAutoPayoutRequest = async (
 
   if (decision.action !== "create") return null;
 
-  return insertRewardPayoutRequest(transaction, {
+  const payout = await insertRewardPayoutRequest(transaction, {
     recipientUserId,
     amountUsdcAtoms: decision.amountUsdcAtoms,
     destinationType: "wallet",
     destinationValue: decision.destinationValue,
     config,
   });
+  await transaction.query(
+    `
+      update public.ambassador_reward_ledger
+      set status = 'approved',
+          approved_at = coalesce(approved_at, now())
+      where recipient_user_id = $1::uuid
+        and status = 'payable'
+    `,
+    [recipientUserId],
+  );
+  return payout;
+};
+
+const flagPayoutWalletReuse = async (
+  transaction: DatabaseTransaction,
+  input: { payoutId: string; recipientUserId: string; destinationValue: string },
+): Promise<void> => {
+  const wallet = normalizePayoutWalletAddress(input.destinationValue);
+  const [reuse] = await transaction.query<{ account_count: number }>(
+    `
+      select count(distinct recipient_user_id)::int as account_count
+      from public.ambassador_reward_payouts
+      where lower(destination_value) = lower($1)
+        and destination_type = 'wallet'
+    `,
+    [wallet],
+  );
+
+  if ((reuse?.account_count ?? 0) >= 3) {
+    await insertRiskFlag(transaction, {
+      userId: input.recipientUserId,
+      payoutId: input.payoutId,
+      severity: "medium",
+      reasonCode: "same_payout_wallet_many_accounts",
+      details: {
+        walletHash: hashNullable(wallet),
+        accountCount: reuse?.account_count ?? 0,
+      },
+    });
+  }
 };
 
 export const requestRewardPayout = async (
@@ -1422,6 +1818,25 @@ export const requestRewardPayout = async (
     destinationType: input.destinationType,
     destinationValue: input.destinationType === "wallet" ? normalizePayoutWalletAddress(input.destinationValue) : input.destinationValue.trim(),
     config,
+  }).then(async (payout) => {
+    await transaction.query(
+      `
+        update public.ambassador_reward_ledger
+        set status = 'approved',
+            approved_at = coalesce(approved_at, now())
+        where recipient_user_id = $1::uuid
+          and status = 'payable'
+      `,
+      [input.recipientUserId],
+    );
+
+    await flagPayoutWalletReuse(transaction, {
+      payoutId: payout.id,
+      recipientUserId: input.recipientUserId,
+      destinationValue: payout.destinationValue,
+    });
+
+    return payout;
   });
 };
 
@@ -1441,7 +1856,7 @@ export const hasOpenHighSeverityRiskForPayoutApproval = async (
         select distinct ledger.source_trade_attribution_id as id
         from public.ambassador_reward_ledger ledger
         join payout on payout.recipient_user_id = ledger.recipient_user_id
-        where ledger.status = 'payable'
+        where ledger.status in ('payable', 'approved')
       ),
       related_referral_attributions as (
         select attribution.id
@@ -1491,9 +1906,9 @@ export const approveRewardPayout = async (
   transaction: DatabaseTransaction,
   input: { payoutId: string; reviewedBy: string; notes?: string | null },
 ): Promise<AmbassadorRewardPayoutRecord> => {
-  const [existing] = await transaction.query<{ recipient_user_id: string; status: string }>(
+  const [existing] = await transaction.query<{ recipient_user_id: string; amount_usdc_atoms: bigint; status: string }>(
     `
-      select recipient_user_id, status
+      select recipient_user_id, amount_usdc_atoms, status
         from public.ambassador_reward_payouts
        where id = $1::uuid
        limit 1
@@ -1505,6 +1920,18 @@ export const approveRewardPayout = async (
   }
 
   await assertPayoutApprovalRiskClear(transaction, input.payoutId);
+  const [reserved] = await transaction.query<{ amount: bigint }>(
+    `
+      select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount
+      from public.ambassador_reward_ledger
+      where recipient_user_id = $1::uuid
+        and status = 'approved'
+    `,
+    [existing.recipient_user_id],
+  );
+  if ((reserved?.amount ?? 0n) < existing.amount_usdc_atoms) {
+    throw new Error("payout amount exceeds locked rewards");
+  }
 
   const [row] = await transaction.query<PayoutRow>(
     `
@@ -1580,7 +2007,7 @@ export const markRewardPayoutPaid = async (
       set status = 'paid',
           paid_at = coalesce(paid_at, now())
       where recipient_user_id = $1::uuid
-        and status = 'payable'
+        and status = 'approved'
     `,
     [existing.recipient_user_id],
   );
@@ -1624,6 +2051,19 @@ export const updateRewardPayoutFailureState = async (
   transaction: DatabaseTransaction,
   input: { payoutId: string; reviewedBy: string; status: "failed" | "cancelled"; notes: string },
 ): Promise<AmbassadorRewardPayoutRecord> => {
+  const [existing] = await transaction.query<{ recipient_user_id: string; status: string }>(
+    `
+      select recipient_user_id, status
+      from public.ambassador_reward_payouts
+      where id = $1::uuid
+      limit 1
+    `,
+    [input.payoutId],
+  );
+  if (!existing || !["requested", "approved"].includes(existing.status)) {
+    throw new Error("payout must be requested or approved before it can be failed or cancelled");
+  }
+
   const [row] = await transaction.query<PayoutRow>(
     `
       update public.ambassador_reward_payouts
@@ -1655,13 +2095,23 @@ export const updateRewardPayoutFailureState = async (
     [input.payoutId, input.reviewedBy, input.status, input.notes],
   );
   if (!row) throw new Error("failed to update payout state");
+  await transaction.query(
+    `
+      update public.ambassador_reward_ledger
+      set status = 'payable',
+          approved_at = null
+      where recipient_user_id = $1::uuid
+        and status = 'approved'
+    `,
+    [existing.recipient_user_id],
+  );
   return mapPayout(row);
 };
 
 export const listAdminAmbassadorOverview = async (
   executor: DatabaseExecutor,
 ): Promise<AdminAmbassadorOverview> => {
-  const [codeRows, attributionRows, tradeRows, rewardRows, payoutRows, riskFlagRows, suspiciousRows] = await Promise.all([
+  const [codeRows, attributionRows, tradeRows, rewardRows, payoutRows, riskFlagRows, adminAuditRows, suspiciousRows] = await Promise.all([
     executor.query<AmbassadorCodeRow>(
       `select id, code, owner_user_id, status, created_at, disabled_at from public.ambassador_codes order by created_at desc limit 100`,
     ),
@@ -1720,6 +2170,17 @@ export const listAdminAmbassadorOverview = async (
         limit 100
       `,
     ),
+    executor.query<AdminAuditLogRow>(
+      `
+        select id, actor_user_id, action, entity_type, entity_id, metadata, created_at
+        from public.admin_audit_log
+        where action like 'ambassador.%'
+           or action like 'payout.%'
+           or action like 'reward_ledger.%'
+        order by created_at desc
+        limit 100
+      `,
+    ).catch(() => []),
     executor.query<ReferralAttributionRow>(
       `
         select attribution.id, attribution.referred_user_id, attribution.referrer_user_id, attribution.ambassador_code, attribution.attributed_at, attribution.qualification_status, attribution.rejection_reason
@@ -1740,6 +2201,7 @@ export const listAdminAmbassadorOverview = async (
     rewardLedger: rewardRows.map(mapRewardLedger),
     payouts: payoutRows.map(mapPayout),
     riskFlags: riskFlagRows.map(mapRiskFlag),
+    adminAuditLog: adminAuditRows.map(mapAdminAuditLog),
     suspiciousAttributions: suspiciousRows.map(mapAttribution),
   };
 };

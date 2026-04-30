@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 import {
   pendingReferralCookieName,
+  referralSessionStorageKey,
   pendingReferralStorageKey,
   appendReferralToInternalHref,
   normalizeReferralCode,
@@ -22,6 +23,9 @@ const readPendingReferralCookie = (): string | null => {
 
 export const persistPendingReferralCode = (code: string): void => {
   window.localStorage.setItem(pendingReferralStorageKey, code);
+  if (!window.localStorage.getItem(referralSessionStorageKey)) {
+    window.localStorage.setItem(referralSessionStorageKey, crypto.randomUUID());
+  }
   document.cookie = `${pendingReferralCookieName}=${encodeURIComponent(code)}; Path=/; Max-Age=2592000; SameSite=Lax`;
   window.dispatchEvent(new CustomEvent("bet:referral-captured", { detail: { code } }));
 };

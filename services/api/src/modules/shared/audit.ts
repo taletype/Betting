@@ -39,3 +39,35 @@ export const insertAuditRecord = async (
     ],
   );
 };
+
+export const insertAdminAuditRecord = async (
+  executor: DatabaseExecutor,
+  input: AuditRecordInput,
+): Promise<void> => {
+  await executor.query(
+    `
+      insert into public.admin_audit_log (
+        actor_user_id,
+        action,
+        entity_type,
+        entity_id,
+        metadata,
+        created_at
+      ) values (
+        $1::uuid,
+        $2,
+        $3,
+        $4,
+        $5::jsonb,
+        now()
+      )
+    `,
+    [
+      input.actorUserId,
+      input.action,
+      input.entityType,
+      input.entityId,
+      JSON.stringify(input.metadata ?? {}),
+    ],
+  );
+};
