@@ -26,6 +26,21 @@ const unavailablePayload = (source: string) => ({
 const safeMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Market source unavailable";
 
+type MarketStatusFilter = "open" | "closed" | "resolved" | "cancelled" | "all";
+
+const resolveStatusFilter = (request?: Request): MarketStatusFilter => {
+  const raw = request ? new URL(request.url).searchParams.get("status") : null;
+  if (raw === "closed" || raw === "resolved" || raw === "cancelled" || raw === "all") return raw;
+  return "open";
+};
+
+const filterMarketsByStatus = <Market extends { status?: unknown }>(
+  markets: Market[],
+  status: MarketStatusFilter,
+): Market[] => status === "all"
+  ? markets
+  : markets.filter((market) => market.status === status);
+
 const fallbackDiagnostics = (input?: Partial<ExternalMarketCacheDiagnostics>): ExternalMarketCacheDiagnostics => ({
   supabaseCacheReachable: false,
   marketCacheRowCount: null,
@@ -33,7 +48,7 @@ const fallbackDiagnostics = (input?: Partial<ExternalMarketCacheDiagnostics>): E
   staleMarketCount: null,
   lastSyncStatus: null,
   fallbackUsedLastRequest: false,
-  routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true" || process.env.NEXT_PUBLIC_POLYMARKET_ROUTED_TRADING_ENABLED === "true",
+  routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true",
   builderCodeConfigured: Boolean(process.env.POLY_BUILDER_CODE?.trim() || process.env.POLYMARKET_BUILDER_CODE?.trim()),
   ...input,
 });
@@ -68,7 +83,9 @@ const marketsEnvelope = (input: {
 export async function externalMarketsResponse(request?: Request, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
   try {
     const supabase = adminSupabase();
-    const locale = resolveMarketLocale(request ? new URL(request.url).searchParams.get("locale") : null);
+    const url = request ? new URL(request.url) : null;
+    const locale = resolveMarketLocale(url?.searchParams.get("locale") ?? null);
+    const status = resolveStatusFilter(request);
     const cached = await readExternalMarketsFromCache(supabase);
     if (cached.markets.length > 0) {
       const markets = await applyMarketTranslations(supabase, cached.markets, locale);
@@ -77,7 +94,7 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
         fallbackUsed: false,
         stale: cached.stale,
         lastUpdatedAt: cached.lastUpdatedAt,
-        markets,
+        markets: filterMarketsByStatus(markets, status),
         diagnostics: cached.diagnostics,
       }), {
         headers: { "x-market-source": "supabase_cache" },

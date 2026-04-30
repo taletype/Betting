@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizePolymarketMarket } from "./normalize";
+import { normalizePolymarketMarket, resolvePolymarketMarketStatus } from "./normalize";
 
 test("normalizes gamma market payload into external market", () => {
   const market = normalizePolymarketMarket({
@@ -23,4 +23,48 @@ test("normalizes gamma market payload into external market", () => {
 test("returns null for malformed upstream payload missing id/title", () => {
   const market = normalizePolymarketMarket({ id: "", question: "" });
   assert.equal(market, null);
+});
+
+test("normalizes closed/resolved/cancelled and past close markets away from open", () => {
+  const now = new Date("2026-04-30T12:00:00.000Z");
+
+  assert.equal(normalizePolymarketMarket({
+    id: "closed-flag",
+    question: "Closed?",
+    closed: true,
+  })?.status, "closed");
+
+  assert.equal(normalizePolymarketMarket({
+    id: "resolved-market",
+    question: "Resolved?",
+    resolved_at: "2026-04-29T00:00:00.000Z",
+  })?.status, "resolved");
+
+  assert.equal(normalizePolymarketMarket({
+    id: "cancelled-market",
+    question: "Cancelled?",
+    status: "cancelled",
+  })?.status, "cancelled");
+
+  assert.equal(normalizePolymarketMarket({
+    id: "past-end",
+    question: "Past end?",
+    active: true,
+    closed: false,
+    endDate: "2026-04-29T00:00:00.000Z",
+  })?.status, "closed");
+
+  assert.equal(normalizePolymarketMarket({
+    id: "future-end",
+    question: "Future end?",
+    active: true,
+    closed: false,
+    endDate: "2026-05-01T00:00:00.000Z",
+  })?.status, "open");
+
+  assert.equal(resolvePolymarketMarketStatus({
+    active: true,
+    closed: false,
+    endDate: new Date(now.getTime() - 60_000).toISOString(),
+  }, now), "closed");
 });

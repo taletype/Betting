@@ -312,7 +312,7 @@ export const ApiAmbassadorRewardLedgerSchema = z.object({
   sourceTradeAttributionId: UuidSchema,
   rewardType: z.enum(["platform_revenue", "direct_referrer_commission", "trader_cashback"]),
   amountUsdcAtoms: BigIntStringSchema,
-  status: z.enum(["pending", "payable", "approved", "paid", "void"]),
+  status: z.enum(["pending", "payable", "paid", "void"]),
   createdAt: TimestampSchema,
   payableAt: TimestampSchema.nullable(),
   approvedAt: TimestampSchema.nullable(),

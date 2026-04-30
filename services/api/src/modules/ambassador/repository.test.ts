@@ -71,7 +71,7 @@ const payoutReviewerId = "77777777-7777-4777-8777-777777777777";
 
 const createPayoutApprovalFakeRepository = (riskStatus: AmbassadorRiskStatus) => {
   let payoutStatus: "requested" | "approved" = "requested";
-  let ledgerStatus: "payable" | "approved" = "payable";
+  let ledgerStatus: "payable" = "payable";
   const queries: string[] = [];
   const payoutRow = () => ({
     id: payoutId,
@@ -112,11 +112,6 @@ const createPayoutApprovalFakeRepository = (riskStatus: AmbassadorRiskStatus) =>
         if (payoutStatus !== "requested") return [];
         payoutStatus = "approved";
         return [payoutRow()] as T[];
-      }
-
-      if (/update public\.ambassador_reward_ledger set status = 'approved'/.test(normalized)) {
-        ledgerStatus = "approved";
-        return [];
       }
 
       throw new Error(`unexpected fake repository query: ${normalized}`);
@@ -239,6 +234,7 @@ test("payout workflow enforces threshold and admin approval before paid", () => 
   assert.match(source, /status = 'requested'/);
   assert.match(source, /'requested',\s*\$3,/);
   assert.match(source, /status = 'approved'/);
+  assert.doesNotMatch(source, /ambassador_reward_ledger\s+set status = 'approved'/);
   assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
   assert.match(source, /recipient already has an open reward payout request/);
   assert.match(source, /payout requires admin approval before it can be marked paid/);
@@ -292,7 +288,7 @@ test("payout approval uses repository risk flags to block only open high-severit
     assert.equal(payout.status, "approved");
     assert.equal(payout.reviewedBy, payoutReviewerId);
     assert.equal(repo.payoutStatus, "approved");
-    assert.equal(repo.ledgerStatus, "approved");
+    assert.equal(repo.ledgerStatus, "payable");
     assert.ok(repo.queries.some((query) => /flag\.status = 'open'/.test(query)));
   }
 });

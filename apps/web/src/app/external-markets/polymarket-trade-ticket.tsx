@@ -113,6 +113,16 @@ export function PolymarketTradeTicket(props: Props) {
   const readinessChecklist = getPolymarketReadinessChecklist(readinessInput);
   const topBlockingReason = getPolymarketTopBlockingReason(readinessInput);
   const disabled = readiness !== "ready_to_submit" || !finalConfirmation;
+  const publicTradingReady = Boolean(
+    props.featureEnabled &&
+    props.hasBuilderCode &&
+    walletConnected &&
+    props.hasCredentials &&
+    props.userSigningAvailable === true &&
+    props.marketTradable &&
+    props.submitModeEnabled === true &&
+    props.submitterAvailable,
+  );
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
@@ -185,7 +195,7 @@ export function PolymarketTradeTicket(props: Props) {
       <BuilderFeeDisclosureCard
         locale={props.locale}
         hasBuilderCode={props.hasBuilderCode}
-        routedTradingEnabled={props.featureEnabled}
+        routedTradingEnabled={publicTradingReady}
         compact
       />
 

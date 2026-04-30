@@ -602,7 +602,12 @@ export const getPublicExternalMarketsReadiness = () => {
   };
 };
 
-export const listExternalMarkets = async (locale?: string): Promise<ExternalMarketApiRecord[]> => {
+export type ExternalMarketStatusQuery = "open" | "closed" | "resolved" | "cancelled" | "all";
+
+export const listExternalMarkets = async (
+  locale?: string,
+  status: ExternalMarketStatusQuery = "open",
+): Promise<ExternalMarketApiRecord[]> => {
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
   if (!getConfiguredPublicApiBaseUrl()) {
@@ -613,7 +618,11 @@ export const listExternalMarkets = async (locale?: string): Promise<ExternalMark
   }
 
   try {
-    const path = `/external/markets${locale && locale !== "zh-HK" ? `?locale=${encodeURIComponent(locale)}` : ""}`;
+    const search = new URLSearchParams();
+    if (locale && locale !== "zh-HK") search.set("locale", locale);
+    if (status !== "open") search.set("status", status);
+    const query = search.toString();
+    const path = `/external/markets${query ? `?${query}` : ""}`;
     const payload = await executeApiRequest<unknown>(getLocalApiUrl(path));
     if (Array.isArray(payload)) return payload as ExternalMarketApiRecord[];
     if (payload && typeof payload === "object" && Array.isArray((payload as ExternalMarketsApiEnvelope).markets)) {

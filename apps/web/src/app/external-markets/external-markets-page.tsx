@@ -21,8 +21,15 @@ import {
   getPublicExternalMarketsReadiness,
   listExternalMarkets,
   type ExternalMarketApiRecord,
+  type ExternalMarketStatusQuery,
   type ExternalMarketsLoadErrorCode,
 } from "../../lib/api";
+import {
+  hasExternalMarketActivity,
+  hasExternalMarketPriceData,
+  isExternalMarketOpenNow,
+  isExternalMarketStale,
+} from "../../lib/external-market-status";
 import { formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { siteCopy } from "../../lib/i18n";
 import { normalizeReferralCode } from "../../lib/referral-capture";
@@ -89,61 +96,25 @@ interface MarketFeedSearchParams {
   market?: string;
 }
 
-const getConfiguredStaleThresholdMs = (): number => {
-  const parsed = Number(process.env.POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? process.env.NEXT_PUBLIC_POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? 15 * 60 * 1000);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15 * 60 * 1000;
-};
-
 const toTime = (value: string | null | undefined): number | null => {
   if (!value) return null;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : null;
 };
 
-const hasUsablePriceData = (market: ExternalMarketApiRecord): boolean =>
-  [market.lastTradePrice, market.bestBid, market.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0) ||
-  market.outcomes.some((outcome) =>
-    [outcome.lastPrice, outcome.bestBid, outcome.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0),
-  );
-
-const getMarketStaleAfter = (market: ExternalMarketApiRecord): string | null => {
-  const provenance = market.sourceProvenance ?? market.provenance;
-  if (!provenance || typeof provenance !== "object") return null;
-  const staleAfter = (provenance as Record<string, unknown>).staleAfter;
-  return typeof staleAfter === "string" ? staleAfter : null;
-};
-
-const isMarketStale = (market: ExternalMarketApiRecord): boolean => {
-  const provenance = market.sourceProvenance ?? market.provenance;
-  if (provenance && typeof provenance === "object" && (provenance as Record<string, unknown>).stale === true) {
-    return true;
-  }
-
-  const staleAfterTime = toTime(getMarketStaleAfter(market));
-  if (staleAfterTime !== null) {
-    return staleAfterTime <= Date.now();
-  }
-
-  const lastSeenTime = toTime(market.lastUpdatedAt ?? market.lastSyncedAt ?? market.updatedAt);
-  return lastSeenTime !== null && Date.now() - lastSeenTime > getConfiguredStaleThresholdMs();
-};
-
-const hasMarketActivity = (market: ExternalMarketApiRecord): boolean =>
-  (market.volume24h ?? 0) > 0 || (market.liquidity ?? market.volumeTotal ?? 0) > 0;
-
 const isDefaultFeedStatus = (status: string | undefined): boolean => !status || !["all", "open", "closed", "resolved", "cancelled"].includes(status);
 
 const isDefaultFeedMarket = (market: ExternalMarketApiRecord): boolean =>
-  market.status === "open" &&
-  hasMarketActivity(market) &&
-  hasUsablePriceData(market) &&
-  !isMarketStale(market);
+  isExternalMarketOpenNow(market) &&
+  hasExternalMarketActivity(market) &&
+  hasExternalMarketPriceData(market) &&
+  !isExternalMarketStale(market);
 
 const qualityScore = (market: ExternalMarketApiRecord): number =>
   (market.status === "open" ? 8 : 0) +
-  (hasMarketActivity(market) ? 4 : 0) +
-  (hasUsablePriceData(market) ? 2 : 0) +
-  (!isMarketStale(market) ? 1 : 0);
+  (hasExternalMarketActivity(market) ? 4 : 0) +
+  (hasExternalMarketPriceData(market) ? 2 : 0) +
+  (!isExternalMarketStale(market) ? 1 : 0);
 
 const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: MarketFeedSearchParams) => {
   const q = params?.q?.trim().toLowerCase() ?? "";
@@ -233,9 +204,17 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const currentUser = await getCurrentWebUser();
   const normalizedParams: MarketFeedSearchParams = { ...params, ref: refCode ?? params?.ref ?? undefined };
   const dataReadiness = getPublicExternalMarketsReadiness();
+  const selectedStatus = params?.status?.trim();
+  const defaultFeed = isDefaultFeedStatus(selectedStatus);
+  const requestedStatus: ExternalMarketStatusQuery =
+    !selectedStatus || defaultFeed
+      ? "open"
+      : selectedStatus === "all" || selectedStatus === "closed" || selectedStatus === "resolved" || selectedStatus === "cancelled"
+        ? selectedStatus
+        : "open";
 
   try {
-    markets = (await listExternalMarkets(locale)).filter((market) => market.source === "polymarket");
+    markets = (await listExternalMarkets(locale, requestedStatus)).filter((market) => market.source === "polymarket");
   } catch (error) {
     loadFailed = true;
     if (error instanceof ExternalMarketsLoadError) {
@@ -266,8 +245,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const sameOriginApiReachable = dataReadiness.sameOriginApiSelected ? !loadFailed : true;
   const serviceApiReachable = dataReadiness.serviceApiSelected ? !loadFailed : dataReadiness.configuredApiBaseIsWebOrigin ? false : dataReadiness.apiBaseUrlConfigured;
   const thirdwebClientConfigured = Boolean(process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim());
-  const selectedStatus = params?.status?.trim();
-  const defaultFeed = isDefaultFeedStatus(selectedStatus);
+  const staleMarketsPresent = markets.some(isExternalMarketStale);
+  const staleOpenMarketsPresent = markets.some((market) => isExternalMarketOpenNow(market) && isExternalMarketStale(market));
+  const publicTradingReady = routedTradingEnabled && hasBuilderCode && submitterAvailable;
 
   return (
     <main className="stack">
@@ -348,6 +328,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </Link>
         ))}
       </nav>
+      {staleMarketsPresent ? (
+        <div className="banner banner-warning">市場資料可能已過期，請稍後再試。</div>
+      ) : null}
       <section className="stack">
         {loadFailed ? (
           <div className="panel empty-state">
@@ -372,7 +355,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
-            <p>{defaultFeed ? "暫時未有活躍市場資料" : copy.empty}</p>
+            <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : defaultFeed ? "暫時未有活躍市場資料" : copy.empty}</p>
             {defaultFeed ? (
               <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>查看全部市場</Link>
             ) : (
@@ -395,8 +378,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             const marketShareUrl = `${siteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
             const closeState = getCloseState(market);
-            const stale = isMarketStale(market);
-            const noTradeData = !hasMarketActivity(market) || !hasUsablePriceData(market);
+            const stale = isExternalMarketStale(market);
+            const noTradeData = !hasExternalMarketActivity(market) || !hasExternalMarketPriceData(market);
 
             return (
             <div key={`${market.source}:${market.externalId}`} className="panel stack market-card">
@@ -493,7 +476,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         <BuilderFeeDisclosureCard
           locale={locale}
           hasBuilderCode={hasBuilderCode}
-          routedTradingEnabled={routedTradingEnabled}
+          routedTradingEnabled={publicTradingReady}
         />
         <section className="panel disclosure-card stack">
           <strong>Builder / 交易安全狀態</strong>
@@ -509,8 +492,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
             <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">no</span></div>
-            <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{routedTradingEnabled ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{hasBuilderCode ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">交易功能</span><span className="kv-value">{publicTradingReady ? "交易功能已啟用" : "交易功能尚未啟用"}</span></div>
+            <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
             <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
           </div>
         </details>

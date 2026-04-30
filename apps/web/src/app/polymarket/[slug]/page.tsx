@@ -22,6 +22,11 @@ import { PendingReferralNotice } from "../../pending-referral-notice";
 import { ThirdwebWalletFundingCard } from "../../thirdweb-wallet-funding-card";
 import { TrackedCopyButton } from "../../tracked-copy-button";
 import { getExternalMarket, getExternalMarketHistory, getExternalMarketOrderbook, getExternalMarketStats, getExternalMarketTrades, listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
+import {
+  hasExternalMarketPriceData,
+  isExternalMarketOpenNow,
+  isExternalMarketStale,
+} from "../../../lib/external-market-status";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../../lib/locale";
 import { siteCopy } from "../../../lib/i18n";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
@@ -79,45 +84,14 @@ const formatProvenance = (market: ExternalMarketApiRecord): string => {
   return market.source;
 };
 
-const toTime = (value: string | null | undefined): number | null => {
-  if (!value) return null;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : null;
-};
-
-const getConfiguredStaleThresholdMs = (): number => {
-  const parsed = Number(process.env.POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? process.env.NEXT_PUBLIC_POLYMARKET_MARKET_STALE_THRESHOLD_MS ?? 15 * 60 * 1000);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15 * 60 * 1000;
-};
-
-const isCachedMarketStale = (market: ExternalMarketApiRecord): boolean => {
-  const provenance = market.sourceProvenance ?? market.provenance;
-  if (provenance && typeof provenance === "object") {
-    const record = provenance as Record<string, unknown>;
-    if (record.stale === true) return true;
-    if (typeof record.staleAfter === "string") {
-      const staleAfterTime = toTime(record.staleAfter);
-      if (staleAfterTime !== null) return staleAfterTime <= Date.now();
-    }
-  }
-
-  const lastSeenTime = toTime(market.lastUpdatedAt ?? market.lastSyncedAt ?? market.updatedAt);
-  return lastSeenTime !== null && Date.now() - lastSeenTime > getConfiguredStaleThresholdMs();
-};
-
 const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
   Boolean(
     market.outcomes[0]?.externalOutcomeId &&
-    (
-      [market.lastTradePrice, market.bestBid, market.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0) ||
-      market.outcomes.some((outcome) =>
-        [outcome.lastPrice, outcome.bestBid, outcome.bestAsk].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0),
-      )
-    ),
+    hasExternalMarketPriceData(market),
   );
 
 const isMarketTradable = (market: ExternalMarketApiRecord, stale: boolean): boolean =>
-  market.status === "open" && !stale && hasValidTradeData(market);
+  isExternalMarketOpenNow(market) && !stale && hasValidTradeData(market);
 
 export async function renderPolymarketSlugPage(locale: AppLocale, { params, searchParams }: PolymarketSlugPageProps) {
   const { slug } = await params;
@@ -136,7 +110,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   try {
     market = await getExternalMarket("polymarket", slug, locale);
     if (!market) {
-      market = findMarket((await listExternalMarkets()).filter((item) => item.source === "polymarket"), slug);
+      market = findMarket((await listExternalMarkets(locale, "all")).filter((item) => item.source === "polymarket"), slug);
     }
   } catch (error) {
     failed = true;
@@ -227,7 +201,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const volumePoints = history.map((point) => ({ timestamp: point.timestamp, value: point.volume }));
   const liquidityPoints = history.map((point) => ({ timestamp: point.timestamp, value: point.liquidity }));
   const tradePoints = visibleTrades.map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
-  const stale = stats?.stale || isCachedMarketStale(market);
+  const stale = stats?.stale || isExternalMarketStale(market);
   const externalDataUnavailable = stale || !stats || history.length === 0 || visibleOrderbook.length === 0;
   const marketTradable = isMarketTradable(market, Boolean(stale));
   const orderValid = hasValidTradeData(market);
@@ -247,6 +221,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   };
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
   const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
+  const publicTradingReady = routedTradingEnabled && hasBuilderCode && submitterAvailable;
   const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const marketShareUrl = `${siteUrl()}${detailPath}`;
   const tradeTicketProps = {
@@ -311,7 +286,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         </div>
       </section>
 
-      <BuilderFeeDisclosureCard locale={locale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={routedTradingEnabled} />
+      <BuilderFeeDisclosureCard locale={locale} hasBuilderCode={hasBuilderCode} routedTradingEnabled={publicTradingReady} />
       <ThirdwebWalletFundingCard surface="polymarket_detail" walletConnected={false} />
       {!marketTradable ? (
         <section className="panel disclosure-card stack">
@@ -322,7 +297,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       {externalDataUnavailable ? (
         <section className="panel disclosure-card stack">
           <strong>外部資料可能過時或暫時不可用</strong>
-          <p className="muted">頁面會顯示已同步的市場資料；Gamma / CLOB 即時資料不可用時，圖表、訂單簿或近期成交會以安全空狀態顯示。</p>
+          <p className="muted">市場資料可能已過期，請稍後再試。頁面會顯示已同步的市場資料；Gamma / CLOB 即時資料不可用時，圖表、訂單簿或近期成交會以安全空狀態顯示。</p>
         </section>
       ) : null}
 

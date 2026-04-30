@@ -1,3 +1,5 @@
+import { resolvePolymarketMarketStatus } from "@bet/integrations";
+
 import { normalizeApiPayload } from "./api-serialization";
 import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
 
@@ -71,6 +73,16 @@ const toNumber = (value: string | number | null): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const mapExternalMarketStatus = (row: ExternalMarketRow): ExternalMarketRow["status"] =>
+  row.source === "polymarket"
+    ? resolvePolymarketMarketStatus({
+      status: row.status,
+      closeTime: row.close_time ?? undefined,
+      endDate: row.end_time ?? undefined,
+      resolvedAt: row.resolved_at ?? undefined,
+    })
+    : row.status;
+
 const mapExternalMarket = (row: ExternalMarketRow): PublicExternalMarketRecord => ({
   id: row.id,
   source: row.source,
@@ -78,7 +90,7 @@ const mapExternalMarket = (row: ExternalMarketRow): PublicExternalMarketRecord =
   slug: row.slug,
   title: row.title,
   description: row.description,
-  status: row.status,
+  status: mapExternalMarketStatus(row),
   marketUrl: row.market_url,
   closeTime: row.close_time,
   endTime: row.end_time,

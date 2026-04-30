@@ -7,7 +7,7 @@ const zeroUuid = "00000000-0000-0000-0000-000000000000";
 const platformRecipientUuid = zeroUuid;
 const defaultPolygonPusdAddress = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
-type RewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
+type RewardStatus = "pending" | "payable" | "paid" | "void";
 type TradeStatus = "pending" | "confirmed" | "void";
 type PayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
 type RiskSeverity = "low" | "medium" | "high";
@@ -233,7 +233,7 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
       `,
       [userId],
     ),
-    db.query<{ status: "pending" | "payable" | "approved" | "paid" | "void"; amount: bigint }>(
+    db.query<{ status: RewardStatus; amount: bigint }>(
       `select status, coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid group by status`,
       [userId],
     ),
@@ -243,7 +243,7 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
       source_trade_attribution_id: string;
       reward_type: "platform_revenue" | "direct_referrer_commission" | "trader_cashback";
       amount_usdc_atoms: bigint;
-      status: "pending" | "payable" | "approved" | "paid" | "void";
+      status: RewardStatus;
       created_at: Date | string;
       payable_at: Date | string | null;
       approved_at: Date | string | null;
@@ -286,7 +286,7 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
     ),
   ]);
 
-  const amountFor = (status: "pending" | "payable" | "approved" | "paid" | "void") =>
+  const amountFor = (status: RewardStatus) =>
     rewardRows.find((row) => row.status === status)?.amount ?? 0n;
 
   return {
@@ -313,7 +313,7 @@ export const readAmbassadorDashboardDb = async (userId: string) => {
     rewards: {
       pendingRewards: amountFor("pending"),
       payableRewards: amountFor("payable"),
-      approvedRewards: amountFor("approved"),
+      approvedRewards: 0n,
       paidRewards: amountFor("paid"),
       voidRewards: amountFor("void"),
       directReferralCount: directRows.length,
@@ -934,14 +934,6 @@ const updatePayoutStatusDb = async (input: {
           and status = 'requested'`,
       [input.payoutId, input.reviewedBy, input.notes ?? null],
     );
-    await db.query(
-      `update public.ambassador_reward_ledger
-          set status = 'approved',
-              approved_at = coalesce(approved_at, now())
-        where recipient_user_id = $1::uuid
-          and status = 'payable'`,
-      [row.recipient_user_id],
-    );
     return { ok: true };
   }
 
@@ -968,7 +960,7 @@ const updatePayoutStatusDb = async (input: {
           set status = 'paid',
               paid_at = coalesce(paid_at, now())
         where recipient_user_id = $1::uuid
-          and status in ('payable', 'approved')`,
+          and status = 'payable'`,
       [row.recipient_user_id],
     );
     return { ok: true };

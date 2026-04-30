@@ -6,7 +6,7 @@ import { isAddress } from "ethers";
 export type AmbassadorCodeStatus = "active" | "disabled";
 export type ReferralQualificationStatus = "pending" | "qualified" | "rejected";
 export type BuilderTradeAttributionStatus = "pending" | "confirmed" | "void";
-export type AmbassadorRewardStatus = "pending" | "payable" | "approved" | "paid" | "void";
+export type AmbassadorRewardStatus = "pending" | "payable" | "paid" | "void";
 export type AmbassadorPayoutStatus = "requested" | "approved" | "paid" | "failed" | "cancelled";
 export type AmbassadorPayoutDestinationType = "wallet" | "manual";
 export type AmbassadorRiskSeverity = "low" | "medium" | "high";
@@ -846,7 +846,7 @@ export const getRewardSummaryForUser = async (
   return {
     pendingRewards: amountFor("pending"),
     payableRewards: amountFor("payable"),
-    approvedRewards: amountFor("approved"),
+    approvedRewards: 0n,
     paidRewards: amountFor("paid"),
     voidRewards: amountFor("void"),
     directReferralCount: directStats?.direct_referral_count ?? 0,
@@ -1537,16 +1537,6 @@ export const approveRewardPayout = async (
     [input.payoutId, input.reviewedBy, input.notes ?? null],
   );
   if (!row) throw new Error("payout must be requested before approval");
-  await transaction.query(
-    `
-      update public.ambassador_reward_ledger
-      set status = 'approved',
-          approved_at = coalesce(approved_at, now())
-      where recipient_user_id = $1::uuid
-        and status = 'payable'
-    `,
-    [row.recipient_user_id],
-  );
   return mapPayout(row);
 };
 
@@ -1590,7 +1580,7 @@ export const markRewardPayoutPaid = async (
       set status = 'paid',
           paid_at = coalesce(paid_at, now())
       where recipient_user_id = $1::uuid
-        and status in ('payable', 'approved')
+        and status = 'payable'
     `,
     [existing.recipient_user_id],
   );

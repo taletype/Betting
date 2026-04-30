@@ -64,6 +64,25 @@ const getVersionPayload = () => ({
 const safeErrorMessage = (error: unknown): string =>
   process.env.NODE_ENV === "production" ? "Request failed" : error instanceof Error ? error.message : "Failed to fetch data";
 
+const recordAdminAuditLog = async (input: {
+  actorUserId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+}) => {
+  await createDatabaseClient().query(
+    `
+      insert into public.admin_audit_log (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+      values ($1::uuid, $2, $3, $4, $5::jsonb, now())
+    `,
+    [input.actorUserId, input.action, input.entityType, input.entityId, JSON.stringify(input.metadata ?? {})],
+  );
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
 async function handleRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -454,18 +473,20 @@ async function handleRequest(
 
       if (apiPath === "admin/ambassador/codes" && request.method === "POST") {
         const body = (await request.json().catch(() => ({}))) as { ownerUserId?: string; code?: string | null };
-        return NextResponse.json(
-          normalizeApiPayload(await createAdminAmbassadorCodeDb({
+        const result = normalizeApiPayload(await createAdminAmbassadorCodeDb({
             ownerUserId: String(body.ownerUserId ?? ""),
             code: body.code ? String(body.code) : null,
-          })),
-          { status: 201 },
-        );
+          }));
+        const resultRecord = asRecord(result);
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "ambassador_code.create", entityType: "ambassador_code", entityId: String(resultRecord.id ?? ""), metadata: { ownerUserId: body.ownerUserId ?? null } });
+        return NextResponse.json(result, { status: 201 });
       }
 
       if (apiPath.match(/^admin\/ambassador\/codes\/[^/]+\/disable$/) && request.method === "POST") {
         const codeId = apiPath.split("/")[3] ?? "";
-        return NextResponse.json(normalizeApiPayload(await disableAdminAmbassadorCodeDb(codeId)));
+        const result = normalizeApiPayload(await disableAdminAmbassadorCodeDb(codeId));
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "ambassador_code.disable", entityType: "ambassador_code", entityId: codeId });
+        return NextResponse.json(result);
       }
 
       if (apiPath === "admin/ambassador/referral-attributions/override" && request.method === "POST") {
@@ -475,15 +496,16 @@ async function handleRequest(
           code?: string;
           reason?: string;
         };
-        return NextResponse.json(
-          normalizeApiPayload(
+        const result = normalizeApiPayload(
             await overrideAdminReferralAttributionDb({
               referredUserId: String(body.referredUserId ?? ""),
               ambassadorCode: String(body.ambassadorCode ?? body.code ?? ""),
               reason: String(body.reason ?? ""),
             }),
-          ),
-        );
+          );
+        const resultRecord = asRecord(result);
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "referral_attribution.override", entityType: "referral_attribution", entityId: String(resultRecord.id ?? body.referredUserId ?? ""), metadata: { reason: body.reason ?? "" } });
+        return NextResponse.json(result);
       }
 
       if (apiPath === "admin/ambassador/trade-attributions/mock" && request.method === "POST") {
@@ -497,8 +519,7 @@ async function handleRequest(
           builderFeeUsdcAtoms?: string;
           status?: "pending" | "confirmed" | "void";
         };
-        return NextResponse.json(
-          normalizeApiPayload(
+        const result = normalizeApiPayload(
             await recordAdminMockBuilderTradeAttributionDb({
               userId: String(body.userId ?? ""),
               polymarketOrderId: body.polymarketOrderId ? String(body.polymarketOrderId) : null,
@@ -509,44 +530,57 @@ async function handleRequest(
               builderFeeUsdcAtoms: BigInt(String(body.builderFeeUsdcAtoms ?? "0")),
               status: body.status === "void" || body.status === "confirmed" ? body.status : "pending",
             }),
-          ),
-          { status: 201 },
-        );
+          );
+        const resultRecord = asRecord(result);
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "builder_trade_attribution.record_mock", entityType: "builder_trade_attribution", entityId: String(resultRecord.tradeAttributionId ?? ""), metadata: { status: body.status ?? "pending" } });
+        return NextResponse.json(result, { status: 201 });
       }
 
       if (apiPath.match(/^admin\/ambassador\/trade-attributions\/[^/]+\/payable$/) && request.method === "POST") {
         const tradeAttributionId = apiPath.split("/")[3] ?? "";
-        return NextResponse.json(await markRewardsPayableDb(tradeAttributionId));
+        const result = await markRewardsPayableDb(tradeAttributionId);
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "reward_ledger.mark_payable", entityType: "builder_trade_attribution", entityId: tradeAttributionId });
+        return NextResponse.json(result);
       }
 
       if (apiPath.match(/^admin\/ambassador\/trade-attributions\/[^/]+\/void$/) && request.method === "POST") {
         const tradeAttributionId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { reason?: string };
-        return NextResponse.json(await voidRewardsForTradeAttributionDb(tradeAttributionId, String(body.reason ?? "")));
+        const result = await voidRewardsForTradeAttributionDb(tradeAttributionId, String(body.reason ?? ""));
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "reward_ledger.void", entityType: "builder_trade_attribution", entityId: tradeAttributionId, metadata: { reason: body.reason ?? "" } });
+        return NextResponse.json(result);
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/approve$/) && request.method === "POST") {
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
-        return NextResponse.json(await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null }));
+        const result = await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.approve", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? null } });
+        return NextResponse.json(result);
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/paid$/) && request.method === "POST") {
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
-        return NextResponse.json(await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null }));
+        const result = await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, metadata: { txHash: body.txHash ?? null } });
+        return NextResponse.json(result);
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/failed$/) && request.method === "POST") {
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
-        return NextResponse.json(await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") }));
+        const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? "" } });
+        return NextResponse.json(result);
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/cancelled$/) && request.method === "POST") {
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
-        return NextResponse.json(await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") }));
+        const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? "" } });
+        return NextResponse.json(result);
       }
 
     }

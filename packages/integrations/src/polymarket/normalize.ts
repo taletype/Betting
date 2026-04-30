@@ -31,6 +31,54 @@ const toIsoOrNull = (value: unknown): string | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
+const getString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+const getStatusString = (market: PolymarketMarket): string | null =>
+  getString(market.status ?? market.resolutionStatus ?? market.resolution_status)?.toLowerCase() ?? null;
+
+const hasPastTime = (value: unknown, now: Date): boolean => {
+  const iso = toIsoOrNull(value);
+  return iso !== null && new Date(iso).getTime() <= now.getTime();
+};
+
+export const resolvePolymarketMarketStatus = (
+  market: Pick<
+    PolymarketMarket,
+    | "active"
+    | "archived"
+    | "cancelled"
+    | "closed"
+    | "closedTime"
+    | "closeTime"
+    | "endDate"
+    | "end_date_iso"
+    | "resolved_at"
+    | "resolvedAt"
+    | "resolutionStatus"
+    | "resolution_status"
+    | "status"
+  >,
+  now = new Date(),
+): NormalizedExternalMarket["status"] => {
+  const status = getStatusString(market as PolymarketMarket);
+
+  if (status === "resolved" || market.resolved_at || market.resolvedAt) return "resolved";
+  if (status === "cancelled" || status === "canceled" || market.cancelled === true || market.archived === true) return "cancelled";
+  if (status === "closed" || market.closed === true) return "closed";
+  if (
+    hasPastTime(market.closeTime, now) ||
+    hasPastTime(market.closedTime, now) ||
+    hasPastTime(market.endDate, now) ||
+    hasPastTime(market.end_date_iso, now)
+  ) {
+    return "closed";
+  }
+  if (market.active === false) return "closed";
+
+  return "open";
+};
+
 const normalizeOutcome = (token: PolymarketToken, index: number): NormalizedExternalOutcome => {
   const title = token.outcome?.trim() || `Outcome ${index + 1}`;
   const normalized = title.toLowerCase();
@@ -76,6 +124,7 @@ export const normalizePolymarketMarket = (market: PolymarketMarket): NormalizedE
   if (!externalId || !title) return null;
 
   const outcomes = normalizePolymarketOutcomes(market);
+  const closeTime = toIsoOrNull(market.closeTime ?? market.closedTime ?? market.endDate ?? market.end_date_iso);
   return {
     source: "polymarket",
     externalId,
@@ -83,14 +132,8 @@ export const normalizePolymarketMarket = (market: PolymarketMarket): NormalizedE
     title,
     description: market.description?.trim() ?? "",
     url: market.url ?? (market.slug ? `https://polymarket.com/event/${market.slug}` : null),
-    status: market.resolved_at
-      ? "resolved"
-      : market.closed
-        ? "closed"
-        : market.active === false
-          ? "cancelled"
-          : "open",
-    closeTime: toIsoOrNull(market.closedTime),
+    status: resolvePolymarketMarketStatus(market),
+    closeTime,
     endTime: toIsoOrNull(market.endDate ?? market.end_date_iso),
     resolvedAt: toIsoOrNull(market.resolved_at),
     bestBid: parseNumber(market.bestBid),

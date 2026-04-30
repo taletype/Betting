@@ -59,6 +59,10 @@ try {
     console.log(payload.length);
     process.exit(0);
   }
+  if (payload && typeof payload === "object" && Array.isArray(payload.markets)) {
+    console.log(payload.markets.length);
+    process.exit(0);
+  }
   process.exit(2);
 } catch {
   process.exit(3);
@@ -100,7 +104,7 @@ check_markets() {
   case "$status" in
     200)
       if ! count="$(market_count "$body")"; then
-        fail "/api/external/markets returned HTTP 200 but response is not a JSON array url=$BASE_URL/api/external/markets diagnostic=$code"
+        fail "/api/external/markets returned HTTP 200 but response has no markets array url=$BASE_URL/api/external/markets diagnostic=$code"
       fi
       printf 'MARKETS url=%s status=%s market_count=%s diagnostic=%s\n' "$BASE_URL/api/external/markets" "$status" "$count" "${code:-none}"
       if [[ "$count" -gt 0 ]]; then

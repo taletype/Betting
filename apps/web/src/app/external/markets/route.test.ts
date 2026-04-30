@@ -2,6 +2,68 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { GET } from "./route";
+import { externalMarketsResponse } from "../../api/_shared/public-external-market-routes";
+
+const makeCacheRow = (overrides: Record<string, unknown> = {}) => ({
+  id: overrides.id ?? "row-open",
+  source: "polymarket",
+  external_id: overrides.external_id ?? "OPEN-1",
+  slug: overrides.slug ?? "open-1",
+  title: overrides.title ?? "Open market",
+  description: overrides.description ?? "",
+  category: null,
+  outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", outcomeIndex: 0, yesNo: "yes", lastPrice: 0.5 }],
+  prices: {},
+  best_bid: 0.49,
+  best_ask: 0.51,
+  volume: 100,
+  liquidity: 100,
+  close_time: overrides.close_time ?? "2099-01-01T00:00:00.000Z",
+  resolution_status: overrides.resolution_status ?? "open",
+  polymarket_url: "https://polymarket.com/event/open-1",
+  raw_json: {},
+  source_provenance: {},
+  first_seen_at: "2026-04-30T00:00:00.000Z",
+  last_seen_at: "2026-04-30T00:00:00.000Z",
+  last_synced_at: "2026-04-30T00:00:00.000Z",
+  stale_after: "2099-01-01T00:00:00.000Z",
+  is_active: overrides.is_active ?? true,
+  is_tradable: overrides.is_tradable ?? true,
+  created_at: "2026-04-30T00:00:00.000Z",
+  updated_at: "2026-04-30T00:00:00.000Z",
+});
+
+const makeFakeSupabaseFactory = (rows: ReturnType<typeof makeCacheRow>[]) => () => ({
+  from(table: string) {
+    if (table === "external_market_cache") {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              order: () => ({
+                limit: async () => ({ data: rows, error: null, count: rows.length }),
+              }),
+            }),
+          }),
+        }),
+      };
+    }
+
+    if (table === "external_market_sync_runs") {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: async () => ({ data: [{ status: "success" }], error: null }),
+            }),
+          }),
+        }),
+      };
+    }
+
+    throw new Error(`unexpected table ${table}`);
+  },
+});
 
 test("GET /external/markets works without login but does not call Polymarket directly", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -81,4 +143,33 @@ test("GET /external/markets returns clear JSON error when backend and Gamma fail
       message: "Configured market data sources are temporarily unavailable.",
     },
   );
+});
+
+test("GET /external/markets defaults to open rows and supports explicit status filters", async () => {
+  const rows = [
+    makeCacheRow({ id: "open", external_id: "OPEN-1", slug: "open-1", title: "Open market" }),
+    makeCacheRow({ id: "past", external_id: "PAST-1", slug: "past-1", title: "Past close market", close_time: "2000-01-01T00:00:00.000Z" }),
+    makeCacheRow({ id: "resolved", external_id: "RESOLVED-1", slug: "resolved-1", title: "Resolved market", resolution_status: "resolved", is_active: false }),
+  ];
+
+  const openResponse = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?locale=en"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const openPayload = await openResponse.json() as { markets: Array<{ title: string; status: string }> };
+  assert.deepEqual(openPayload.markets.map((market) => `${market.title}:${market.status}`), ["Open market:open"]);
+
+  const closedResponse = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?locale=en&status=closed"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const closedPayload = await closedResponse.json() as { markets: Array<{ title: string; status: string }> };
+  assert.deepEqual(closedPayload.markets.map((market) => `${market.title}:${market.status}`), ["Past close market:closed"]);
+
+  const allResponse = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?locale=en&status=all"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const allPayload = await allResponse.json() as { markets: Array<{ title: string; status: string }> };
+  assert.deepEqual(allPayload.markets.map((market) => market.status), ["open", "closed", "resolved"]);
 });

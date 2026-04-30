@@ -1,12 +1,20 @@
 import Link from "next/link";
 import React from "react";
 
+import { getPolymarketBuilderCode } from "@bet/integrations";
+
 import { BuilderFeeDisclosureCard } from "./builder-fee-disclosure-card";
 import { MarketSparkline } from "./charts/market-charts";
 import { FunnelEventTracker } from "./funnel-analytics";
 import { PendingReferralNotice } from "./pending-referral-notice";
 import { TrackedCopyButton } from "./tracked-copy-button";
 import { listExternalMarkets, type ExternalMarketApiRecord } from "../lib/api";
+import {
+  hasExternalMarketActivity,
+  hasExternalMarketPriceData,
+  isExternalMarketOpenNow,
+  isExternalMarketStale,
+} from "../lib/external-market-status";
 import { formatDateTime, defaultLocale, getLocaleHref, type AppLocale } from "../lib/locale";
 import { normalizeReferralCode } from "../lib/referral-capture";
 
@@ -16,12 +24,26 @@ interface HomePageProps {
 
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
+const hasServerConfirmedBuilderCode = (): boolean => {
+  try {
+    return getPolymarketBuilderCode() !== null;
+  } catch {
+    return false;
+  }
+};
+
 const numberOrDash = (value: number | null): string =>
   value === null ? "—" : value.toLocaleString(defaultLocale, { maximumFractionDigits: 2 });
 
 const getTrendingMarkets = async (locale: AppLocale): Promise<ExternalMarketApiRecord[]> => {
   try {
-    return [...(await listExternalMarkets(locale)).filter((market) => market.source === "polymarket")]
+    return [...(await listExternalMarkets(locale, "open")).filter((market) =>
+      market.source === "polymarket" &&
+      isExternalMarketOpenNow(market) &&
+      !isExternalMarketStale(market) &&
+      hasExternalMarketActivity(market) &&
+      hasExternalMarketPriceData(market)
+    )]
       .sort((a: ExternalMarketApiRecord, b: ExternalMarketApiRecord) =>
         (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0)
       )
@@ -36,6 +58,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
   const params = await searchParams;
   const refCode = normalizeReferralCode(params?.ref);
   const markets = await getTrendingMarkets(locale);
+  const hasBuilderCode = hasServerConfirmedBuilderCode();
   const inviteUrl = refCode ? `${siteUrl()}/?ref=${encodeURIComponent(refCode)}` : siteUrl();
   const marketHref = `${getLocaleHref(locale, "/polymarket")}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
 
@@ -49,7 +72,7 @@ export async function renderHomePage(locale: AppLocale, searchParams?: HomePageP
           <p>瀏覽市場、比較價格，並在交易功能啟用後透過 Polymarket 自行簽署交易。</p>
           {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
           <div className="trust-badge-row" aria-label="平台安全披露">
-            {["非託管", "用戶自行簽署", "Polymarket 市場資料", "Builder Code 已設定", "支付需人手審批"].map((label) => (
+            {["非託管", "用戶自行簽署", "Polymarket 市場資料", hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定", "支付需人手審批"].map((label) => (
               <span className="badge badge-neutral" key={label}>{label}</span>
             ))}
           </div>

@@ -1,4 +1,5 @@
 import type { NormalizedExternalMarket } from "@bet/integrations";
+import { resolvePolymarketMarketStatus } from "@bet/integrations";
 
 import { normalizeApiPayload } from "./api-serialization";
 import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
@@ -103,10 +104,13 @@ const readNumber = (value: unknown): number | null =>
   typeof value === "string" || typeof value === "number" ? toNumber(value) : null;
 
 const toStatus = (row: ExternalMarketCacheRow): PublicExternalMarketRecord["status"] => {
-  if (row.resolution_status === "resolved" || row.resolution_status === "closed" || row.resolution_status === "cancelled") {
-    return row.resolution_status;
-  }
-  return row.is_active ? "open" : "closed";
+  return resolvePolymarketMarketStatus({
+    active: row.is_active,
+    closed: row.resolution_status === "closed",
+    status: row.resolution_status ?? undefined,
+    closeTime: row.close_time ?? undefined,
+    endDate: row.close_time ?? undefined,
+  });
 };
 
 const mapOutcome = (outcome: unknown, index: number): PublicExternalMarketRecord["outcomes"][number] => {
@@ -175,7 +179,7 @@ const baseDiagnostics = (): ExternalMarketCacheDiagnostics => ({
   staleMarketCount: null,
   lastSyncStatus: null,
   fallbackUsedLastRequest: false,
-  routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true" || process.env.NEXT_PUBLIC_POLYMARKET_ROUTED_TRADING_ENABLED === "true",
+  routedTradingEnabled: process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true",
   builderCodeConfigured: Boolean(process.env.POLY_BUILDER_CODE?.trim() || process.env.POLYMARKET_BUILDER_CODE?.trim()),
 });
 

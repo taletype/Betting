@@ -42,6 +42,20 @@ test("no real Polymarket API secrets or private key assignments are committed", 
   assert.deepEqual(offenders.map((file) => file.replace(`${repoRoot}/`, "")), []);
 });
 
+test("builder code stays out of client components and public env variables", () => {
+  const offenders = walkTextFiles(repoRoot)
+    .filter((file) => /\.(ts|tsx|js|mjs)$/.test(file))
+    .filter((file) => readFileSync(file, "utf8").startsWith("\"use client\"") || readFileSync(file, "utf8").startsWith("'use client'"))
+    .filter((file) => /POLY_BUILDER_CODE|POLYMARKET_BUILDER_CODE/.test(readFileSync(file, "utf8")));
+
+  assert.deepEqual(offenders.map((file) => file.replace(`${repoRoot}/`, "")), []);
+
+  const envExample = readFileSync(resolve(repoRoot, ".env.example"), "utf8");
+  assert.doesNotMatch(envExample, /NEXT_PUBLIC_.*POLY.*BUILDER|NEXT_PUBLIC_POLYMARKET_ROUTED_TRADING_ENABLED/);
+  assert.match(envExample, /POLY_BUILDER_CODE=\n/);
+  assert.match(envExample, /POLYMARKET_ROUTED_TRADING_ENABLED=false/);
+});
+
 test("external Polymarket UI and read API do not import internal ledger or balance mutation modules", () => {
   const files = [
     "apps/web/src/app/external-markets/external-markets-page.tsx",
