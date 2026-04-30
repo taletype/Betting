@@ -5,6 +5,7 @@ import { getAdminAmbassadorOverview } from "../../../lib/api";
 import { requireCurrentAdmin } from "../../../lib/supabase/server";
 import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/locale";
 import { getPolymarketOperationsDashboard } from "./dashboard";
+import { StatusChip } from "../../product-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -32,18 +33,21 @@ export default async function AdminPolymarketPage() {
   return (
     <main className="stack">
       <section className="hero">
-        <h1>Polymarket operations</h1>
-        <p>{copy.subtitle}</p>
-        <div className="badge badge-warning">Live trading remains disabled unless preflight is ready</div>
+        <h1>Polymarket 營運狀態</h1>
+        <p>檢查市場同步、公開頁面、Builder 歸因與路由交易 readiness。此頁不會顯示 POLY_BUILDER_CODE。</p>
+        <div className="trust-badge-row">
+          <StatusChip tone="warning">未通過 preflight 前不會啟用路由交易</StatusChip>
+          <StatusChip>Builder Code：{readiness.builderCodeConfigured ? "已設定" : "未設定"}</StatusChip>
+        </div>
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Market data health</h2>
-        <div className="kv"><span className="kv-key">backend/Supabase external_market_cache reachable</span><span className="kv-value">{yesNo(marketDataHealth.backendReachable)}</span></div>
-        <div className="kv"><span className="kv-key">cache market count</span><span className="kv-value">{count(marketDataHealth.backendMarketCount)}</span></div>
-        <div className="kv"><span className="kv-key">Gamma fallback reachable</span><span className="kv-value">{yesNo(marketDataHealth.gammaFallbackReachable)}</span></div>
-        <div className="kv"><span className="kv-key">fallback market count</span><span className="kv-value">{count(marketDataHealth.gammaFallbackMarketCount)}</span></div>
-        <div className="kv"><span className="kv-key">last checked time</span><span className="kv-value">{formatDateTime(defaultLocale, marketDataHealth.lastCheckedAt)}</span></div>
+        <h2 className="section-title">市場同步狀態</h2>
+        <div className="kv"><span className="kv-key">Supabase market cache 可連線</span><span className="kv-value">{yesNo(marketDataHealth.backendReachable)}</span></div>
+        <div className="kv"><span className="kv-key">快取市場數量</span><span className="kv-value">{count(marketDataHealth.backendMarketCount)}</span></div>
+        <div className="kv"><span className="kv-key">Gamma fallback 可連線</span><span className="kv-value">{yesNo(marketDataHealth.gammaFallbackReachable)}</span></div>
+        <div className="kv"><span className="kv-key">fallback 市場數量</span><span className="kv-value">{count(marketDataHealth.gammaFallbackMarketCount)}</span></div>
+        <div className="kv"><span className="kv-key">最後檢查時間</span><span className="kv-value">{formatDateTime(defaultLocale, marketDataHealth.lastCheckedAt)}</span></div>
         <div className="kv">
           <span className="kv-key">last error code/source, redacted</span>
           <span className="kv-value">{marketDataHealth.lastError ? `${marketDataHealth.lastError.code} / ${marketDataHealth.lastError.source}` : "none"}</span>
@@ -51,7 +55,7 @@ export default async function AdminPolymarketPage() {
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Public pages</h2>
+        <h2 className="section-title">公開市場頁面</h2>
         <div className="kv"><span className="kv-key">/polymarket status</span><span className="kv-value">{status(publicPages.polymarketStatus)}</span></div>
         <div className="kv"><span className="kv-key">/api/external/markets status</span><span className="kv-value">{status(publicPages.externalMarketsStatus)}</span></div>
         <div className="kv"><span className="kv-key">latest market count</span><span className="kv-value">{count(publicPages.latestMarketCount)}</span></div>
@@ -64,9 +68,9 @@ export default async function AdminPolymarketPage() {
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Builder/routing readiness</h2>
-        <div className="kv"><span className="kv-key">builder code configured</span><span className="kv-value">{yesNo(readiness.builderCodeConfigured)}</span></div>
-        <div className="kv"><span className="kv-key">routed trading enabled</span><span className="kv-value">{yesNo(readiness.routedTradingEnabled)}</span></div>
+        <h2 className="section-title">路由交易 readiness</h2>
+        <div className="kv"><span className="kv-key">Builder Code 已設定</span><span className="kv-value">{yesNo(readiness.builderCodeConfigured)}</span></div>
+        <div className="kv"><span className="kv-key">路由交易已啟用</span><span className="kv-value">{yesNo(readiness.routedTradingEnabled)}</span></div>
         <div className="kv"><span className="kv-key">canary mode</span><span className="kv-value">{readiness.canaryOnly ? "private canary only" : "not allowed for this canary build"}</span></div>
         <div className="kv"><span className="kv-key">allowed users count</span><span className="kv-value">{readiness.allowedUsersCount.toLocaleString(defaultLocale)}</span></div>
         <div className="kv"><span className="kv-key">kill switch</span><span className="kv-value">{readiness.killSwitchActive ? "active" : "inactive"}</span></div>
@@ -80,7 +84,7 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">last preflight failures</span><span className="kv-value">{readiness.lastPreflightFailures.join(", ") || "none"}</span></div>
         <div className="kv"><span className="kv-key">last order submit attempts</span><span className="kv-value">{count(readiness.lastSubmitAttempts)}</span></div>
         <div className="kv"><span className="kv-key">last builder attribution sync</span><span className="kv-value">{readiness.lastBuilderAttributionSync ? formatDateTime(defaultLocale, readiness.lastBuilderAttributionSync) : "-"}</span></div>
-        <div className="kv"><span className="kv-key">preflight status</span><span className="kv-value">{readiness.preflightStatus}</span></div>
+        <div className="kv"><span className="kv-key">preflight 狀態</span><span className="kv-value">{readiness.preflightStatus}</span></div>
       </section>
 
       <section className="panel stack">
@@ -107,24 +111,24 @@ export default async function AdminPolymarketPage() {
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Referral/reward state</h2>
-        <div className="kv"><span className="kv-key">ambassador codes count</span><span className="kv-value">{count(rewards.ambassadorCodesCount)}</span></div>
-        <div className="kv"><span className="kv-key">direct referral attribution count</span><span className="kv-value">{count(rewards.directReferralAttributionCount)}</span></div>
-        <div className="kv"><span className="kv-key">pending rewards</span><span className="kv-value">{count(rewards.pendingRewards)}</span></div>
-        <div className="kv"><span className="kv-key">payable rewards</span><span className="kv-value">{count(rewards.payableRewards)}</span></div>
-        <div className="kv"><span className="kv-key">payout requests</span><span className="kv-value">{count(rewards.payoutRequests)}</span></div>
-        <div className="kv"><span className="kv-key">open high-risk flags</span><span className="kv-value">{count(rewards.openHighRiskFlags)}</span></div>
-        <div className="kv"><span className="kv-key">automatic payouts</span><span className="kv-value">{rewards.autoPayoutEnabled ? "must be disabled" : "disabled"}</span></div>
+        <h2 className="section-title">推薦 / 獎勵營運狀態</h2>
+        <div className="kv"><span className="kv-key">推薦碼數量</span><span className="kv-value">{count(rewards.ambassadorCodesCount)}</span></div>
+        <div className="kv"><span className="kv-key">直接推薦歸因數量</span><span className="kv-value">{count(rewards.directReferralAttributionCount)}</span></div>
+        <div className="kv"><span className="kv-key">待確認獎勵</span><span className="kv-value">{count(rewards.pendingRewards)}</span></div>
+        <div className="kv"><span className="kv-key">可支付獎勵</span><span className="kv-value">{count(rewards.payableRewards)}</span></div>
+        <div className="kv"><span className="kv-key">支付申請</span><span className="kv-value">{count(rewards.payoutRequests)}</span></div>
+        <div className="kv"><span className="kv-key">高風險開放旗標</span><span className="kv-value">{count(rewards.openHighRiskFlags)}</span></div>
+        <div className="kv"><span className="kv-key">自動支付</span><span className="kv-value">{rewards.autoPayoutEnabled ? "必須停用" : "已停用"}</span></div>
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Safe operator actions</h2>
+        <h2 className="section-title">安全營運操作</h2>
         <form action="/admin/polymarket" method="get">
-          <button type="submit">Refresh market data health</button>
+          <button type="submit">重新檢查市場資料狀態</button>
         </form>
-        <Link href="/admin/rewards">Review reward ledger</Link>
-        <Link href="/admin/payouts">Review payout requests</Link>
-        <p className="muted">This dashboard is read-only. It does not enable live trading, submit orders, auto-pay rewards, or mutate ledger, balance, or matching state.</p>
+        <Link href="/admin/rewards">覆核獎勵帳本</Link>
+        <Link href="/admin/payouts">覆核支付申請</Link>
+        <p className="muted">此 dashboard 只讀，不會啟用實盤交易、提交訂單、自動支付獎勵，或修改帳務與撮合狀態。</p>
       </section>
     </main>
   );

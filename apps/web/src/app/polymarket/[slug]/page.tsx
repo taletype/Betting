@@ -13,6 +13,7 @@ import {
 } from "../../charts/market-charts";
 import { getCurrentWebUser } from "../../auth-session";
 import {
+  getPolymarketRoutingDisabledReasons,
   getPolymarketTopBlockingReason,
   type PolymarketRoutingReadinessInput,
 } from "../../external-markets/polymarket-routing-readiness";
@@ -40,6 +41,9 @@ export const dynamic = "force-dynamic";
 
 const toDisplay = (value: number | null): string =>
   value === null ? "—" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const toPriceDisplay = (value: number | null): string =>
+  value === null || value <= 0 ? "暫無價格" : value.toLocaleString(defaultLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
@@ -221,6 +225,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   };
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
   const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
+  const disabledReasons = getPolymarketRoutingDisabledReasons(routingInput);
   const publicTradingReady = routedTradingEnabled && hasBuilderCode && submitterAvailable;
   const detailPath = `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const marketShareUrl = `${siteUrl()}${detailPath}`;
@@ -266,6 +271,12 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         </div>
         <h1>{market.title}</h1>
         <p>{market.description || copy.subtitle}</p>
+        <div className="trust-badge-row" aria-label="市場重點">
+          <span className="badge badge-neutral">類別：{formatProvenance(market)}</span>
+          <span className="badge badge-neutral">成交量：{toDisplay(market.volume24h ?? market.volumeTotal)}</span>
+          <span className="badge badge-neutral">流動性：{toDisplay(market.liquidity ?? market.volumeTotal)}</span>
+          <span className="badge badge-neutral">結束：{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</span>
+        </div>
         {market.titleOriginal && market.titleOriginal !== market.title ? (
           <details className="original-copy">
             <summary>{locale === "en" ? "Original" : "原文"}</summary>
@@ -306,9 +317,9 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       <section className="grid">
         <article className="panel stack">
           <strong>{copy.price}</strong>
-          <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toDisplay(market.lastTradePrice)}</span></div>
-          <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toDisplay(market.bestBid)}</span></div>
-          <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toDisplay(market.bestAsk)}</span></div>
+          <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toPriceDisplay(market.lastTradePrice)}</span></div>
+          <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(market.bestBid)}</span></div>
+          <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk)}</span></div>
         </article>
         <article className="panel stack">
           <strong>{copy.volume24h} / {copy.liquidity}</strong>
@@ -332,9 +343,9 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
             {market.outcomes.map((outcome) => (
               <article className="stack" key={outcome.externalOutcomeId}>
                 <strong>{outcome.title}</strong>
-                <div className="kv"><span className="kv-key">{copy.price}</span><span className="kv-value">{toDisplay(outcome.lastPrice)}</span></div>
-                <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toDisplay(outcome.bestBid)}</span></div>
-                <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toDisplay(outcome.bestAsk)}</span></div>
+                <div className="kv"><span className="kv-key">{copy.price}</span><span className="kv-value">{toPriceDisplay(outcome.lastPrice)}</span></div>
+                <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(outcome.bestBid)}</span></div>
+                <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(outcome.bestAsk)}</span></div>
               </article>
             ))}
           </div>
@@ -353,7 +364,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
         <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
         <div className="kv"><span className="kv-key">{copy.externalId}</span><span className="kv-value mono">{market.externalId}</span></div>
         <div className="kv"><span className="kv-key">{copy.lastSynced}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
-        {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+        {market.marketUrl ? <Link href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
       </section>
 
       <section className="panel stack">
@@ -379,8 +390,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                 {visibleOrderbook.map((book) => (
                   <tr key={`${book.externalOutcomeId}:${book.capturedAt}`}>
                     <td>{book.externalOutcomeId}</td>
-                    <td>{toDisplay(book.bestBid)}</td>
-                    <td>{toDisplay(book.bestAsk)}</td>
+                    <td>{toPriceDisplay(book.bestBid)}</td>
+                    <td>{toPriceDisplay(book.bestAsk)}</td>
                     <td>{formatDateTime(locale, book.capturedAt, "UTC")}</td>
                   </tr>
                 ))}
@@ -401,7 +412,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                   <tr key={trade.externalTradeId}>
                     <td>{formatDateTime(locale, trade.tradedAt, "UTC")}</td>
                     <td>{trade.side ? copy.sides[trade.side] ?? trade.side : "—"}</td>
-                    <td>{toDisplay(trade.price)}</td>
+                    <td>{toPriceDisplay(trade.price)}</td>
                     <td>{toDisplay(trade.size)}</td>
                   </tr>
                 ))}
@@ -415,7 +426,32 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
 
         </div>
         <aside className="market-detail-sidebar">
-          <section className="panel sticky-ticket">
+          <section className="panel sticky-ticket stack">
+            <div className="stack">
+              <strong>分享此市場</strong>
+              <p className="muted">複製市場邀請連結，讓朋友直接查看同一個 Polymarket 市場。</p>
+              <TrackedCopyButton
+                value={marketShareUrl}
+                label="複製市場邀請連結"
+                copiedLabel="已複製"
+                eventName="market_share_link_copied"
+                metadata={refCode ? { code: refCode, market: market.slug || market.externalId, surface: "detail_panel" } : { market: market.slug || market.externalId, surface: "detail_panel" }}
+              />
+              {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+            </div>
+            <div className="readiness-checklist stack">
+              <div className="section-heading-row">
+                <strong>交易準備檢查</strong>
+                <span className="badge badge-warning">{topBlockingReasonLabel}</span>
+              </div>
+              <ul className="readiness-reason-list">
+                {(disabledReasons.length ? disabledReasons : ["signature_required" as const]).map((reason) => (
+                  <li key={reason}>{copy.readinessCopy[reason] ?? reason}</li>
+                ))}
+              </ul>
+              <p className="muted">交易功能預設停用；只有所有生產準備檢查通過後，才會允許提交用戶自行簽署的訂單。</p>
+            </div>
+            <div className="warning-card">非託管：本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</div>
             <PolymarketTradeTicket {...tradeTicketProps} />
           </section>
         </aside>

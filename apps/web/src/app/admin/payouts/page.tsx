@@ -11,6 +11,7 @@ import {
   failRewardPayoutAction,
   markRewardPayoutPaidAction,
 } from "../actions";
+import { EmptyState, MetricCard, StatusChip } from "../../product-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -73,31 +74,51 @@ const getRiskFlagsForPayout = (
   ));
 };
 
-export default async function AdminPayoutsPage() {
+export default async function AdminPayoutsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ q?: string }>;
+}) {
   await requireCurrentAdmin();
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).admin;
   const rewardCopy = getLocaleCopy(locale).rewards;
   const overview = await getAdminAmbassadorOverview().catch(() => null);
   const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
+  const q = (await searchParams)?.q?.trim().toLowerCase() ?? "";
+  const visiblePayouts = overview?.payouts.filter((payout) => !q || `${payout.id} ${payout.recipientUserId} ${payout.destinationValue} ${payout.status} ${payout.txHash ?? ""}`.toLowerCase().includes(q)) ?? [];
   const csvHref = overview
-    ? `data:text/csv;charset=utf-8,${encodeURIComponent(toCsv(overview.payouts))}`
+    ? `data:text/csv;charset=utf-8,${encodeURIComponent(toCsv(visiblePayouts))}`
     : "#";
 
   return (
     <main className="stack">
       <section className="hero">
-        <h1>{copy.payoutReview}</h1>
-        <p>{copy.subtitle}</p>
-        <a href={csvHref} download="ambassador-payouts.csv">{copy.exportCsv}</a>
+        <h1>人工支付審批</h1>
+        <p>逐筆覆核支付申請、檢查風險旗標，批准後以 Polygon 交易雜湊標記為已支付。</p>
+        <a className="button-link secondary" href={csvHref} download="ambassador-payouts.csv">{copy.exportCsv}</a>
       </section>
 
       {!overview ? (
-        <div className="panel empty-state">{copy.noRows}</div>
+        <EmptyState title={copy.noRows} />
       ) : overview.payouts.length === 0 ? (
-        <div className="panel empty-state">{copy.noRows}</div>
+        <EmptyState title={copy.noRows} />
       ) : (
         <>
+        <form className="panel filters admin-filter-bar" action="/admin/payouts">
+          <label className="stack">
+            搜尋推薦碼 / 用戶 ID / Polygon 地址
+            <input name="q" defaultValue={q} placeholder="輸入用戶、地址、狀態或 tx hash" />
+          </label>
+          <button type="submit">搜尋</button>
+          <a className="button-link secondary" href="/admin/payouts">重設</a>
+        </form>
+        <section className="grid">
+          <MetricCard label="待審批隊列" value={overview.payouts.filter((payout) => payout.status === "requested").length.toLocaleString(locale)} tone="warning" />
+          <MetricCard label="已批准待標記支付" value={overview.payouts.filter((payout) => payout.status === "approved").length.toLocaleString(locale)} tone="info" />
+          <MetricCard label="已支付" value={overview.payouts.filter((payout) => payout.status === "paid").length.toLocaleString(locale)} tone="success" />
+          <MetricCard label="高風險待覆核" value={overview.riskFlags.filter((flag) => flag.severity === "high" && flag.status === "open").length.toLocaleString(locale)} tone="danger" />
+        </section>
         <section className="grid">
           <PayoutStatusChart
             points={["requested", "approved", "paid", "failed", "cancelled"].map((status) => ({
@@ -132,7 +153,7 @@ export default async function AdminPayoutsPage() {
               </tr>
             </thead>
             <tbody>
-              {overview.payouts.map((payout) => {
+              {visiblePayouts.map((payout) => {
                 const riskFlags = getRiskFlagsForPayout(overview, payout);
                 const hasBlockingRisk = riskFlags.some((flag) => flag.severity === "high" && flag.status === "open");
 
@@ -143,7 +164,7 @@ export default async function AdminPayoutsPage() {
                     <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
                     <td>{payout.payoutChain} #{payout.payoutChainId}</td>
                     <td>{payout.payoutAsset}</td>
-                    <td>{rewardCopy.payoutStatuses[payout.status] ?? payout.status}</td>
+                    <td><StatusChip tone={payout.status === "paid" ? "success" : payout.status === "failed" || payout.status === "cancelled" ? "danger" : "warning"}>{rewardCopy.payoutStatuses[payout.status] ?? payout.status}</StatusChip></td>
                     <td>
                       {riskFlags.length === 0 ? (
                         "-"

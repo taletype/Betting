@@ -37,6 +37,9 @@ import { normalizeReferralCode } from "../../lib/referral-capture";
 const toDisplay = (value: number | null, locale: AppLocale): string =>
   value === null ? "—" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const toPriceDisplay = (value: number | null, locale: AppLocale): string =>
+  value === null || value <= 0 ? "暫無價格" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 const formatProvenance = (market: ExternalMarketApiRecord): string => {
@@ -102,7 +105,7 @@ const toTime = (value: string | null | undefined): number | null => {
   return Number.isFinite(time) ? time : null;
 };
 
-const isDefaultFeedStatus = (status: string | undefined): boolean => !status || !["all", "open", "closed", "resolved", "cancelled"].includes(status);
+const isDefaultFeedStatus = (status: string | undefined): boolean => !status || !["all", "open", "closing", "volume", "liquidity", "closed", "resolved", "cancelled"].includes(status);
 
 const isDefaultFeedMarket = (market: ExternalMarketApiRecord): boolean =>
   isExternalMarketOpenNow(market) &&
@@ -131,8 +134,21 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
       if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
         return false;
       }
-      if (defaultFeed) {
+      if (defaultFeed || status === "open") {
         return isDefaultFeedMarket(item);
+      }
+      if (status === "closing") {
+        const closeTime = toTime(item.closeTime);
+        return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && closeTime !== null && closeTime > Date.now() && closeTime <= Date.now() + 72 * 60 * 60 * 1000;
+      }
+      if (status === "volume") {
+        return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.volume24h ?? item.volumeTotal ?? 0) > 0;
+      }
+      if (status === "liquidity") {
+        return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.liquidity ?? 0) > 0;
+      }
+      if (status === "closed") {
+        return item.status === "closed" || item.status === "resolved" || item.status === "cancelled";
       }
       return status === "all" || item.status === status;
     })
@@ -146,6 +162,7 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
         const bTime = b.closeTime ? new Date(b.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       }
+      if (sort === "latest") return (toTime(b.createdAt) ?? 0) - (toTime(a.createdAt) ?? 0);
       const volumeDelta = (b.volume24h ?? 0) - (a.volume24h ?? 0);
       if (volumeDelta !== 0) return volumeDelta;
       const liquidityDelta = (b.liquidity ?? b.volumeTotal ?? 0) - (a.liquidity ?? a.volumeTotal ?? 0);
@@ -209,8 +226,10 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const requestedStatus: ExternalMarketStatusQuery =
     !selectedStatus || defaultFeed
       ? "open"
-      : selectedStatus === "all" || selectedStatus === "closed" || selectedStatus === "resolved" || selectedStatus === "cancelled"
-        ? selectedStatus
+      : selectedStatus === "all" || selectedStatus === "closed"
+        ? "all"
+        : selectedStatus === "resolved" || selectedStatus === "cancelled"
+          ? selectedStatus
         : "open";
 
   try {
@@ -274,13 +293,14 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           <input name="q" defaultValue={params?.q ?? ""} placeholder="搜尋市場、slug 或外部 ID" />
         </label>
         <label className="stack">
-          類別
+          篩選
           <select name="status" defaultValue={defaultFeed ? "open" : selectedStatus}>
             <option value="all">全部</option>
             <option value="open">開放</option>
+            <option value="closing">即將結束</option>
+            <option value="volume">高成交量</option>
+            <option value="liquidity">高流動性</option>
             <option value="closed">已結束</option>
-            <option value="resolved">已結算</option>
-            <option value="cancelled">已取消</option>
           </select>
         </label>
         <label className="stack">
@@ -289,6 +309,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             <option value="trending">熱門</option>
             <option value="volume">成交量</option>
             <option value="liquidity">流動性</option>
+            <option value="latest">最新</option>
             <option value="close">即將結束</option>
           </select>
         </label>
@@ -299,9 +320,10 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         {[
           ["all", "全部"],
           ["open", "開放"],
-          ["resolved", "已結算"],
+          ["closing", "即將結束"],
+          ["volume", "高成交量"],
+          ["liquidity", "高流動性"],
           ["closed", "已結束"],
-          ["cancelled", "已取消"],
         ].map(([status, label]) => (
           <Link
             key={status}
@@ -317,6 +339,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           ["trending", "熱門"],
           ["volume", "成交量"],
           ["liquidity", "流動性"],
+          ["latest", "最新"],
           ["close", "即將結束"],
         ].map(([sort, label]) => (
           <Link
@@ -355,7 +378,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
-            <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : defaultFeed ? "暫時未有活躍市場資料" : copy.empty}</p>
+            <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : "暫時未有符合條件的開放市場。"}</p>
+            <span className="sr-only">暫時未有活躍市場資料</span>
             {defaultFeed ? (
               <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>查看全部市場</Link>
             ) : (
@@ -366,7 +390,82 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             )}
           </div>
         ) : (
-          visibleMarkets.map((market) => {
+          <>
+          <div className="panel market-feed-table-wrap" aria-label="Polymarket 市場表格">
+            <table className="table market-feed-table">
+              <thead>
+                <tr>
+                  <th>狀態</th>
+                  <th>市場</th>
+                  <th>結果 / 價格</th>
+                  <th>Bid / Ask</th>
+                  <th>成交量</th>
+                  <th>流動性</th>
+                  <th>結束時間</th>
+                  <th>來源 / 更新</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleMarkets.map((market) => {
+                  const detailBase = getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`);
+                  const detailPath = `${detailBase}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+                  const marketTopReason = getPolymarketTopBlockingReason({
+                    ...statusInput,
+                    marketTradable: market.status === "open" && !isExternalMarketStale(market),
+                    orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && (market.lastTradePrice ?? market.bestAsk ?? market.bestBid)),
+                  });
+                  const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+                  const stale = isExternalMarketStale(market);
+
+                  return (
+                    <tr key={`${market.source}:${market.externalId}`}>
+                      <td>
+                        <div className="stack">
+                          <span className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</span>
+                          {stale ? <span className="badge badge-warning">資料可能過期</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <strong>{market.title}</strong>
+                        <div className="muted">{market.titleOriginal && market.titleOriginal !== market.title ? market.titleOriginal : market.description}</div>
+                      </td>
+                      <td>
+                        <div className="outcome-pill-row">
+                          {market.outcomes.length > 0 ? market.outcomes.slice(0, 3).map((outcome) => (
+                            <span className="outcome-pill" key={outcome.externalOutcomeId}>
+                              <span>{outcome.title}</span>
+                              <strong>{toPriceDisplay(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid, locale)}</strong>
+                            </span>
+                          )) : <span className="muted">{copy.outcomesUnavailable}</span>}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(market.bestBid, locale)}</span></div>
+                        <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk, locale)}</span></div>
+                      </td>
+                      <td>{toDisplay(market.volume24h ?? market.volumeTotal, locale)}</td>
+                      <td>{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</td>
+                      <td>{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</td>
+                      <td>
+                        <div>{market.source}</div>
+                        <div className="muted">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</div>
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
+                          {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                          <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="market-feed-cards stack">
+          {visibleMarkets.map((market) => {
             const detailBase = getLocaleHref(locale, `/polymarket/${encodeURIComponent(market.slug || market.externalId)}`);
             const detailPath = `${detailBase}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
             const marketTopReason = getPolymarketTopBlockingReason({
@@ -404,7 +503,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       market.outcomes.slice(0, 4).map((outcome) => (
                         <span className="outcome-pill" key={outcome.externalOutcomeId}>
                           <span>{outcome.title}</span>
-                          <strong>{toDisplay(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid, locale)}</strong>
+                          <strong>{toPriceDisplay(outcome.lastPrice ?? outcome.bestAsk ?? outcome.bestBid, locale)}</strong>
                         </span>
                       ))
                     ) : (
@@ -413,9 +512,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   </div>
                 </div>
                 <div className="market-card-stats">
-                  <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toDisplay(market.lastTradePrice, locale)}</span></div>
-                  <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toDisplay(market.bestBid, locale)}</span></div>
-                  <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toDisplay(market.bestAsk, locale)}</span></div>
+                  <div className="kv"><span className="kv-key">{copy.lastTrade}</span><span className="kv-value">{toPriceDisplay(market.lastTradePrice, locale)}</span></div>
+                  <div className="kv"><span className="kv-key">{copy.bestBid}</span><span className="kv-value">{toPriceDisplay(market.bestBid, locale)}</span></div>
+                  <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk, locale)}</span></div>
                   <MiniMetricTrend label={copy.volume24h} value={toDisplay(market.volume24h, locale)} points={sparklinePoints} />
                   <div className="kv"><span className="kv-key">{copy.liquidity}</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</span></div>
                 </div>
@@ -431,9 +530,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">{copy.openOnPolymarket}</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
+                {market.marketUrl ? <Link className="button-link secondary" href={market.marketUrl} target="_blank" rel="noreferrer">在 Polymarket 開啟</Link> : <span className="muted">{copy.openOnPolymarketUnavailable}</span>}
                 <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
-                <button type="button" disabled title={marketDisabledLabel}>{copy.tradeViaPolymarket}</button>
+                <button type="button" disabled title={marketDisabledLabel}>透過 Polymarket 交易</button>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
                 <TrackedCopyButton
                   value={marketShareUrl}
@@ -458,7 +557,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <tr key={trade.externalTradeId}>
                         <td>{formatDateTime(locale, trade.tradedAt, "UTC")}</td>
                         <td>{trade.side ? copy.sides[trade.side] ?? trade.side : "—"}</td>
-                        <td>{toDisplay(trade.price, locale)}</td>
+                        <td>{toPriceDisplay(trade.price, locale)}</td>
                         <td>{toDisplay(trade.size, locale)}</td>
                       </tr>
                     ))}
@@ -469,7 +568,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               )}
             </div>
             );
-          })
+          })}
+          </div>
+          </>
         )}
       </section>
       <section className="feed-support stack" aria-label="安全及營運資訊">

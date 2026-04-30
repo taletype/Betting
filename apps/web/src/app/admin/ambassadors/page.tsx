@@ -9,28 +9,57 @@ import {
   disableAmbassadorCodeAction,
   overrideReferralAttributionAction,
 } from "../actions";
+import { EmptyState, MetricCard, StatusChip } from "../../product-ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminAmbassadorsPage() {
+const toCsv = (rows: NonNullable<Awaited<ReturnType<typeof getAdminAmbassadorOverview>>>["attributions"]) => {
+  const header = ["id", "ambassador_code", "referrer_user_id", "referred_user_id", "qualification_status", "attributed_at"].join(",");
+  const body = rows.map((row) => [row.id, row.ambassadorCode, row.referrerUserId, row.referredUserId, row.qualificationStatus, row.attributedAt].join(","));
+  return [header, ...body].join("\n");
+};
+
+export default async function AdminAmbassadorsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ q?: string }>;
+}) {
   await requireCurrentAdmin();
   const locale = defaultLocale;
   const copy = getLocaleCopy(locale).admin;
   const overview = await getAdminAmbassadorOverview().catch(() => null);
+  const q = (await searchParams)?.q?.trim().toLowerCase() ?? "";
+  const visibleCodes = overview?.codes.filter((code) => !q || `${code.code} ${code.ownerUserId} ${code.status}`.toLowerCase().includes(q)) ?? [];
+  const visibleAttributions = overview?.attributions.filter((attribution) => !q || `${attribution.ambassadorCode} ${attribution.referrerUserId} ${attribution.referredUserId} ${attribution.qualificationStatus}`.toLowerCase().includes(q)) ?? [];
+  const csvHref = overview ? `data:text/csv;charset=utf-8,${encodeURIComponent(toCsv(visibleAttributions))}` : "#";
 
   return (
     <main className="stack">
       <section className="hero">
-        <h1>{copy.ambassadors}</h1>
-        <p>{copy.subtitle}</p>
+        <h1>推薦歸因管理</h1>
+        <p>搜尋推薦碼、檢查直接歸因列表、覆核可疑歸因旗標，並保留人工修正紀錄。</p>
+        <div className="market-actions">
+          <a className="button-link secondary" href={csvHref} download="ambassador-attributions.csv">匯出 CSV</a>
+        </div>
       </section>
 
       {!overview ? (
-        <div className="panel empty-state">{copy.noRows}</div>
+        <EmptyState title={copy.noRows} />
       ) : (
         <>
+          <form className="panel filters admin-filter-bar" action="/admin/ambassadors">
+            <label className="stack">
+              搜尋推薦碼 / 用戶 ID
+              <input name="q" defaultValue={q} placeholder="輸入推薦碼或用戶 ID" />
+            </label>
+            <button type="submit">搜尋</button>
+            <a className="button-link secondary" href="/admin/ambassadors">重設</a>
+          </form>
           <section className="grid">
-            <ReferralFunnelChart points={overview.attributions.map((attribution) => ({ timestamp: attribution.attributedAt, value: 1 }))} />
+            <MetricCard label="推薦碼" value={overview.codes.length.toLocaleString(locale)} />
+            <MetricCard label="直接歸因" value={overview.attributions.length.toLocaleString(locale)} tone="info" />
+            <MetricCard label="可疑旗標" value={(overview.riskFlags ?? []).filter((flag) => flag.status === "open").length.toLocaleString(locale)} tone="warning" />
+            <ReferralFunnelChart points={visibleAttributions.map((attribution) => ({ timestamp: attribution.attributedAt, value: 1 }))} />
             <RewardSplitChart
               points={[
                 { label: "推薦碼", value: overview.codes.length, tone: "volume" },
@@ -61,8 +90,8 @@ export default async function AdminAmbassadorsPage() {
 
           <section className="panel stack">
             <h2 className="section-title">{copy.ambassadors}</h2>
-            {overview.codes.length === 0 ? (
-              <div className="empty-state">{copy.noRows}</div>
+            {visibleCodes.length === 0 ? (
+              <EmptyState title={copy.noRows} />
             ) : (
               <table className="table">
                 <thead>
@@ -75,11 +104,11 @@ export default async function AdminAmbassadorsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {overview.codes.map((code) => (
+                  {visibleCodes.map((code) => (
                     <tr key={code.id}>
                       <td>{code.code}</td>
                       <td className="mono">{code.ownerUserId}</td>
-                      <td>{code.status}</td>
+                      <td><StatusChip tone={code.status === "active" ? "success" : "warning"}>{code.status}</StatusChip></td>
                       <td>{formatDateTime(locale, code.createdAt)}</td>
                       <td>
                         {code.status === "active" ? (
@@ -99,8 +128,8 @@ export default async function AdminAmbassadorsPage() {
 
           <section className="panel stack">
             <h2 className="section-title">{copy.referralAttributions}</h2>
-            {overview.attributions.length === 0 ? (
-              <div className="empty-state">{copy.noRows}</div>
+            {visibleAttributions.length === 0 ? (
+              <EmptyState title={copy.noRows} />
             ) : (
               <table className="table">
                 <thead>
@@ -113,7 +142,7 @@ export default async function AdminAmbassadorsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {overview.attributions.map((attribution) => (
+                  {visibleAttributions.map((attribution) => (
                     <tr key={attribution.id}>
                       <td className="mono">{attribution.referredUserId}</td>
                       <td className="mono">{attribution.referrerUserId}</td>
@@ -130,7 +159,7 @@ export default async function AdminAmbassadorsPage() {
           <section className="panel stack">
             <h2 className="section-title">{copy.suspiciousReview}</h2>
             {(overview.riskFlags ?? []).length === 0 ? (
-              <div className="empty-state">{copy.noRows}</div>
+              <EmptyState title={copy.noRows} />
             ) : (
               <table className="table">
                 <thead>
