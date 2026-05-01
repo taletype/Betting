@@ -7,6 +7,8 @@ Primary production smoke goal:
 - Confirm `/ambassador` and `/rewards` load without a server error.
 - Confirm the logged-in dashboard path returns a valid payload where `ambassadorCode.code` exists and reward totals may legitimately be `0`.
 - Do not treat zero rewards as a broken state. Treat only transport, auth, table, or profile/bootstrap failures as production blockers.
+- In this repo the native same-site dashboard path is `/api/ambassador/dashboard`.
+- If production is exposed through a versioned gateway, smoke that deployed gateway path too, for example `/api/version/api/ambassador/dashboard/account/ambassador/rewards`, but require the same success contract.
 
 Recommended smoke command:
 
