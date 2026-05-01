@@ -604,21 +604,31 @@ test("admin payout approval exposes safe risk review error and UI risk summary",
 test("admin routes use granular RBAC and payout dual control", () => {
   const auth = readFileSync(resolve(process.cwd(), "src/app/api/auth.ts"), "utf8");
   const route = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
+  const adminActions = readFileSync(resolve(process.cwd(), "src/app/admin/actions.ts"), "utf8");
+  const serverAuth = readFileSync(resolve(process.cwd(), "src/lib/supabase/server.ts"), "utf8");
 
   assert.match(auth, /finance_reviewer/);
   assert.match(auth, /finance_approver/);
   assert.match(auth, /trading_config_admin/);
   assert.match(auth, /evaluateAdminPermission/);
+  assert.match(auth, /risk_flag:review/);
+  assert.match(auth, /risk_flag:dismiss/);
   assert.match(route, /evaluateAdminPermission/);
   assert.match(route, /ADMIN_PERMISSION_REQUIRED/);
   assert.match(route, /ambassador_code:manage/);
   assert.match(route, /referral_attribution:override/);
   assert.match(route, /builder_trade_attribution:record/);
   assert.match(route, /reward_ledger:review/);
+  assert.match(route, /risk_flag:review/);
+  assert.match(route, /risk_flag:dismiss/);
   assert.match(route, /payout:approve/);
   assert.match(route, /payout:mark_paid/);
   assert.match(route, /AMBASSADOR_PAYOUT_DUAL_CONTROL_THRESHOLD_USDC_ATOMS/);
   assert.match(route, /payout requires a different admin to mark paid after approval/);
+  assert.match(adminActions, /reviewAdminRiskFlag/);
+  assert.match(adminActions, /dismissAdminRiskFlag/);
+  assert.doesNotMatch(adminActions, /updateAdminRiskFlagReviewState/);
+  assert.match(serverAuth, /isAdminRole/);
 });
 
 test("admin pages surface referral reward payout and Polymarket operator fields", () => {
