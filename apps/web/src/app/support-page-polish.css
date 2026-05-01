@@ -1,0 +1,78 @@
+.legal-page {
+  max-width: 980px;
+}
+
+.legal-page .hero,
+main.stack > .hero:first-child:not(.landing-hero) {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(245, 158, 11, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(35, 38, 44, 0.72), rgba(20, 21, 24, 0.96));
+  padding: clamp(20px, 4vw, 34px);
+}
+
+.legal-page .hero::after,
+main.stack > .hero:first-child:not(.landing-hero)::after {
+  content: "";
+  position: absolute;
+  inset: auto -12% -44% 38%;
+  height: 180px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.08);
+  filter: blur(42px);
+  pointer-events: none;
+}
+
+.legal-page .hero > *,
+main.stack > .hero:first-child:not(.landing-hero) > * {
+  position: relative;
+  z-index: 1;
+}
+
+.legal-page .panel,
+main.stack > .panel,
+main.stack > .grid > .panel {
+  background:
+    linear-gradient(180deg, rgba(28, 30, 34, 0.92), rgba(20, 21, 24, 0.98));
+}
+
+.legal-page .section-heading-row,
+main.stack > .panel .section-heading-row {
+  padding-bottom: 4px;
+}
+
+.legal-page .section-title,
+main.stack > .panel .section-title {
+  letter-spacing: -0.01em;
+}
+
+main.stack > .grid {
+  align-items: stretch;
+}
+
+main.stack > .grid > .panel,
+main.stack > .grid > .disclosure-card {
+  min-height: 100%;
+}
+
+main.stack > .hero:first-child:not(.landing-hero) .badge {
+  margin-bottom: 2px;
+}
+
+main.stack > .hero:first-child:not(.landing-hero) h1 {
+  max-width: 760px;
+}
+
+main.stack > .hero:first-child:not(.landing-hero) p {
+  max-width: 820px;
+}
+
+@media (max-width: 760px) {
+  .legal-page .hero,
+  main.stack > .hero:first-child:not(.landing-hero) {
+    padding: 20px;
+  }
+}
