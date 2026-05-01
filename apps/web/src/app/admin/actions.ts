@@ -15,6 +15,7 @@ import {
   voidAdminTradeAttributionRewards,
 } from "../../lib/api";
 import { requireCurrentAdmin } from "../../lib/supabase/server";
+import { updateAdminRiskFlagReviewState } from "./risk-flags";
 
 export const createAmbassadorCodeAction = async (formData: FormData) => {
   await requireCurrentAdmin();
@@ -103,5 +104,33 @@ export const failRewardPayoutAction = async (formData: FormData) => {
 export const cancelRewardPayoutAction = async (formData: FormData) => {
   await requireCurrentAdmin();
   await cancelAdminRewardPayout(String(formData.get("payoutId") ?? ""), String(formData.get("notes") ?? ""));
+  revalidatePath("/admin/payouts");
+};
+
+export const reviewRiskFlagAction = async (formData: FormData) => {
+  const adminUser = await requireCurrentAdmin();
+  await updateAdminRiskFlagReviewState({
+    riskFlagId: String(formData.get("riskFlagId") ?? ""),
+    reviewedBy: adminUser.id,
+    status: "reviewed",
+    reviewNotes: String(formData.get("reviewNotes") ?? ""),
+  });
+  revalidatePath("/admin");
+  revalidatePath("/admin/ambassadors");
+  revalidatePath("/admin/rewards");
+  revalidatePath("/admin/payouts");
+};
+
+export const dismissRiskFlagAction = async (formData: FormData) => {
+  const adminUser = await requireCurrentAdmin();
+  await updateAdminRiskFlagReviewState({
+    riskFlagId: String(formData.get("riskFlagId") ?? ""),
+    reviewedBy: adminUser.id,
+    status: "dismissed",
+    reviewNotes: String(formData.get("reviewNotes") ?? ""),
+  });
+  revalidatePath("/admin");
+  revalidatePath("/admin/ambassadors");
+  revalidatePath("/admin/rewards");
   revalidatePath("/admin/payouts");
 };
