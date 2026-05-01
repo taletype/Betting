@@ -1,6 +1,6 @@
 # Polymarket routed-trading beta checklist
 
-Use this checklist for the first one-user allowlisted beta. Do not use it to enable public live trading.
+Use this checklist for the first private allowlisted beta with 5-10 wallets. Do not use it to enable public live trading.
 
 ## Vercel environment
 
@@ -19,11 +19,13 @@ Set:
 
 Never set `POLYMARKET_ROUTED_TRADING_ENABLED=true` for the first beta. Do not set platform-owned Polymarket API key, secret, or passphrase env vars for user trading. The submitter must use only the beta user's own L2 credentials.
 
-## Allowlist one user
+## Allowlist private beta users
 
-1. Put exactly one user id or email in `POLYMARKET_ROUTED_TRADING_ALLOWLIST`.
+1. Put only 5-10 approved user ids or emails in `POLYMARKET_ROUTED_TRADING_ALLOWLIST`.
 2. Keep the public flag false.
-3. Open `/admin/polymarket` as an admin and confirm:
+3. Apply small per-order caps and daily routed-volume caps before any user can submit.
+4. Confirm the beta kill switch can disable new submits immediately without breaking market browsing.
+5. Open `/admin/polymarket` as an admin and confirm:
    - public routed trading enabled: `no`
    - beta routed trading enabled: `yes`
    - current user allowlisted: expected yes/no
@@ -56,13 +58,21 @@ Submit a tiny beta order only when legal, compliant, and operationally safe:
 5. The user signs the order with their own wallet/session.
 6. Submit through the signed-order route.
 7. Confirm the routed-order audit row records Builder attribution without secrets or full signatures.
+8. Confirm the order stays inside the configured per-order cap and daily routed-volume cap.
 
 ## Builder attribution and rewards
 
 - Confirm Builder-fee evidence from Polymarket before moving any reward from pending to payable.
+- Confirm Builder-fee reconciliation proof is visible to operators before beta scope expands.
 - Unconfirmed Builder attribution must not create payable rewards.
 - Failed submits must not create rewards.
 - Payouts remain manual/admin-approved. Do not enable automatic payouts.
+
+## Manual monitoring
+
+- Monitor the first beta orders manually in `/admin/polymarket`, payout review surfaces, and logs.
+- Review failed submit reasons, beta allowlist hits, and kill-switch behavior daily.
+- Pause the beta immediately if Builder attribution, reward accounting, or payout review becomes ambiguous.
 
 ## Rollback
 
@@ -73,4 +83,3 @@ Submit a tiny beta order only when legal, compliant, and operationally safe:
 5. Verify the trade button/preflight returns to disabled.
 6. Verify `/polymarket` and market detail browsing still work.
 7. Leave rewards pending/non-paying unless Builder-fee evidence is confirmed and an admin manually approves payout.
-
