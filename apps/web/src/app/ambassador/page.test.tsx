@@ -127,7 +127,12 @@ test("logged-in ambassador page shows expired session when dashboard returns 401
 test("logged-in ambassador page shows retry state when dashboard returns 500", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ error: "database unavailable" }), {
+    new Response(JSON.stringify({
+      error: "database unavailable",
+      code: "ambassador_tables_missing",
+      source: "same-site API",
+      token: "do-not-show",
+    }), {
       status: 500,
       headers: { "content-type": "application/json" },
     })) as typeof globalThis.fetch;
@@ -136,9 +141,13 @@ test("logged-in ambassador page shows retry state when dashboard returns 500", a
     const markup = renderToStaticMarkup(await renderAmbassadorPage("zh-HK", { currentUser: user }));
 
     assert.match(markup, /已登入，但推薦資料暫時未能載入。請重新整理或稍後再試。/);
+    assert.match(markup, /錯誤代碼: ambassador_tables_missing/);
+    assert.match(markup, /路由狀態: 500/);
+    assert.match(markup, /來源: same-site API/);
     assert.match(markup, /重新整理/);
     assert.doesNotMatch(markup, /註冊/);
     assert.doesNotMatch(markup, /請先登入以查看此頁面。/);
+    assert.doesNotMatch(markup, /do-not-show|access_token|refresh_token|service_role|authorization/i);
   } finally {
     globalThis.fetch = originalFetch;
   }

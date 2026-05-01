@@ -215,8 +215,25 @@ const mapCode = (row: {
   disabledAt: toIso(row.disabled_at),
 });
 
+const generateAmbassadorCode = (): string => crypto.randomBytes(4).toString("hex").toUpperCase();
+
+const ensureProfileForUser = async (executor: DatabaseExecutor, userId: string) => {
+  await executor.query(
+    `
+      insert into public.profiles (id, locale, created_at, updated_at)
+      values ($1::uuid, 'zh-HK', now(), now())
+      on conflict (id) do update
+        set locale = coalesce(public.profiles.locale, 'zh-HK'),
+            updated_at = public.profiles.updated_at
+    `,
+    [userId],
+  );
+};
+
 const ensureAmbassadorCode = async (userId: string) => {
   const db = getDb();
+  await ensureProfileForUser(db, userId);
+
   const [existing] = await db.query<{
     id: string;
     code: string;
@@ -230,20 +247,40 @@ const ensureAmbassadorCode = async (userId: string) => {
   );
   if (existing) return { ...mapCode(existing), inviteUrl: inviteUrlForCode(existing.code) };
 
-  const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-  const [inserted] = await db.query<{
-    id: string;
-    code: string;
-    owner_user_id: string;
-    status: "active" | "disabled";
-    created_at: Date | string;
-    disabled_at: Date | string | null;
-  }>(
-    `insert into public.ambassador_codes (code, owner_user_id, status, created_at, disabled_at) values ($1, $2::uuid, 'active', now(), null) returning id, code, owner_user_id, status, created_at, disabled_at`,
-    [code, userId],
-  );
-  if (!inserted) throw new Error("failed to create ambassador code");
-  return { ...mapCode(inserted), inviteUrl: inviteUrlForCode(inserted.code) };
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const [inserted] = await db.query<{
+      id: string;
+      code: string;
+      owner_user_id: string;
+      status: "active" | "disabled";
+      created_at: Date | string;
+      disabled_at: Date | string | null;
+    }>(
+      `
+        insert into public.ambassador_codes (code, owner_user_id, status, created_at, disabled_at)
+        values ($1, $2::uuid, 'active', now(), null)
+        on conflict do nothing
+        returning id, code, owner_user_id, status, created_at, disabled_at
+      `,
+      [generateAmbassadorCode(), userId],
+    );
+    if (inserted) return { ...mapCode(inserted), inviteUrl: inviteUrlForCode(inserted.code) };
+
+    const [createdConcurrently] = await db.query<{
+      id: string;
+      code: string;
+      owner_user_id: string;
+      status: "active" | "disabled";
+      created_at: Date | string;
+      disabled_at: Date | string | null;
+    }>(
+      `select id, code, owner_user_id, status, created_at, disabled_at from public.ambassador_codes where owner_user_id = $1::uuid and status = 'active' order by created_at asc limit 1`,
+      [userId],
+    );
+    if (createdConcurrently) return { ...mapCode(createdConcurrently), inviteUrl: inviteUrlForCode(createdConcurrently.code) };
+  }
+
+  throw new Error("failed to generate ambassador code");
 };
 
 export const readAmbassadorDashboardDb = async (userId: string) => {

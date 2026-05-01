@@ -170,6 +170,51 @@ const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | nul
 const isProductionRuntime = (): boolean => process.env.NODE_ENV === "production";
 const isInternalExchangeEnabled = (): boolean => process.env.INTERNAL_EXCHANGE_ENABLED === "true";
 const privateNoStoreHeaders = { "cache-control": "private, no-store" };
+type DashboardFailureCode =
+  | "dashboard_auth_missing"
+  | "dashboard_db_unavailable"
+  | "ambassador_tables_missing"
+  | "ambassador_code_create_failed"
+  | "profile_missing";
+
+const isDashboardPath = (pathname: string): boolean =>
+  pathname === "/ambassador/dashboard" || pathname === "/ambassador/summary" || pathname === "/referrals/me";
+
+const logDevelopmentDiagnostic = (code: string, metadata?: Record<string, unknown>): void => {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") return;
+  logger.info(code, metadata ?? {});
+};
+
+const classifyDashboardDbError = (error: unknown): DashboardFailureCode => {
+  const record = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : {};
+  const pgCode = typeof record.code === "string" ? record.code : "";
+  const message = error instanceof Error ? error.message : typeof record.message === "string" ? record.message : "";
+
+  if (pgCode === "42P01" || /relation .* does not exist|ambassador_codes|referral_attributions|ambassador_reward_ledger|ambassador_reward_payouts/i.test(message)) {
+    return "ambassador_tables_missing";
+  }
+  if (pgCode === "23503" && /profiles|owner_user_id|recipient_user_id|referred_user_id|referrer_user_id/i.test(message)) {
+    return "profile_missing";
+  }
+  if (/failed to (create|generate) ambassador code|ambassador code/i.test(message)) {
+    return "ambassador_code_create_failed";
+  }
+  return "dashboard_db_unavailable";
+};
+
+const dashboardFailureResponse = (code: DashboardFailureCode, status = 500): Response => {
+  logDevelopmentDiagnostic(code, { status, source: "service API" });
+  return Response.json(
+    {
+      error: code === "ambassador_tables_missing"
+        ? "Ambassador dashboard tables are missing. Apply the Supabase ambassador migrations."
+        : "Ambassador dashboard is unavailable",
+      code,
+      source: "service API",
+    },
+    { status, headers: privateNoStoreHeaders },
+  );
+};
 
 const isInternalExchangePublicPath = (segments: string[]): boolean => {
   const [resource, , action] = segments;
@@ -418,8 +463,8 @@ const getAdminPolymarketStatus = async () => {
 };
 
 const handleRequest = async (request: Request): Promise<Response> => {
+  const url = new URL(request.url);
   try {
-    const url = new URL(request.url);
     const requestUser = await getAuthenticatedUser(request);
     const requestUserId = requestUser?.id;
     const actorIdentity = requestUserId ?? "anonymous";
@@ -1015,12 +1060,18 @@ const handleRequest = async (request: Request): Promise<Response> => {
     if (request.method === "GET" && (url.pathname === "/ambassador/dashboard" || url.pathname === "/ambassador/summary" || url.pathname === "/referrals/me")) {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
+        logDevelopmentDiagnostic("dashboard_auth_missing", { status: 401, source: "service API" });
         return unauthorized;
       }
 
-      const payload = await getAmbassadorDashboard(requestUserId);
+      let payload: Awaited<ReturnType<typeof getAmbassadorDashboard>>;
+      try {
+        payload = await getAmbassadorDashboard(requestUserId);
+      } catch (error) {
+        return dashboardFailureResponse(classifyDashboardDbError(error));
+      }
       return new Response(toJson(payload), {
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...privateNoStoreHeaders },
       });
     }
 
@@ -1641,6 +1692,10 @@ const handleRequest = async (request: Request): Promise<Response> => {
   } catch (error) {
     if (error instanceof ApiAuthError) {
       return Response.json({ error: error.message }, { status: error.status });
+    }
+
+    if (isDashboardPath(url.pathname)) {
+      return dashboardFailureResponse(classifyDashboardDbError(error));
     }
 
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -133,6 +133,19 @@ const getMarketSlug = (searchParams?: Record<string, string | string[] | undefin
   return slug;
 };
 
+const showOperatorDiagnostics = (): boolean =>
+  process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+
+const dashboardErrorHint = (error: unknown, locale: AppLocale): string | null => {
+  if (!showOperatorDiagnostics() || !isApiResponseError(error)) return null;
+  const labels = locale === "en"
+    ? { code: "error code", status: "route status", source: "source" }
+    : locale === "zh-CN"
+      ? { code: "错误代码", status: "路由状态", source: "来源" }
+      : { code: "錯誤代碼", status: "路由狀態", source: "來源" };
+  return `${labels.code}: ${error.code ?? "unknown"} · ${labels.status}: ${error.status} · ${labels.source}: ${error.source ?? "same-site API"}`;
+};
+
 export async function renderAmbassadorPage(locale: AppLocale, {
   searchParams,
   currentUser,
@@ -211,6 +224,9 @@ export async function renderAmbassadorPage(locale: AppLocale, {
           <EmptyState title={isApiResponseError(dashboardError) && dashboardError.status === 401 ? pageCopy.expiredSession : pageCopy.dashboardUnavailable}>
             {isApiResponseError(dashboardError) && dashboardError.status === 401 ? pageCopy.expiredSession : pageCopy.referralCodeNote}
           </EmptyState>
+          {dashboardErrorHint(dashboardError, locale) ? (
+            <p className="muted mono">{dashboardErrorHint(dashboardError, locale)}</p>
+          ) : null}
           {isApiResponseError(dashboardError) && dashboardError.status === 401 ? (
             <div className="market-actions">
               <a className="button-link" href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>

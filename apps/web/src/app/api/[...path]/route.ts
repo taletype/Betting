@@ -73,9 +73,49 @@ const safeErrorMessage = (error: unknown): string =>
 
 const privateNoStoreHeaders = { "cache-control": "private, no-store" };
 
+type DashboardFailureCode =
+  | "dashboard_auth_missing"
+  | "dashboard_db_unavailable"
+  | "ambassador_tables_missing"
+  | "ambassador_code_create_failed"
+  | "profile_missing"
+  | "service_api_unreachable"
+  | "service_api_401"
+  | "service_api_500";
+
 const logDevelopmentDiagnostic = (message: string, metadata?: Record<string, unknown>): void => {
   if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") return;
   console.warn(message, metadata ?? {});
+};
+
+const isDashboardPath = (apiPath: string): boolean =>
+  apiPath === "ambassador/dashboard" || apiPath === "ambassador/summary" || apiPath === "referrals/me";
+
+const dashboardFailureResponse = (
+  code: DashboardFailureCode,
+  status: number,
+  source: "same-site API" | "service API",
+  message = "Ambassador dashboard is unavailable",
+) => {
+  logDevelopmentDiagnostic(code, { status, source });
+  return NextResponse.json({ error: message, code, source }, { status, headers: privateNoStoreHeaders });
+};
+
+const classifyDashboardDbError = (error: unknown): DashboardFailureCode => {
+  const record = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : {};
+  const pgCode = typeof record.code === "string" ? record.code : "";
+  const message = error instanceof Error ? error.message : typeof record.message === "string" ? record.message : "";
+
+  if (pgCode === "42P01" || /relation .* does not exist|ambassador_codes|referral_attributions|ambassador_reward_ledger|ambassador_reward_payouts/i.test(message)) {
+    return "ambassador_tables_missing";
+  }
+  if (pgCode === "23503" && /profiles|owner_user_id|recipient_user_id|referred_user_id|referrer_user_id/i.test(message)) {
+    return "profile_missing";
+  }
+  if (/failed to (create|generate) ambassador code|ambassador code/i.test(message)) {
+    return "ambassador_code_create_failed";
+  }
+  return "dashboard_db_unavailable";
 };
 
 const rateLimitState = new Map<string, { windowStartedAtMs: number; count: number }>();
@@ -315,13 +355,27 @@ const forwardServiceApiRequest = async (request: NextRequest, path: string): Pro
   if (!baseUrl) return null;
   const headers = new Headers(request.headers);
   headers.delete("host");
-  const response = await fetch(`${baseUrl}/${path}`, {
-    method: request.method,
-    headers,
-    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/${path}`, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
+      cache: "no-store",
+    });
+  } catch {
+    if (isDashboardPath(path)) {
+      return dashboardFailureResponse("service_api_unreachable", 503, "service API");
+    }
+    throw new Error("service API is unreachable");
+  }
   const payload = await response.text();
+  if (isDashboardPath(path) && response.status === 401) {
+    logDevelopmentDiagnostic("service_api_401", { status: response.status, source: "service API" });
+  }
+  if (isDashboardPath(path) && response.status >= 500) {
+    logDevelopmentDiagnostic("service_api_500", { status: response.status, source: "service API" });
+  }
   return new NextResponse(payload, {
     status: response.status,
     headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
@@ -523,13 +577,15 @@ async function handleRequest(
     }
 
     if (!userId) {
-      if (apiPath === "ambassador/dashboard" || apiPath === "ambassador/summary" || apiPath === "referrals/me") {
-        logDevelopmentDiagnostic("dashboard API missing authenticated session", {
+      if (isDashboardPath(apiPath)) {
+        logDevelopmentDiagnostic("dashboard_auth_missing", {
+          status: 401,
+          source: "same-site API",
           hasCookieHeader: Boolean(request.headers.get("cookie")),
           hasBearerToken: Boolean(request.headers.get("authorization")?.startsWith("Bearer ")),
         });
       }
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required", code: isDashboardPath(apiPath) ? "dashboard_auth_missing" : undefined }, { status: 401 });
     }
 
     const userSupabase = createSupabaseServerClient({
@@ -753,7 +809,14 @@ async function handleRequest(
     }
 
     if ((apiPath === "ambassador/dashboard" || apiPath === "ambassador/summary" || apiPath === "referrals/me") && request.method === "GET") {
-      return NextResponse.json(normalizeApiPayload(await readAmbassadorDashboardDb(userId)));
+      try {
+        return NextResponse.json(normalizeApiPayload(await readAmbassadorDashboardDb(userId)), { headers: privateNoStoreHeaders });
+      } catch (error) {
+        const code = classifyDashboardDbError(error);
+        return dashboardFailureResponse(code, 500, "same-site API", code === "ambassador_tables_missing"
+          ? "Ambassador dashboard tables are missing. Apply the Supabase ambassador migrations."
+          : "Ambassador dashboard is unavailable");
+      }
     }
 
     if ((apiPath === "ambassador/capture" || apiPath === "referrals/apply") && request.method === "POST") {
@@ -1194,6 +1257,12 @@ async function handleRequest(
 
     return NextResponse.json({ error: "Endpoint not implemented" }, { status: 404 });
   } catch (error) {
+    if (isDashboardPath(apiPath)) {
+      const code = classifyDashboardDbError(error);
+      return dashboardFailureResponse(code, 500, "same-site API", code === "ambassador_tables_missing"
+        ? "Ambassador dashboard tables are missing. Apply the Supabase ambassador migrations."
+        : "Ambassador dashboard is unavailable");
+    }
     console.error(`Error handling /${apiPath}:`, error);
     const message = error instanceof Error ? error.message : "Failed to fetch data";
     if (

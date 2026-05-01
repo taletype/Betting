@@ -204,6 +204,14 @@ const getApiUrl = (path: string, options?: { requireConfiguredBaseUrl?: boolean 
   return getLocalApiUrl(path);
 };
 
+const getApiSourceForUrl = (url: string): "same-site API" | "service API" => {
+  const configuredBase = getConfiguredApiBaseUrl();
+  if (configuredBase && !isConfiguredApiBaseSameAsWebOrigin(configuredBase) && url.startsWith(configuredBase)) {
+    return "service API";
+  }
+  return "same-site API";
+};
+
 export class ApiResponseError extends Error {
   readonly status: number;
   readonly url: string;
@@ -258,10 +266,10 @@ const executeApiRequest = async <T>(
     if (url.includes("/ambassador/dashboard")) {
       const headerRecord = proxyHeaders as Record<string, string>;
       if (!headerRecord.authorization) {
-        logDevelopmentDiagnostic("dashboard API auth forwarding: missing Supabase access token");
+        logDevelopmentDiagnostic("dashboard_auth_missing", { source: getApiSourceForUrl(url), forwardedBearer: false });
       }
       if (!headerRecord.cookie) {
-        logDevelopmentDiagnostic("dashboard API auth forwarding: missing server cookie header");
+        logDevelopmentDiagnostic("dashboard_auth_missing", { source: getApiSourceForUrl(url), forwardedCookie: false });
       }
     }
     response = await fetch(url, {
@@ -274,6 +282,20 @@ const executeApiRequest = async <T>(
       cache: "no-store",
       signal: init?.signal ?? controller.signal,
     });
+  } catch (error) {
+    if (url.includes("/ambassador/dashboard")) {
+      const source = getApiSourceForUrl(url);
+      const code = source === "service API" ? "service_api_unreachable" : "dashboard_db_unavailable";
+      logDevelopmentDiagnostic(code, { source, status: 503 });
+      throw new ApiResponseError({
+        message: "Ambassador dashboard API is unreachable",
+        status: 503,
+        url,
+        code,
+        source,
+      });
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -285,17 +307,22 @@ const executeApiRequest = async <T>(
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { code?: string; error?: string; message?: string; source?: string };
     if (url.includes("/ambassador/dashboard")) {
-      logDevelopmentDiagnostic(
-        response.status === 401 ? "dashboard API returned 401" : "dashboard endpoint failure",
-        { status: response.status, code: payload.code ?? payload.error ?? null },
-      );
+      const source = payload.source ?? getApiSourceForUrl(url);
+      const code = payload.code ?? (source === "service API" && response.status === 401
+        ? "service_api_401"
+        : source === "service API" && response.status >= 500
+          ? "service_api_500"
+          : response.status === 401
+            ? "dashboard_auth_missing"
+            : "dashboard_db_unavailable");
+      logDevelopmentDiagnostic(code, { status: response.status, source });
     }
     throw new ApiResponseError({
       message: payload.message ?? payload.error ?? `API request failed for ${url}: ${response.status}`,
       status: response.status,
       url,
       code: payload.code ?? payload.error ?? null,
-      source: payload.source ?? null,
+      source: payload.source ?? getApiSourceForUrl(url),
     });
   }
 

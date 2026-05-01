@@ -762,6 +762,22 @@ export const calculateRewardLedgerDrafts = calculateAmbassadorRewards;
 
 export const generateAmbassadorCode = (): string => crypto.randomBytes(4).toString("hex").toUpperCase();
 
+export const ensureProfileForUser = async (
+  transaction: DatabaseTransaction,
+  userId: string,
+): Promise<void> => {
+  await transaction.query(
+    `
+      insert into public.profiles (id, locale, created_at, updated_at)
+      values ($1::uuid, 'zh-HK', now(), now())
+      on conflict (id) do update
+        set locale = coalesce(public.profiles.locale, 'zh-HK'),
+            updated_at = public.profiles.updated_at
+    `,
+    [userId],
+  );
+};
+
 export type ReferralAttributionDecision =
   | { action: "create"; referrerUserId: string; ambassadorCode: string }
   | { action: "existing"; attribution: ReferralAttributionRecord };
@@ -798,6 +814,8 @@ export const ensureAmbassadorCode = async (
   transaction: DatabaseTransaction,
   userId: string,
 ): Promise<AmbassadorCodeRecord> => {
+  await ensureProfileForUser(transaction, userId);
+
   const [existing] = await transaction.query<AmbassadorCodeRow>(
     `
       select id, code, owner_user_id, status, created_at, disabled_at
@@ -816,12 +834,25 @@ export const ensureAmbassadorCode = async (
       `
         insert into public.ambassador_codes (code, owner_user_id, status, created_at, disabled_at)
         values ($1, $2::uuid, 'active', now(), null)
-        on conflict (code) do nothing
+        on conflict do nothing
         returning id, code, owner_user_id, status, created_at, disabled_at
       `,
       [generateAmbassadorCode(), userId],
     );
     if (inserted) return mapCode(inserted);
+
+    const [createdConcurrently] = await transaction.query<AmbassadorCodeRow>(
+      `
+        select id, code, owner_user_id, status, created_at, disabled_at
+        from public.ambassador_codes
+        where owner_user_id = $1::uuid
+          and status = 'active'
+        order by created_at asc
+        limit 1
+      `,
+      [userId],
+    );
+    if (createdConcurrently) return mapCode(createdConcurrently);
   }
 
   throw new Error("failed to generate ambassador code");
@@ -1521,6 +1552,8 @@ export const readAmbassadorDashboard = async (
   userId: string,
   buildInviteUrl: (code: string) => string,
 ): Promise<AmbassadorDashboard> => {
+  await ensureProfileForUser(transaction, userId);
+
   const code = await ensureAmbassadorCode(transaction, userId);
   const [attribution, directReferrals, rewards, rewardLedger, payouts] = await Promise.all([
     getReferralAttributionForUser(transaction, userId),

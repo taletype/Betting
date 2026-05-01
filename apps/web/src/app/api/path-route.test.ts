@@ -502,7 +502,7 @@ test("ambassador dashboard rejects spoofed user headers", async () => {
   }), { params: Promise.resolve({ path: ["ambassador", "dashboard"] }) });
 
   assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { error: "Authentication required" });
+  assert.deepEqual(await response.json(), { error: "Authentication required", code: "dashboard_auth_missing" });
 });
 
 test("ambassador dashboard auth uses Supabase cookies and forwarded bearer only", () => {

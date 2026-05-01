@@ -13,6 +13,7 @@ import {
   assertValidPayoutTxHash,
   buildPolygonTxUrl,
   decideReferralAttribution,
+  ensureAmbassadorCode,
   generateAmbassadorCode,
   getAmbassadorRewardsConfig,
   normalizePayoutWalletAddress,
@@ -138,6 +139,66 @@ const createPayoutApprovalFakeRepository = (riskStatus: AmbassadorRiskStatus) =>
 
 test("ambassador code generation creates usable short codes", () => {
   assert.match(generateAmbassadorCode(), /^[0-9A-F]{8}$/);
+});
+
+test("dashboard profile fallback creates a missing profile before ambassador code", async () => {
+  const userId = "22222222-2222-4222-8222-222222222222";
+  const queries: string[] = [];
+  const transaction: DatabaseTransaction = {
+    async query<T>(statement: string): Promise<T[]> {
+      const normalized = statement.replace(/\s+/g, " ").trim();
+      queries.push(normalized);
+      if (/insert into public\.profiles/.test(normalized)) return [] as T[];
+      if (/from public\.ambassador_codes/.test(normalized)) return [] as T[];
+      if (/insert into public\.ambassador_codes/.test(normalized)) {
+        return [{
+          id: "11111111-1111-4111-8111-111111111111",
+          code: "NEWUSER1",
+          owner_user_id: userId,
+          status: "active",
+          created_at: "2026-05-01T00:00:00.000Z",
+          disabled_at: null,
+        }] as T[];
+      }
+      throw new Error(`unexpected query: ${normalized}`);
+    },
+  };
+
+  const created = await ensureAmbassadorCode(transaction, userId);
+
+  assert.equal(created.code, "NEWUSER1");
+  assert.match(queries[0] ?? "", /insert into public\.profiles/);
+  assert.match(queries.join("\n"), /locale.*'zh-HK'/);
+});
+
+test("ambassador code creation retries unique-code collisions", async () => {
+  const userId = "22222222-2222-4222-8222-222222222222";
+  let insertAttempts = 0;
+  const transaction: DatabaseTransaction = {
+    async query<T>(statement: string): Promise<T[]> {
+      const normalized = statement.replace(/\s+/g, " ").trim();
+      if (/insert into public\.profiles/.test(normalized)) return [] as T[];
+      if (/from public\.ambassador_codes/.test(normalized)) return [] as T[];
+      if (/insert into public\.ambassador_codes/.test(normalized)) {
+        insertAttempts += 1;
+        if (insertAttempts === 1) return [] as T[];
+        return [{
+          id: "11111111-1111-4111-8111-111111111111",
+          code: "RETRY002",
+          owner_user_id: userId,
+          status: "active",
+          created_at: "2026-05-01T00:00:00.000Z",
+          disabled_at: null,
+        }] as T[];
+      }
+      throw new Error(`unexpected query: ${normalized}`);
+    },
+  };
+
+  const created = await ensureAmbassadorCode(transaction, userId);
+
+  assert.equal(created.code, "RETRY002");
+  assert.equal(insertAttempts, 2);
 });
 
 test("valid direct referral creates a first-time attribution decision", () => {
