@@ -38,6 +38,8 @@ export type AdminPermission =
   | "referral_attribution:override"
   | "builder_trade_attribution:record"
   | "reward_ledger:review"
+  | "risk_flag:review"
+  | "risk_flag:dismiss"
   | "payout:approve"
   | "payout:mark_paid"
   | "payout:close";
@@ -58,6 +60,8 @@ const adminPermissionRoles: Record<AdminPermission, readonly AdminRole[]> = {
   "referral_attribution:override": ["admin", "finance_approver"],
   "builder_trade_attribution:record": ["admin", "trading_config_admin"],
   "reward_ledger:review": ["admin", "finance_reviewer", "finance_approver"],
+  "risk_flag:review": ["admin", "finance_reviewer", "finance_approver"],
+  "risk_flag:dismiss": ["admin", "finance_approver"],
   "payout:approve": ["admin", "finance_approver"],
   "payout:mark_paid": ["admin", "finance_approver"],
   "payout:close": ["admin", "finance_reviewer", "finance_approver"],
