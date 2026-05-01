@@ -109,6 +109,18 @@ pnpm smoke:local
 
 If a check fails, the script prints clear next steps and targeted remediation hints for each failed check.
 
+Production ambassador/rewards proof:
+
+```bash
+pnpm smoke:ambassador-production
+```
+
+For a real logged-in dashboard proof, provide a valid Supabase session cookie:
+
+```bash
+SESSION_COOKIE='sb-...=...; sb-...=...' pnpm smoke:ambassador-production
+```
+
 ## Root Scripts
 
 - `pnpm dev` → local v1 stack orchestration (web + api + external sync worker)
