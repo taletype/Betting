@@ -19,7 +19,8 @@ export default async function LoginPage({
   const next = normalizeAuthNextPath(params?.next);
   const refCode = normalizeReferralCode(params?.ref);
   const malformedRef = Boolean(params?.ref) && !refCode;
-  const authUnavailable = params?.auth === "unavailable" && !hasPublicSupabaseConfig();
+  const authConfigured = hasPublicSupabaseConfig();
+  const authUnavailable = !authConfigured;
 
   return (
     <main className="stack">
@@ -62,15 +63,17 @@ export default async function LoginPage({
           </div>
 
           {authUnavailable ? <div className="error-state">{copy.authUnavailable}</div> : null}
-          {params?.sent === "1" ? <div className="banner banner-success">{copy.magicLinkNotice}</div> : null}
+          {params?.auth === "failed" ? <div className="error-state">登入連結發送失敗，請稍後再試。</div> : null}
+          {params?.auth === "callback_failed" ? <div className="error-state">登入連結已失效或無法確認，請重新發送。</div> : null}
+          {authConfigured && params?.sent === "1" ? <div className="banner banner-success">{copy.magicLinkNotice}</div> : null}
 
           <form action={sendMagicLinkAction} className="stack">
             <input type="hidden" name="next" value={next} />
             <label className="stack">
               <span className="metric-label">{copy.email}</span>
-              <input name="email" type="email" placeholder={copy.emailPlaceholder} required />
+              <input name="email" type="email" placeholder={copy.emailPlaceholder} required disabled={!authConfigured} />
             </label>
-            <button type="submit">{copy.sendMagicLink}</button>
+            <button type="submit" disabled={!authConfigured}>{authConfigured ? copy.sendMagicLink : "Auth 尚未設定"}</button>
           </form>
 
           <div className="banner banner-warning">

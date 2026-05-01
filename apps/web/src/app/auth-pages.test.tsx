@@ -27,13 +27,18 @@ const withEnv = async (values: Record<string, string | undefined>, run: () => Pr
 };
 
 test("login and signup pages render zh-HK copy", async () => {
-  const login = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
-  const signup = renderToStaticMarkup(await SignupPage());
+  await withEnv({
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "public-anon-key",
+  }, async () => {
+    const login = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
+    const signup = renderToStaticMarkup(await SignupPage());
 
-  assert.match(login, /登入/);
-  assert.match(login, /發送登入連結/);
-  assert.match(signup, /註冊/);
-  assert.match(signup, /以電郵繼續/);
+    assert.match(login, /登入/);
+    assert.match(login, /發送登入連結/);
+    assert.match(signup, /註冊/);
+    assert.match(signup, /以電郵繼續/);
+  });
 });
 
 test("login and signup pages display pending referral from query string", async () => {
@@ -41,9 +46,9 @@ test("login and signup pages display pending referral from query string", async 
   const signup = renderToStaticMarkup(await SignupPage({ searchParams: Promise.resolve({ ref: "friend001" }) }));
 
   assert.match(login, /你正在使用推薦碼：FRIEND001/);
-  assert.match(login, /登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。/);
+  assert.match(login, /登入後會自動嘗試套用此推薦碼。/);
   assert.match(signup, /你正在使用推薦碼：FRIEND001/);
-  assert.match(signup, /登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。/);
+  assert.match(signup, /登入後會自動嘗試套用此推薦碼。/);
 });
 
 test("malformed referral code shows safe failure copy", async () => {
@@ -120,7 +125,35 @@ test("login page shows auth unavailable only when public Supabase config is miss
   }, async () => {
     const login = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ auth: "unavailable" }) }));
 
-    assert.match(login, /Supabase Auth 未完成設定/);
+    assert.match(login, /目前登入功能仍在設定中。正式帳戶、推薦歸因、獎勵及支付操作會在 Supabase Auth 啟用後才開放。/);
+    assert.match(login, /disabled=""/);
+    assert.match(login, /Auth 尚未設定/);
+  });
+});
+
+test("configured Supabase browser env enables login submit", async () => {
+  await withEnv({
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "public-anon-key",
+  }, async () => {
+    const login = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
+
+    assert.match(login, /發送登入連結/);
+    assert.doesNotMatch(login, /Auth 尚未設定/);
+    assert.doesNotMatch(login, /disabled=""/);
+  });
+});
+
+test("signup page disables magic link submit when Supabase browser env is missing", async () => {
+  await withEnv({
+    NEXT_PUBLIC_SUPABASE_URL: undefined,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: undefined,
+  }, async () => {
+    const signup = renderToStaticMarkup(await SignupPage({ searchParams: Promise.resolve({ ref: "friend001" }) }));
+
+    assert.match(signup, /你正在使用推薦碼：FRIEND001/);
+    assert.match(signup, /Auth 尚未設定/);
+    assert.match(signup, /disabled=""/);
   });
 });
 
@@ -140,10 +173,14 @@ test("account page renders a login CTA instead of account state when unauthentic
 test("frontend Supabase browser client does not import service-role admin code", () => {
   const clientSource = readFileSync(resolve("src/lib/supabase/client.ts"), "utf8");
   const packageSource = readFileSync(resolve("../../packages/supabase/src/client/browser.ts"), "utf8");
+  const loginSource = readFileSync(resolve("src/app/login/page.tsx"), "utf8");
+  const signupSource = readFileSync(resolve("src/app/signup/page.tsx"), "utf8");
 
   assert.doesNotMatch(clientSource, /@bet\/supabase["']/);
   assert.doesNotMatch(clientSource, /admin|service|SUPABASE_SERVICE_ROLE_KEY/i);
   assert.doesNotMatch(packageSource, /SUPABASE_SERVICE_ROLE_KEY|createSupabaseAdminClient/);
+  assert.doesNotMatch(loginSource, /SUPABASE_SERVICE_ROLE_KEY|@bet\/supabase\/admin|createSupabaseAdminClient/);
+  assert.doesNotMatch(signupSource, /SUPABASE_SERVICE_ROLE_KEY|@bet\/supabase\/admin|createSupabaseAdminClient/);
   assert.match(packageSource, /NEXT_PUBLIC_SUPABASE_URL/);
   assert.match(packageSource, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
 });

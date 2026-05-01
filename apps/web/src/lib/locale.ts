@@ -837,7 +837,7 @@ const zhHK: DeepPartial<LocaleCopy> = {
     login: "登入",
     signup: "註冊",
     sessionRequired: "請先登入以查看此頁面。",
-    authUnavailable: "Supabase Auth 未完成設定前，正式命令操作會保持停用。",
+    authUnavailable: "目前登入功能仍在設定中。正式帳戶、推薦歸因、獎勵及支付操作會在 Supabase Auth 啟用後才開放。",
     magicLinkNotice: "請查看電郵登入連結。推薦歸因只會在登入確認後套用。",
     pendingReferral: "待套用推薦碼",
     noPendingReferral: "此瀏覽器未有待套用推薦碼。",

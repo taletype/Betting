@@ -86,6 +86,7 @@ import {
 import {
   ApiAuthError,
   getAuthenticatedUser,
+  isApiAdminUser,
   setApiAuthVerifierForTests,
   type AuthenticatedApiUser,
 } from "./lib/auth/supabase";
@@ -158,7 +159,7 @@ const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | nul
     return Response.json(payload, { status: 401 });
   }
 
-  if (user.role !== "admin") {
+  if (!isApiAdminUser(user)) {
     const payload: ApiErrorResponse = { error: "admin authorization required" };
     return Response.json(payload, { status: 403 });
   }

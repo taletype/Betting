@@ -8,7 +8,10 @@ test("auth next path accepts only same-origin relative paths", () => {
   assert.equal(normalizeAuthNextPath("/account?tab=rewards#summary"), "/account?tab=rewards#summary");
   assert.equal(normalizeAuthNextPath("https://evil.example/account"), "/account");
   assert.equal(normalizeAuthNextPath("//evil.example/account"), "/account");
+  assert.equal(normalizeAuthNextPath("javascript:alert(1)"), "/account");
   assert.equal(normalizeAuthNextPath("/\\evil.example/account"), "/account");
+  assert.equal(normalizeAuthNextPath("/guides/invite-rewards"), "/account");
+  assert.equal(normalizeAuthNextPath("/polymarket/market-1"), "/polymarket/market-1");
   assert.equal(normalizeAuthNextPath("/account\nSet-Cookie:bad=1"), "/account");
 });
 

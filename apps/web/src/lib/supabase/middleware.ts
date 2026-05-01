@@ -2,13 +2,33 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@bet/supabase/server";
+import { isAdminRole } from "../../app/api/auth";
+import { pathSegmentToLocale } from "../locale";
 import { hasPublicSupabaseConfig } from "./config";
 
 const adminPrefix = "/admin";
 
-const isProtectedPath = (pathname: string): boolean =>
-  pathname === adminPrefix ||
-  pathname.startsWith(`${adminPrefix}/`);
+const stripLocalePrefix = (pathname: string): string => {
+  const segments = pathname.split("/").filter(Boolean);
+  if (pathSegmentToLocale(segments[0])) {
+    return `/${segments.slice(1).join("/")}` || "/";
+  }
+  return pathname;
+};
+
+const isAdminPath = (pathname: string): boolean =>
+  pathname === adminPrefix || pathname.startsWith(`${adminPrefix}/`);
+
+const isProtectedPath = (pathname: string): boolean => {
+  const normalizedPath = stripLocalePrefix(pathname);
+  return (
+    normalizedPath === "/account" ||
+    normalizedPath.startsWith("/account/") ||
+    normalizedPath === "/rewards" ||
+    normalizedPath.startsWith("/rewards/") ||
+    isAdminPath(normalizedPath)
+  );
+};
 
 const createMiddlewareSupabaseClient = (request: NextRequest, response: NextResponse) => {
   if (!hasPublicSupabaseConfig()) return null;
@@ -43,7 +63,7 @@ export const updateSession = async (request: NextRequest, response: NextResponse
 };
 
 export const protectRoute = async (request: NextRequest, response: NextResponse = NextResponse.next()) => {
-  const pathname = request.nextUrl.pathname;
+  const pathname = stripLocalePrefix(request.nextUrl.pathname);
   if (!isProtectedPath(pathname)) {
     return updateSession(request, response);
   }
@@ -57,8 +77,13 @@ export const protectRoute = async (request: NextRequest, response: NextResponse 
     return redirectToLogin(request);
   }
 
-  const role = typeof user.app_metadata?.role === "string" ? user.app_metadata.role : "user";
-  if ((pathname === adminPrefix || pathname.startsWith(`${adminPrefix}/`)) && role !== "admin") {
+  const roles = [
+    typeof user.app_metadata?.role === "string" ? user.app_metadata.role : null,
+    ...(Array.isArray(user.app_metadata?.roles)
+      ? user.app_metadata.roles.filter((role): role is string => typeof role === "string")
+      : []),
+  ].filter((role): role is string => Boolean(role));
+  if (isAdminPath(pathname) && !roles.some(isAdminRole)) {
     const accountUrl = request.nextUrl.clone();
     accountUrl.pathname = "/account";
     accountUrl.searchParams.set("auth", "forbidden");

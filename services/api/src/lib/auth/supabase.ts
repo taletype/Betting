@@ -4,6 +4,7 @@ export interface AuthenticatedApiUser {
   id: string;
   email: string | null;
   role: string;
+  roles?: string[];
   claims: Record<string, unknown>;
 }
 
@@ -40,15 +41,37 @@ const getBearerToken = (request: Request): string | null => {
 };
 
 const readRole = (claims: Record<string, unknown>): string => {
+  return readRoles(claims)[0] ?? "user";
+};
+
+const readRoles = (claims: Record<string, unknown>): string[] => {
   const appMetadata = claims.app_metadata;
+  const roles = new Set<string>();
   if (appMetadata && typeof appMetadata === "object" && "role" in appMetadata) {
     const role = (appMetadata as { role?: unknown }).role;
-    if (typeof role === "string" && role.trim()) return role;
+    if (typeof role === "string" && role.trim()) roles.add(role.trim());
+  }
+  if (appMetadata && typeof appMetadata === "object" && "roles" in appMetadata) {
+    const metadataRoles = (appMetadata as { roles?: unknown }).roles;
+    if (Array.isArray(metadataRoles)) {
+      for (const role of metadataRoles) {
+        if (typeof role === "string" && role.trim()) roles.add(role.trim());
+      }
+    }
   }
 
   const role = claims.role;
-  return typeof role === "string" && role.trim() ? role : "user";
+  if (typeof role === "string" && role.trim()) roles.add(role.trim());
+
+  return Array.from(roles);
 };
+
+const adminRoles = new Set(["admin", "support", "finance_reviewer", "finance_approver", "trading_config_admin"]);
+
+export const isApiAdminRole = (role: string): boolean => adminRoles.has(role);
+
+export const isApiAdminUser = (user: AuthenticatedApiUser): boolean =>
+  (user.roles?.length ? user.roles : [user.role]).some(isApiAdminRole);
 
 export const getAuthenticatedUser = async (request: Request): Promise<AuthenticatedApiUser | null> => {
   if (process.env.NODE_ENV === "test" && testAuthVerifier) {
@@ -79,6 +102,7 @@ export const getAuthenticatedUser = async (request: Request): Promise<Authentica
       id: data.user.id,
       email: data.user.email ?? null,
       role: readRole(claims),
+      roles: readRoles(claims),
       claims,
     };
   } catch (error) {
@@ -103,7 +127,7 @@ export const requireSupabaseUser = requireAuthenticatedUser;
 
 export const requireAdminUser = async (request: Request): Promise<AuthenticatedApiUser> => {
   const user = await requireAuthenticatedUser(request);
-  if (user.role !== "admin") {
+  if (!isApiAdminUser(user)) {
     throw new ApiAuthError("admin authorization required", 403);
   }
   return user;

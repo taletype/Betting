@@ -273,11 +273,12 @@ test("public external market browsing works without POLY_BUILDER_CODE", async (t
   assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
 });
 
-test("ambassador and rewards routes stay public so pending referral capture can run before login", () => {
+test("ambassador stays public while account rewards are auth-protected", () => {
   const middleware = readFileSync(resolve(repoRoot, "apps/web/src/lib/supabase/middleware.ts"), "utf8");
   assert.match(middleware, /const adminPrefix = "\/admin"/);
   assert.doesNotMatch(middleware, /privatePrefixes/);
-  assert.doesNotMatch(middleware, /"\/ambassador"|"\/rewards"/);
+  assert.doesNotMatch(middleware, /"\/ambassador"/);
+  assert.match(middleware, /"\/rewards"/);
 });
 
 test("Trade via Polymarket ticket is disabled by default", () => {

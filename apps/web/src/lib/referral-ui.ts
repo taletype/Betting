@@ -1,6 +1,6 @@
 export const pendingReferralPrimaryCopy = (code: string): string => `你正在使用推薦碼：${code}`;
 
-export const pendingReferralSecondaryCopy = "登入或註冊後，如推薦碼有效，系統會保存你的推薦來源。";
+export const pendingReferralSecondaryCopy = "登入後會自動嘗試套用此推薦碼。";
 
 export const referralAppliedCopy = "推薦來源已保存";
 

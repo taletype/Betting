@@ -35,13 +35,30 @@ describe("supabase middleware", () => {
     });
   });
 
-  it("lets account render its login CTA when Supabase env is missing", async () => {
+  it("redirects account to login when Supabase env is missing", async () => {
     await withoutSupabaseEnv(async () => {
       const request = new NextRequest("https://example.test/account?tab=wallet");
       const response = await protectRoute(request, NextResponse.next());
 
-      assert.equal(response.status, 200);
-      assert.equal(response.headers.get("location"), null);
+      assert.equal(response.status, 307);
+      const location = response.headers.get("location");
+      assert.ok(location);
+      const redirectUrl = new URL(location);
+      assert.equal(redirectUrl.pathname, "/login");
+      assert.equal(redirectUrl.searchParams.get("next"), "/account?tab=wallet");
+      assert.equal(redirectUrl.searchParams.get("auth"), "unavailable");
+    });
+  });
+
+  it("keeps public Polymarket browsing public when Supabase env is missing", async () => {
+    await withoutSupabaseEnv(async () => {
+      for (const path of ["/polymarket", "/polymarket/market-1?ref=FRIEND001"]) {
+        const request = new NextRequest(`https://example.test${path}`);
+        const response = await protectRoute(request, NextResponse.next());
+
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("location"), null);
+      }
     });
   });
 

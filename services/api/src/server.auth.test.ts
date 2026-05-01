@@ -166,6 +166,29 @@ test("authenticated non-admin receives 403 for admin route even with spoofed x-a
   }
 });
 
+test("approved admin role in Supabase app metadata can access admin route", async () => {
+  const server = await getServer();
+  server.setApiAuthVerifierForTests(async () => ({
+    id: "11111111-1111-4111-8111-111111111111",
+    email: "finance@example.test",
+    role: "finance_approver",
+    roles: ["finance_approver"],
+    claims: { app_metadata: { role: "finance_approver" } },
+  }));
+  try {
+    const response = await server.handleRequest(
+      new Request("http://localhost/admin/polymarket/status", {
+        headers: { authorization: "Bearer test-token" },
+      }),
+    );
+
+    assert.notEqual(response.status, 401);
+    assert.notEqual(response.status, 403);
+  } finally {
+    server.setApiAuthVerifierForTests(null);
+  }
+});
+
 test("Polymarket preflight endpoint requires admin role", async () => {
   const server = await getServer();
   let response = await server.handleRequest(new Request("http://localhost/admin/polymarket/preflight"));

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { normalizeReferralCode } from "../../lib/referral-capture";
 import { pendingReferralPrimaryCopy, pendingReferralSecondaryCopy } from "../../lib/referral-ui";
+import { hasPublicSupabaseConfig } from "../../lib/supabase/config";
 import { sendMagicLinkAction } from "../auth-actions";
 import { FunnelEventTracker } from "../funnel-analytics";
 import { MalformedReferralNotice, PendingReferralNotice } from "../pending-referral-notice";
@@ -21,6 +22,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps = {})
   const malformedRef = Boolean(params?.ref) && !refCode;
   const copy = getLocaleCopy(defaultLocale).auth;
   const inviteUrl = `${siteUrl()}/signup${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const authConfigured = hasPublicSupabaseConfig();
 
   return (
     <main className="stack">
@@ -66,9 +68,10 @@ export default async function SignupPage({ searchParams }: SignupPageProps = {})
             <input type="hidden" name="next" value="/account" />
             <label className="stack">
               <span className="metric-label">{copy.email}</span>
-              <input name="email" type="email" placeholder={copy.emailPlaceholder} required />
+              <input name="email" type="email" placeholder={copy.emailPlaceholder} required disabled={!authConfigured} />
             </label>
-            <button type="submit">{copy.continueWithEmail}</button>
+            {!authConfigured ? <div className="error-state">{copy.authUnavailable}</div> : null}
+            <button type="submit" disabled={!authConfigured}>{authConfigured ? copy.continueWithEmail : "Auth 尚未設定"}</button>
           </form>
           <Link className="secondary-cta" href="/login">{copy.login}</Link>
           <div className="share-block stack">
