@@ -76,6 +76,14 @@ const hasPolymarketBuilderCode = (): boolean => {
   }
 };
 
+const getConfiguredPolymarketBuilderCode = (): string | null => {
+  try {
+    return getPolymarketBuilderCode();
+  } catch {
+    return null;
+  }
+};
+
 const findMarket = (markets: ExternalMarketApiRecord[], slug: string) => {
   const normalized = slug.toLowerCase();
   return markets.find((market) =>
@@ -237,7 +245,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const query = await searchParams;
   const refCode = normalizeReferralCode(query?.ref);
   const copy = getLocaleCopy(locale).research;
-  const hasBuilderCode = hasPolymarketBuilderCode();
+  const configuredBuilderCode = getConfiguredPolymarketBuilderCode();
+  const hasBuilderCode = configuredBuilderCode !== null;
   const globallyRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
   const betaRoutedTradingEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
   const submitModeEnabled = process.env.POLYMARKET_CLOB_SUBMITTER === "real" || process.env.POLYMARKET_SUBMITTER_AVAILABLE === "true";
@@ -254,6 +263,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     const unavailableTicketProps = {
       locale,
       hasBuilderCode,
+      builderCode: configuredBuilderCode,
       featureEnabled: routedTradingEnabled,
       betaUserAllowlisted,
       submitModeEnabled,
@@ -396,6 +406,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const tradeTicketProps = {
     locale,
     hasBuilderCode,
+    builderCode: configuredBuilderCode,
     featureEnabled: routedTradingEnabled,
     betaUserAllowlisted,
     submitModeEnabled,

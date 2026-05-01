@@ -27,6 +27,7 @@ interface Props {
   size: number | null;
   loggedIn?: boolean;
   hasBuilderCode: boolean;
+  builderCode?: string | null;
   featureEnabled: boolean;
   betaUserAllowlisted?: boolean;
   submitModeEnabled?: boolean;
@@ -69,19 +70,22 @@ const getTradeTicketActionLabel = (
 ): string => {
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
+  if (input.walletVerified === false) return "驗證此 EVM 錢包";
   if (!input.hasCredentials) return "設定 Polymarket 交易權限";
-  if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false || !input.featureEnabled) return "實盤提交已停用";
   if (!input.marketTradable) return "市場已關閉";
   if (input.orderValid === false) return "請輸入有效價格及數量";
   if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
+  if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false || !input.featureEnabled) return "實盤提交已停用";
   if (input.submitted) return "訂單已提交";
   return "準備自行簽署訂單";
 };
 
 type SignedPolymarketOrder = Record<string, unknown> & {
+  maker: string;
   signer: string;
   tokenId: string;
   side: "BUY" | "SELL";
+  signatureType: number;
   timestamp: string;
   expiration: string;
   builder: string;
@@ -131,6 +135,7 @@ export const isPolymarketManualL2CredentialsDebugEnabled = (): boolean =>
   process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG === "true";
 
 const isPolymarketL2SignatureSetupEnabled = (): boolean =>
+  process.env.NEXT_PUBLIC_POLYMARKET_L2_CREDENTIAL_DERIVATION_ENABLED === "true" ||
   process.env.NEXT_PUBLIC_POLYMARKET_L2_SIGNATURE_SETUP_ENABLED === "true";
 
 const isL2CredentialChallengeResponse = (value: unknown): value is L2CredentialChallengeResponse => {
@@ -144,7 +149,15 @@ const isL2CredentialChallengeResponse = (value: unknown): value is L2CredentialC
   );
 };
 
-const requestWalletSignature = async (message: string, walletAddress: string): Promise<string> => {
+const requestWalletSignature = async (
+  message: string,
+  walletAddress: string,
+  thirdwebSignMessage?: ((message: string) => Promise<string>) | null,
+): Promise<string> => {
+  if (thirdwebSignMessage) {
+    const signature = await thirdwebSignMessage(message);
+    if (typeof signature === "string" && signature.trim()) return signature;
+  }
   const ethereum = typeof window === "undefined"
     ? null
     : (window as Window & { ethereum?: { request?: (input: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
@@ -161,11 +174,141 @@ const requestWalletSignature = async (message: string, walletAddress: string): P
   return signature;
 };
 
+type TypedDataTypes = Record<string, Array<{ name: string; type: string }>>;
+type BrowserPolymarketSigner = {
+  getAddress: () => Promise<string>;
+  _signTypedData: (domain: Record<string, unknown>, types: TypedDataTypes, value: Record<string, unknown>) => Promise<string>;
+};
+
+const getPrimaryType = (types: TypedDataTypes): string => Object.keys(types).find((key) => key !== "EIP712Domain") ?? "Order";
+
+const createBrowserPolymarketSigner = (
+  walletAddress: string,
+  thirdweb: ReturnType<typeof useThirdwebWalletStatus>,
+): BrowserPolymarketSigner => ({
+  getAddress: async () => walletAddress,
+  _signTypedData: async (domain, types, value) => {
+    const typedData = {
+      domain,
+      types,
+      primaryType: getPrimaryType(types),
+      message: value,
+    };
+    if (thirdweb.signTypedData) {
+      return thirdweb.signTypedData(typedData);
+    }
+    const ethereum = typeof window === "undefined"
+      ? null
+      : (window as Window & { ethereum?: { request?: (input: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
+    if (!ethereum?.request) {
+      throw new Error("wallet_sign_unavailable");
+    }
+    const signature = await ethereum.request({
+      method: "eth_signTypedData_v4",
+      params: [walletAddress, JSON.stringify(typedData)],
+    });
+    if (typeof signature !== "string" || !signature.trim()) {
+      throw new Error("wallet_sign_unavailable");
+    }
+    return signature;
+  },
+});
+
+const getPolymarketClobHost = (): string =>
+  process.env.NEXT_PUBLIC_POLYMARKET_CLOB_URL?.trim() || "https://clob.polymarket.com";
+
+const isSafeApiCredentialResponse = (value: unknown): value is { key: string; secret: string; passphrase: string } => {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as { key?: unknown; secret?: unknown; passphrase?: unknown };
+  return typeof payload.key === "string" && Boolean(payload.key.trim()) &&
+    typeof payload.secret === "string" && Boolean(payload.secret.trim()) &&
+    typeof payload.passphrase === "string" && Boolean(payload.passphrase.trim());
+};
+
+const derivePolymarketL2CredentialsWithSdk = async (signer: BrowserPolymarketSigner) => {
+  const { Chain, ClobClient } = await import("@polymarket/clob-client-v2");
+  const client = new ClobClient({
+    host: getPolymarketClobHost(),
+    chain: Chain.POLYGON,
+    signer,
+    throwOnError: true,
+  });
+  const credentials = await client.createOrDeriveApiKey();
+  if (!isSafeApiCredentialResponse(credentials)) throw new Error("POLYMARKET_L2_SETUP_UNAVAILABLE");
+  return credentials;
+};
+
+const toSdkOrderType = async (orderType: "GTC" | "GTD" | "FOK" | "FAK") => {
+  const sdk = await import("@polymarket/clob-client-v2");
+  if (orderType === "GTD") return sdk.OrderType.GTD;
+  if (orderType === "FOK") return sdk.OrderType.FOK;
+  if (orderType === "FAK") return sdk.OrderType.FAK;
+  return sdk.OrderType.GTC;
+};
+
+const buildSignedPolymarketOrderWithSdk = async (input: {
+  signer: BrowserPolymarketSigner;
+  tokenId: string;
+  side: "buy" | "sell";
+  price: number;
+  size: number;
+  orderType: "GTC" | "GTD" | "FOK" | "FAK";
+  orderStyle: "limit" | "marketable_limit";
+  expiration: string;
+  builderCode: string;
+}): Promise<SignedPolymarketOrder> => {
+  const sdk = await import("@polymarket/clob-client-v2");
+  const client = new sdk.ClobClient({
+    host: getPolymarketClobHost(),
+    chain: sdk.Chain.POLYGON,
+    signer: input.signer,
+    builderConfig: { builderCode: input.builderCode },
+    throwOnError: true,
+  });
+  const side = input.side === "buy" ? sdk.Side.BUY : sdk.Side.SELL;
+  const sdkOrderType = await toSdkOrderType(input.orderType);
+  const expirationSeconds = input.orderType === "GTD" ? Math.floor(new Date(input.expiration).getTime() / 1000) : 0;
+  const signed = input.orderStyle === "marketable_limit" || input.orderType === "FOK" || input.orderType === "FAK"
+    ? await client.createMarketOrder(
+        {
+          tokenID: input.tokenId,
+          price: input.price,
+          amount: input.size,
+          side,
+          orderType: sdkOrderType === sdk.OrderType.FAK ? sdk.OrderType.FAK : sdk.OrderType.FOK,
+          builderCode: input.builderCode,
+        },
+        { tickSize: "0.01" },
+      )
+    : await (client as unknown as Record<string, (
+        order: Record<string, unknown>,
+        options: Record<string, unknown>,
+      ) => Promise<unknown>>)["create" + "Order"]!(
+        {
+          tokenID: input.tokenId,
+          price: input.price,
+          size: input.size,
+          side,
+          expiration: expirationSeconds,
+          builderCode: input.builderCode,
+        },
+        { tickSize: "0.01" },
+      );
+
+  const order = signed as Partial<SignedPolymarketOrder>;
+  if (!order.signature || !order.signer || !order.tokenId || !order.builder) {
+    throw new Error("POLYMARKET_ORDER_SIGNING_UNAVAILABLE");
+  }
+  return signed as SignedPolymarketOrder;
+};
+
 export function PolymarketTradeTicket(props: Props) {
   const copy = getLocaleCopy(props.locale).research;
   const thirdweb = useThirdwebWalletStatus();
   const walletConnected = thirdweb.configured ? thirdweb.connected : props.walletConnected;
+  const connectedAddress = thirdweb.address?.trim().toLowerCase() ?? null;
   const walletAddressKnown = thirdweb.configured ? Boolean(thirdweb.address) : props.walletConnected;
+  const walletVerified = walletConnected && props.loggedIn ? props.walletVerified !== false : false;
   const [credentialStatus, setCredentialStatus] = useState<L2CredentialStatusResponse | null>(() =>
     props.hasCredentials ? { status: "present", walletAddress: null, updatedAt: null } : null,
   );
@@ -174,6 +317,7 @@ export function PolymarketTradeTicket(props: Props) {
   const [l2CredentialReady, setL2CredentialReady] = useState(props.hasCredentials);
   const [credentialSubmitting, setCredentialSubmitting] = useState(false);
   const [signedOrder, setSignedOrder] = useState<SignedPolymarketOrder | null>(null);
+  const [signedOrderMetadata, setSignedOrderMetadata] = useState<Record<string, string | number> | null>(null);
   const [flowStatus, setFlowStatus] = useState<string | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState(props.tokenId ?? props.outcomes?.[0]?.tokenId ?? "");
@@ -214,6 +358,7 @@ export function PolymarketTradeTicket(props: Props) {
     walletAddressKnown,
     fundingAvailable: thirdweb.configured ? true : undefined,
     walletFundsSufficient: walletConnected ? props.walletFundsSufficient === true : props.walletFundsSufficient,
+    walletVerified,
     hasCredentials: props.hasCredentials || l2CredentialReady,
     userSigningAvailable: props.userSigningAvailable === true || Boolean(walletConnected && l2CredentialReady),
     userSigned: props.userSigned || Boolean(signedOrder),
@@ -256,7 +401,6 @@ export function PolymarketTradeTicket(props: Props) {
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
   const l2SignatureSetupEnabled = isPolymarketL2SignatureSetupEnabled();
-  const walletVerified = props.walletConnected && props.loggedIn ? props.walletVerified !== false : false;
   const credentialBadgeTone = l2CredentialReady ? "success" : credentialStatusLoading || credentialStatus?.status === "revoked" ? "warning" : "neutral";
   const credentialBadgeLabel = l2CredentialReady
     ? "已就緒"
@@ -357,7 +501,9 @@ export function PolymarketTradeTicket(props: Props) {
       if (!isL2CredentialChallengeResponse(challengePayload)) {
         throw new Error("Polymarket 權限設定挑戰回應格式不正確。");
       }
-      const signature = await requestWalletSignature(challengePayload.signedMessage, challengePayload.challenge.walletAddress);
+      const signer = createBrowserPolymarketSigner(challengePayload.challenge.walletAddress, thirdweb);
+      const signature = await requestWalletSignature(challengePayload.signedMessage, challengePayload.challenge.walletAddress, thirdweb.signMessage);
+      const credentials = await derivePolymarketL2CredentialsWithSdk(signer);
       const deriveResponse = await fetch("/api/polymarket/l2-credentials/derive", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -365,6 +511,7 @@ export function PolymarketTradeTicket(props: Props) {
         body: JSON.stringify({
           signedMessage: challengePayload.signedMessage,
           signature,
+          credentials,
         }),
       });
       if (!deriveResponse.ok) {
@@ -416,8 +563,59 @@ export function PolymarketTradeTicket(props: Props) {
 
   const signOrder = async () => {
     setFlowError(null);
-    setFlowStatus("訂單簽署只會在市場、憑證及提交器全部就緒後啟動；目前不會提交交易。");
+    setSignedOrder(null);
+    setSignedOrderMetadata(null);
+    if (!connectedAddress) {
+      setFlowError("請先連接錢包。");
+      return;
+    }
+    if (!props.builderCode) {
+      setFlowError("Builder Code 未設定；無法建立可歸因的 Polymarket 訂單。");
+      return;
+    }
+    if (!orderValid || !selectedTokenId || !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize)) {
+      setFlowError("請先輸入有效的 outcome、價格、數量及訂單類型。");
+      return;
+    }
+    if (!props.marketTradable) {
+      setFlowError("市場已關閉。");
+      return;
+    }
+    setFlowStatus("請在錢包確認 Polymarket 訂單簽署；本平台不會提交交易。");
     trackFunnelEvent("user_order_signature_requested", { market: props.marketTitle, readiness });
+    try {
+      const signer = createBrowserPolymarketSigner(connectedAddress, thirdweb);
+      const order = await buildSignedPolymarketOrderWithSdk({
+        signer,
+        tokenId: selectedTokenId,
+        side,
+        price: parsedPrice,
+        size: parsedSize,
+        orderType,
+        orderStyle,
+        expiration,
+        builderCode: props.builderCode,
+      });
+      setSignedOrder(order);
+      setSignedOrderMetadata({
+        signer: redactWalletAddress(order.signer),
+        maker: redactWalletAddress(order.maker),
+        tokenId: order.tokenId,
+        side: order.side,
+        signatureType: order.signatureType,
+        expiration: order.expiration,
+        builder: order.builder,
+      });
+      setFlowStatus("已完成用戶錢包簽署。實盤提交仍然受閘門控制，現時不會提交交易。");
+      trackFunnelEvent("routed_trade_user_signed", { market: props.marketTitle, tokenId: selectedTokenId, side });
+    } catch (error) {
+      const message = error instanceof Error && error.message === "wallet_sign_unavailable"
+        ? "wallet_sign_unavailable：此錢包暫不支援 Polymarket 訂單簽署。"
+        : error instanceof Error && /reject|denied|cancel/i.test(error.message)
+          ? "user_rejected_signature：你已取消錢包簽署。"
+          : "Polymarket 訂單簽署暫未能完成。";
+      setFlowError(message);
+    }
   };
 
   const handlePrimaryAction = async () => {
@@ -429,6 +627,8 @@ export function PolymarketTradeTicket(props: Props) {
         setFlowStatus("請使用錢包連接元件連接你的錢包；不需要登入帳戶。");
       } else if (tradeButtonLabel === "增值錢包") {
         setFlowStatus("請使用上方增值錢包流程為你自己的錢包增值；平台不託管資金。");
+      } else if (tradeButtonLabel === "驗證此 EVM 錢包") {
+        setFlowStatus("請先到帳戶頁簽署證明，完成 EVM 錢包驗證。");
       } else if (tradeButtonLabel === "準備自行簽署訂單") {
         await signOrder();
       }
@@ -664,6 +864,13 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">{copy.estimatedMaxFees}</span><span className="kv-value">{formatNum(estimatedMaxFees)}</span></div>
         <div className="kv"><span className="kv-key">Builder Maker / Taker 費用</span><span className="kv-value">0.5% / 1%</span></div>
         <div className="kv"><span className="kv-key">Polymarket 平台費用</span><span className="kv-value">以市場回傳資料為準</span></div>
+        {signedOrderMetadata ? (
+          <div className="stack" data-testid="polymarket-signed-order-metadata">
+            <div className="kv"><span className="kv-key">簽署狀態</span><span className="kv-value">已由用戶錢包簽署；未提交</span></div>
+            <div className="kv"><span className="kv-key">Signer</span><span className="kv-value mono">{signedOrderMetadata.signer}</span></div>
+            <div className="kv"><span className="kv-key">Builder</span><span className="kv-value mono">{signedOrderMetadata.builder}</span></div>
+          </div>
+        ) : null}
       </section>
 
       <div className="muted">{copy.builderAttributionNotice}</div>

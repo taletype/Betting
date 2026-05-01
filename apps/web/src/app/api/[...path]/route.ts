@@ -834,14 +834,21 @@ async function handleRequest(
       const walletAddress = normalizeWalletAddress(body.walletAddress ?? "");
       const signedMessage = String(body.signedMessage ?? "");
       const signature = String(body.signature ?? "");
-      const challenge = assertWalletLinkSignature({
-        userId,
-        walletAddress,
-        chain: body.chain ?? walletLinkChain,
-        domain: getWalletLinkDomain(request.headers.get("host")),
-        signedMessage,
-        signature,
-      });
+      let challenge: ReturnType<typeof assertWalletLinkSignature>;
+      try {
+        challenge = assertWalletLinkSignature({
+          userId,
+          walletAddress,
+          chain: body.chain ?? walletLinkChain,
+          domain: getWalletLinkDomain(request.headers.get("host")),
+          signedMessage,
+          signature,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        const code = /expired/i.test(message) ? "challenge_expired" : "signature_mismatch";
+        return NextResponse.json({ error: "wallet verification failed", code }, { status: 400, headers: privateNoStoreHeaders });
+      }
 
       const data = await createDatabaseClient().transaction(async (transaction) => {
         const [consumed] = await transaction.query<{ id: string }>(
@@ -867,7 +874,9 @@ async function handleRequest(
             hashWalletLinkNonce(challenge.nonce),
           ],
         );
-        if (!consumed) throw new Error("wallet link challenge not found or already consumed");
+        if (!consumed) {
+          throw new Error("challenge_reused");
+        }
         const [linked] = await transaction.query<{
           id: string;
           chain: string;
@@ -899,7 +908,13 @@ async function handleRequest(
           [userId, linked.id, JSON.stringify({ chain: linked.chain, walletAddress: linked.wallet_address })],
         );
         return linked;
+      }).catch((error) => {
+        if (error instanceof Error && error.message === "challenge_reused") return null;
+        throw error;
       });
+      if (!data) {
+        return NextResponse.json({ error: "wallet verification failed", code: "challenge_reused" }, { status: 409, headers: privateNoStoreHeaders });
+      }
 
       return NextResponse.json(
         {

@@ -62,6 +62,7 @@ export interface PolymarketRoutingReadinessInput {
   submitModeEnabled?: boolean;
   walletConnected: boolean;
   walletAddressKnown?: boolean;
+  walletVerified?: boolean;
   fundingAvailable?: boolean;
   walletFundsSufficient?: boolean;
   geoblockAllowed?: boolean;
@@ -123,6 +124,7 @@ export const getPolymarketRoutingReadiness = (
   if (!input.walletConnected) return "wallet_not_connected";
   if (input.walletAddressKnown === false) return "wallet_not_connected";
   if (input.walletFundsSufficient === false || input.fundingAvailable === false) return "wallet_funds_insufficient";
+  if (input.walletVerified === false) return "wallet_not_connected";
   if (!input.hasCredentials) return "credentials_missing";
   if (input.orderValid === false) return "invalid_order";
   if (!input.marketTradable) return "market_not_tradable";

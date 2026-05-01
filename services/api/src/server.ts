@@ -1013,7 +1013,19 @@ const handleRequest = async (request: Request): Promise<Response> => {
       if (!isPolymarketL2CredentialDerivationEnabled()) {
         return Response.json({ error: "Polymarket L2 credential derivation is not enabled", code: "POLYMARKET_L2_SETUP_UNAVAILABLE" }, { status: 503, headers: privateNoStoreHeaders });
       }
-      return Response.json({ error: "Polymarket L2 credential derivation is not implemented", code: "POLYMARKET_L2_SETUP_UNAVAILABLE" }, { status: 503, headers: privateNoStoreHeaders });
+      const credentials = body.credentials && typeof body.credentials === "object"
+        ? body.credentials as { key?: unknown; secret?: unknown; passphrase?: unknown }
+        : {};
+      await storeUserPolymarketL2Credentials({
+        userId,
+        walletAddress: linkedWallet.walletAddress,
+        credentials: {
+          key: String(credentials.key ?? ""),
+          secret: String(credentials.secret ?? ""),
+          passphrase: String(credentials.passphrase ?? ""),
+        },
+      });
+      return Response.json(await getUserPolymarketL2CredentialStatus(userId), { status: 201, headers: privateNoStoreHeaders });
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/l2-credentials") {

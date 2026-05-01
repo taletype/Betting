@@ -36,6 +36,23 @@ declare global {
 }
 
 const chain = "base";
+const walletVerificationTitle = "驗證此 EVM 錢包";
+const walletVerificationDisclosure = "瀏覽器錢包連接只代表你可使用該錢包；伺服器已驗證錢包需要簽署證明。";
+
+type WalletVerificationErrorCode =
+  | "wallet_sign_unavailable"
+  | "user_rejected_signature"
+  | "signature_mismatch"
+  | "challenge_expired"
+  | "challenge_reused";
+
+const walletVerificationErrorMessage: Record<WalletVerificationErrorCode, string> = {
+  wallet_sign_unavailable: "wallet_sign_unavailable：找不到可簽署訊息的錢包。",
+  user_rejected_signature: "user_rejected_signature：你已取消錢包簽署。",
+  signature_mismatch: "signature_mismatch：簽署錢包與驗證錢包不一致。",
+  challenge_expired: "challenge_expired：驗證挑戰已過期，請重新開始。",
+  challenge_reused: "challenge_reused：驗證挑戰已使用，請重新開始。",
+};
 
 const normalizeAddress = (address: string | null | undefined): string | null => {
   const normalized = address?.trim().toLowerCase();
@@ -46,6 +63,55 @@ const shortAddress = (address: string): string => `${address.slice(0, 6)}...${ad
 
 const getVerifiedWallet = (payload: WalletsMeResponse): VerifiedWallet | null =>
   payload.wallet ?? payload.wallets?.find((wallet) => wallet.verifiedAt) ?? payload.wallets?.[0] ?? null;
+
+const isUserRejectedSignature = (error: unknown): boolean => {
+  const record = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : {};
+  const code = typeof record.code === "number" || typeof record.code === "string" ? String(record.code) : "";
+  const message = typeof record.message === "string" ? record.message : error instanceof Error ? error.message : "";
+  return code === "4001" || /user rejected|user denied|rejected by user|denied by user|cancelled|canceled/i.test(message);
+};
+
+const toWalletVerificationErrorCode = (code: unknown): WalletVerificationErrorCode | null => {
+  if (code === "wallet_sign_unavailable" || code === "user_rejected_signature" || code === "signature_mismatch" || code === "challenge_expired" || code === "challenge_reused") return code;
+  if (code === "WALLET_SIGNATURE_MISMATCH" || code === "POLYMARKET_WALLET_SIGNATURE_MISMATCH") return "signature_mismatch";
+  if (code === "WALLET_CHALLENGE_EXPIRED") return "challenge_expired";
+  if (code === "WALLET_CHALLENGE_REUSED") return "challenge_reused";
+  return null;
+};
+
+const readWalletVerificationErrorCode = async (response: Response): Promise<WalletVerificationErrorCode | null> => {
+  const payload = await response.json().catch(() => null) as { code?: unknown } | null;
+  return toWalletVerificationErrorCode(payload?.code);
+};
+
+const requestWalletVerificationSignature = async (input: {
+  message: string;
+  walletAddress: string;
+  thirdwebSignMessage: ((message: string) => Promise<string>) | null;
+}): Promise<string> => {
+  if (input.thirdwebSignMessage) {
+    try {
+      const signature = await input.thirdwebSignMessage(input.message);
+      if (typeof signature === "string" && signature.trim()) return signature;
+    } catch (error) {
+      if (isUserRejectedSignature(error)) throw new Error("user_rejected_signature");
+    }
+  }
+
+  const provider = typeof window === "undefined" ? null : window.ethereum;
+  if (!provider?.request) throw new Error("wallet_sign_unavailable");
+  try {
+    const signature = await provider.request({
+      method: "personal_sign",
+      params: [input.message, input.walletAddress],
+    });
+    if (typeof signature !== "string" || !signature.trim()) throw new Error("wallet_sign_unavailable");
+    return signature;
+  } catch (error) {
+    if (isUserRejectedSignature(error)) throw new Error("user_rejected_signature");
+    throw error;
+  }
+};
 
 export function AccountWalletVerificationCard() {
   const thirdweb = useThirdwebWalletStatus();
@@ -58,7 +124,7 @@ export function AccountWalletVerificationCard() {
   const verifiedAddress = normalizeAddress(verifiedWallet?.walletAddress);
   const matchesVerifiedWallet = Boolean(connectedAddress && verifiedAddress && connectedAddress === verifiedAddress);
   const hasMismatch = Boolean(connectedAddress && verifiedAddress && connectedAddress !== verifiedAddress);
-  const buttonLabel = hasMismatch ? "重新驗證此錢包" : "驗證此錢包";
+  const buttonLabel = hasMismatch ? "重新驗證此 EVM 錢包" : walletVerificationTitle;
 
   const serverWalletLabel = useMemo(() => {
     if (!verifiedAddress) return "待驗證";
@@ -91,12 +157,6 @@ export function AccountWalletVerificationCard() {
       setError("請先連接錢包。");
       return;
     }
-    const provider = window.ethereum;
-    if (!provider?.request) {
-      setError("找不到可簽署訊息的錢包。請在瀏覽器錢包中重新連接。");
-      return;
-    }
-
     setVerifying(true);
     try {
       const challengeResponse = await fetch("/api/wallets/link/challenge", {
@@ -109,11 +169,11 @@ export function AccountWalletVerificationCard() {
       const challengeId = challengePayload.challenge?.id ?? challengePayload.challengeId;
       if (!challengeId || !challengePayload.signedMessage) throw new Error("challenge_invalid");
 
-      const signature = await provider.request({
-        method: "personal_sign",
-        params: [challengePayload.signedMessage, connectedAddress],
+      const signature = await requestWalletVerificationSignature({
+        message: challengePayload.signedMessage,
+        walletAddress: connectedAddress,
+        thirdwebSignMessage: thirdweb.signMessage,
       });
-      if (typeof signature !== "string") throw new Error("signature_missing");
 
       const verifyResponse = await fetch("/api/wallets/verify", {
         method: "POST",
@@ -126,13 +186,16 @@ export function AccountWalletVerificationCard() {
           signature,
         }),
       });
-      if (!verifyResponse.ok) throw new Error("verify_failed");
+      if (!verifyResponse.ok) {
+        throw new Error((await readWalletVerificationErrorCode(verifyResponse)) ?? "signature_mismatch");
+      }
       const verifyPayload = await verifyResponse.json() as VerifyResponse;
       setVerifiedWallet(verifyPayload.wallet ?? null);
       await refreshWallet();
       setNotice("錢包已完成驗證。");
-    } catch {
-      setError("錢包驗證未能完成。請確認錢包簽署訊息後再試。");
+    } catch (error) {
+      const code = toWalletVerificationErrorCode(error instanceof Error ? error.message : null) ?? "signature_mismatch";
+      setError(walletVerificationErrorMessage[code]);
     } finally {
       setVerifying(false);
     }
@@ -141,7 +204,7 @@ export function AccountWalletVerificationCard() {
   return (
     <section className="panel stack" data-testid="account-wallet-verification-card">
       <div className="section-heading-row">
-        <strong>錢包驗證</strong>
+        <strong>EVM 錢包驗證</strong>
         {matchesVerifiedWallet ? <span className="badge badge-success">已驗證</span> : null}
       </div>
       <div className="kv">
@@ -160,7 +223,7 @@ export function AccountWalletVerificationCard() {
         </button>
       ) : null}
       {!connectedAddress ? <p className="muted">請先在下方連接錢包；連接後仍需簽署訊息才會成為已驗證錢包。</p> : null}
-      <p className="muted">瀏覽器錢包連接只代表你可使用該錢包；伺服器已驗證錢包需要簽署證明，才會用於帳戶綁定。</p>
+      <p className="muted">{walletVerificationDisclosure}</p>
       {notice ? <div className="banner banner-success">{notice}</div> : null}
       {error ? <div className="status-bad">{error}</div> : null}
     </section>

@@ -9,6 +9,8 @@ interface ThirdwebWalletStatus {
   configured: boolean;
   connected: boolean;
   address: string | null;
+  signMessage: ((message: string) => Promise<string>) | null;
+  signTypedData: ((typedData: Record<string, unknown>) => Promise<string>) | null;
 }
 
 const thirdwebClientId = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim();
@@ -19,27 +21,33 @@ const defaultStatus: ThirdwebWalletStatus = {
   configured: Boolean(thirdwebClient),
   connected: false,
   address: null,
+  signMessage: null,
+  signTypedData: null,
 };
 
 const ThirdwebWalletStatusContext = createContext<ThirdwebWalletStatus>(defaultStatus);
 
-function ThirdwebWalletStatusBridge({ onStatus }: { onStatus: (status: Pick<ThirdwebWalletStatus, "connected" | "address">) => void }) {
+function ThirdwebWalletStatusBridge({ onStatus }: { onStatus: (status: Pick<ThirdwebWalletStatus, "connected" | "address" | "signMessage" | "signTypedData">) => void }) {
   const account = useActiveAccount();
 
   useEffect(() => {
     onStatus({
       connected: Boolean(account?.address),
       address: account?.address ?? null,
+      signMessage: account?.signMessage ? (message: string) => account.signMessage({ message }) : null,
+      signTypedData: account?.signTypedData ? (typedData: Record<string, unknown>) => account.signTypedData(typedData as Parameters<typeof account.signTypedData>[0]) : null,
     });
-  }, [account?.address, onStatus]);
+  }, [account, account?.address, onStatus]);
 
   return null;
 }
 
 function ThirdwebWalletStatusProvider({ children }: { children: React.ReactNode }) {
-  const [wallet, setWallet] = useState<Pick<ThirdwebWalletStatus, "connected" | "address">>({
+  const [wallet, setWallet] = useState<Pick<ThirdwebWalletStatus, "connected" | "address" | "signMessage" | "signTypedData">>({
     connected: false,
     address: null,
+    signMessage: null,
+    signTypedData: null,
   });
   const status = useMemo<ThirdwebWalletStatus>(
     () => ({
@@ -47,8 +55,10 @@ function ThirdwebWalletStatusProvider({ children }: { children: React.ReactNode 
       configured: Boolean(thirdwebClient),
       connected: wallet.connected,
       address: wallet.address,
+      signMessage: wallet.signMessage,
+      signTypedData: wallet.signTypedData,
     }),
-    [wallet.address, wallet.connected],
+    [wallet.address, wallet.connected, wallet.signMessage, wallet.signTypedData],
   );
 
   return (
