@@ -2,6 +2,26 @@
 
 The logged-in ambassador, account, and rewards pages depend on the same dashboard path. In production the dashboard should return a valid empty payload for new users; missing data is not an error.
 
+Primary production smoke goal:
+
+- Confirm `/ambassador` and `/rewards` load without a server error.
+- Confirm the logged-in dashboard path returns a valid payload where `ambassadorCode.code` exists and reward totals may legitimately be `0`.
+- Do not treat zero rewards as a broken state. Treat only transport, auth, table, or profile/bootstrap failures as production blockers.
+
+Recommended smoke command:
+
+```bash
+pnpm smoke:ambassador-production
+```
+
+Optional authenticated proof:
+
+```bash
+SESSION_COOKIE='sb-...=...; sb-...=...' pnpm smoke:ambassador-production
+```
+
+The authenticated run is the production-proof check for referral code plus zero-reward rendering.
+
 Required environment:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
