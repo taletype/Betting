@@ -6,16 +6,17 @@ import {
   approveAdminRewardPayout,
   cancelAdminRewardPayout,
   createAdminAmbassadorCode,
+  dismissAdminRiskFlag,
   disableAdminAmbassadorCode,
   failAdminRewardPayout,
   markAdminRewardPayoutPaid,
   markAdminRewardsPayable,
   overrideAdminReferralAttribution,
   recordAdminMockBuilderTradeAttribution,
+  reviewAdminRiskFlag,
   voidAdminTradeAttributionRewards,
 } from "../../lib/api";
 import { requireCurrentAdmin } from "../../lib/supabase/server";
-import { updateAdminRiskFlagReviewState } from "./risk-flags";
 
 export const createAmbassadorCodeAction = async (formData: FormData) => {
   await requireCurrentAdmin();
@@ -108,13 +109,11 @@ export const cancelRewardPayoutAction = async (formData: FormData) => {
 };
 
 export const reviewRiskFlagAction = async (formData: FormData) => {
-  const adminUser = await requireCurrentAdmin();
-  await updateAdminRiskFlagReviewState({
-    riskFlagId: String(formData.get("riskFlagId") ?? ""),
-    reviewedBy: adminUser.id,
-    status: "reviewed",
-    reviewNotes: String(formData.get("reviewNotes") ?? ""),
-  });
+  await requireCurrentAdmin();
+  await reviewAdminRiskFlag(
+    String(formData.get("riskFlagId") ?? ""),
+    String(formData.get("reviewNotes") ?? ""),
+  );
   revalidatePath("/admin");
   revalidatePath("/admin/ambassadors");
   revalidatePath("/admin/rewards");
@@ -122,13 +121,11 @@ export const reviewRiskFlagAction = async (formData: FormData) => {
 };
 
 export const dismissRiskFlagAction = async (formData: FormData) => {
-  const adminUser = await requireCurrentAdmin();
-  await updateAdminRiskFlagReviewState({
-    riskFlagId: String(formData.get("riskFlagId") ?? ""),
-    reviewedBy: adminUser.id,
-    status: "dismissed",
-    reviewNotes: String(formData.get("reviewNotes") ?? ""),
-  });
+  await requireCurrentAdmin();
+  await dismissAdminRiskFlag(
+    String(formData.get("riskFlagId") ?? ""),
+    String(formData.get("reviewNotes") ?? ""),
+  );
   revalidatePath("/admin");
   revalidatePath("/admin/ambassadors");
   revalidatePath("/admin/rewards");
