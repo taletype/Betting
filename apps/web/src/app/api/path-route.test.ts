@@ -493,6 +493,20 @@ test("admin catch-all endpoints reject spoofed admin headers", async () => {
   assert.deepEqual(await response.json(), { error: "Authentication required" });
 });
 
+test("admin ambassador dashboard health rejects spoofed admin headers", async () => {
+  const response = await GET(new NextRequest("http://localhost/api/admin/ambassador-dashboard-health", {
+    headers: {
+      "x-user-id": "11111111-1111-4111-8111-111111111111",
+      "x-admin": "true",
+      "x-role": "admin",
+    },
+  }), { params: Promise.resolve({ path: ["admin", "ambassador-dashboard-health"] }) });
+
+  assert.equal(response.status, 401);
+  const text = await response.text();
+  assert.doesNotMatch(text, /SUPABASE_SERVICE_ROLE_KEY|service-role|DATABASE_URL|Bearer/i);
+});
+
 test("ambassador dashboard rejects spoofed user headers", async () => {
   const response = await GET(new NextRequest("http://localhost/api/ambassador/dashboard", {
     headers: {

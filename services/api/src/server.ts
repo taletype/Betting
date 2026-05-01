@@ -179,7 +179,7 @@ type DashboardFailureCode =
   | "dashboard_db_unavailable"
   | "ambassador_tables_missing"
   | "ambassador_code_create_failed"
-  | "profile_missing";
+  | "profile_write_failed";
 
 const isDashboardPath = (pathname: string): boolean =>
   pathname === "/ambassador/dashboard" || pathname === "/ambassador/summary" || pathname === "/referrals/me";
@@ -197,8 +197,11 @@ const classifyDashboardDbError = (error: unknown): DashboardFailureCode => {
   if (pgCode === "42P01" || /relation .* does not exist|ambassador_codes|referral_attributions|ambassador_reward_ledger|ambassador_reward_payouts/i.test(message)) {
     return "ambassador_tables_missing";
   }
-  if (pgCode === "23503" && /profiles|owner_user_id|recipient_user_id|referred_user_id|referrer_user_id/i.test(message)) {
-    return "profile_missing";
+  if (
+    (pgCode === "23503" && /profiles|owner_user_id|recipient_user_id|referred_user_id|referrer_user_id/i.test(message)) ||
+    /insert into public\.profiles|profiles.*(permission|violates|failed|denied)|failed to.*profile/i.test(message)
+  ) {
+    return "profile_write_failed";
   }
   if (/failed to (create|generate) ambassador code|ambassador code/i.test(message)) {
     return "ambassador_code_create_failed";

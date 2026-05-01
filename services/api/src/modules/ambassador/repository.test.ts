@@ -17,6 +17,7 @@ import {
   generateAmbassadorCode,
   getAmbassadorRewardsConfig,
   normalizePayoutWalletAddress,
+  readAmbassadorDashboard,
   validateRewardShareConfig,
   type AmbassadorCodeRecord,
   type AmbassadorRiskStatus,
@@ -199,6 +200,82 @@ test("ambassador code creation retries unique-code collisions", async () => {
 
   assert.equal(created.code, "RETRY002");
   assert.equal(insertAttempts, 2);
+});
+
+test("ambassador code creation returns same-user concurrent active code", async () => {
+  const userId = "22222222-2222-4222-8222-222222222222";
+  let activeCodeExists = false;
+  const transaction: DatabaseTransaction = {
+    async query<T>(statement: string): Promise<T[]> {
+      const normalized = statement.replace(/\s+/g, " ").trim();
+      if (/insert into public\.profiles/.test(normalized)) return [] as T[];
+      if (/from public\.ambassador_codes/.test(normalized)) {
+        if (!activeCodeExists) return [] as T[];
+        return [{
+          id: "11111111-1111-4111-8111-111111111111",
+          code: "RACEWIN1",
+          owner_user_id: userId,
+          status: "active",
+          created_at: "2026-05-01T00:00:00.000Z",
+          disabled_at: null,
+        }] as T[];
+      }
+      if (/insert into public\.ambassador_codes/.test(normalized)) {
+        activeCodeExists = true;
+        return [] as T[];
+      }
+      throw new Error(`unexpected query: ${normalized}`);
+    },
+  };
+
+  const created = await ensureAmbassadorCode(transaction, userId);
+
+  assert.equal(created.code, "RACEWIN1");
+});
+
+test("new authenticated user dashboard creates profile and code with empty rewards payload", async () => {
+  const userId = "22222222-2222-4222-8222-222222222222";
+  const queries: string[] = [];
+  const transaction: DatabaseTransaction = {
+    async query<T>(statement: string): Promise<T[]> {
+      const normalized = statement.replace(/\s+/g, " ").trim();
+      queries.push(normalized);
+      if (/insert into public\.profiles/.test(normalized)) return [] as T[];
+      if (/select id, code, owner_user_id, status, created_at, disabled_at from public\.ambassador_codes/.test(normalized)) return [] as T[];
+      if (/insert into public\.ambassador_codes/.test(normalized)) {
+        return [{
+          id: "11111111-1111-4111-8111-111111111111",
+          code: "NEWUSER1",
+          owner_user_id: userId,
+          status: "active",
+          created_at: "2026-05-01T00:00:00.000Z",
+          disabled_at: null,
+        }] as T[];
+      }
+      if (/from public\.referral_attributions where referred_user_id/.test(normalized)) return [] as T[];
+      if (/from public\.referral_attributions attribution join public\.profiles profile/.test(normalized)) return [] as T[];
+      if (/from public\.ambassador_reward_ledger where recipient_user_id/.test(normalized) && /group by status/.test(normalized)) return [] as T[];
+      if (/count\(distinct attribution\.referred_user_id\)::int as direct_referral_count/.test(normalized)) {
+        return [{ direct_referral_count: 0, direct_volume: 0n }] as T[];
+      }
+      if (/from public\.ambassador_reward_ledger where recipient_user_id/.test(normalized) && /order by created_at desc/.test(normalized)) return [] as T[];
+      if (/from public\.ambassador_reward_payouts/.test(normalized)) return [] as T[];
+      throw new Error(`unexpected query: ${normalized}`);
+    },
+  };
+
+  const dashboard = await readAmbassadorDashboard(transaction, userId, (codeValue) => `https://bet.example/ambassador?ref=${codeValue}`);
+
+  assert.equal(dashboard.ambassadorCode.code, "NEWUSER1");
+  assert.equal(dashboard.ambassadorCode.inviteUrl, "https://bet.example/ambassador?ref=NEWUSER1");
+  assert.equal(dashboard.attribution, null);
+  assert.deepEqual(dashboard.directReferrals, []);
+  assert.equal(dashboard.rewards.pendingRewards, 0n);
+  assert.equal(dashboard.rewards.payableRewards, 0n);
+  assert.equal(dashboard.rewards.paidRewards, 0n);
+  assert.deepEqual(dashboard.rewardLedger, []);
+  assert.deepEqual(dashboard.payouts, []);
+  assert.match(queries[0] ?? "", /insert into public\.profiles/);
 });
 
 test("valid direct referral creates a first-time attribution decision", () => {

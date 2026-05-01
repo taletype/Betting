@@ -80,7 +80,7 @@ type DashboardFailureCode =
   | "dashboard_db_unavailable"
   | "ambassador_tables_missing"
   | "ambassador_code_create_failed"
-  | "profile_missing"
+  | "profile_write_failed"
   | "service_api_unreachable"
   | "service_api_401"
   | "service_api_500";
@@ -111,8 +111,11 @@ const classifyDashboardDbError = (error: unknown): DashboardFailureCode => {
   if (pgCode === "42P01" || /relation .* does not exist|ambassador_codes|referral_attributions|ambassador_reward_ledger|ambassador_reward_payouts/i.test(message)) {
     return "ambassador_tables_missing";
   }
-  if (pgCode === "23503" && /profiles|owner_user_id|recipient_user_id|referred_user_id|referrer_user_id/i.test(message)) {
-    return "profile_missing";
+  if (
+    (pgCode === "23503" && /profiles|owner_user_id|recipient_user_id|referred_user_id|referrer_user_id/i.test(message)) ||
+    /insert into public\.profiles|profiles.*(permission|violates|failed|denied)|failed to.*profile/i.test(message)
+  ) {
+    return "profile_write_failed";
   }
   if (/failed to (create|generate) ambassador code|ambassador code/i.test(message)) {
     return "ambassador_code_create_failed";
@@ -168,6 +171,82 @@ const recordAdminAuditLog = async (input: {
     `,
     [input.actorUserId, input.action, input.entityType, input.entityId, JSON.stringify(input.metadata ?? {})],
   );
+};
+
+const requiredAmbassadorHealthEnv = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "NEXT_PUBLIC_SITE_URL",
+] as const;
+
+const requiredAmbassadorHealthTables = [
+  "public.profiles",
+  "public.ambassador_codes",
+  "public.referral_attributions",
+  "public.builder_trade_attributions",
+  "public.ambassador_reward_ledger",
+  "public.ambassador_reward_payouts",
+  "public.linked_wallets",
+  "public.wallet_link_challenges",
+] as const;
+
+const readAmbassadorDashboardHealth = async (userId: string) => {
+  const db = createDatabaseClient();
+  const missingEnv = [
+    ...requiredAmbassadorHealthEnv.filter((name) => !process.env[name]?.trim()),
+    ...(!process.env.DATABASE_URL?.trim() && !process.env.SUPABASE_DB_URL?.trim() ? ["DATABASE_URL or SUPABASE_DB_URL"] : []),
+  ];
+  const tableRows = await db.query<{ table_name: string; exists: boolean }>(
+    `
+      select table_name, to_regclass(table_name) is not null as exists
+      from unnest($1::text[]) as table_name
+    `,
+    [[...requiredAmbassadorHealthTables]],
+  );
+  const missingTables = tableRows.filter((row) => !row.exists).map((row) => row.table_name);
+
+  let dashboardPath: { ok: boolean; code: DashboardFailureCode | null } = { ok: false, code: null };
+  if (missingTables.length === 0) {
+    try {
+      const dashboard = await readAmbassadorDashboardDb(userId);
+      dashboardPath = {
+        ok: Boolean(dashboard.ambassadorCode?.code && dashboard.rewards && Array.isArray(dashboard.rewardLedger)),
+        code: null,
+      };
+    } catch (error) {
+      dashboardPath = { ok: false, code: classifyDashboardDbError(error) };
+    }
+  } else {
+    dashboardPath = { ok: false, code: "ambassador_tables_missing" };
+  }
+
+  return {
+    ok: missingEnv.length === 0 && missingTables.length === 0 && dashboardPath.ok,
+    checkedAt: new Date().toISOString(),
+    env: {
+      missing: missingEnv,
+      databaseUrlConfigured: Boolean(process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim()),
+    },
+    tables: {
+      required: [...requiredAmbassadorHealthTables],
+      missing: missingTables,
+      migrations: [
+        "supabase/migrations/0002_auth_profiles.sql",
+        "supabase/migrations/0021_ambassador_rewards.sql",
+        "supabase/migrations/0025_wallet_link_challenges.sql",
+        "supabase/migrations/0031_reward_ledger_accounting_statuses.sql",
+        "supabase/migrations/0034_reward_payout_reservations.sql",
+        "supabase/migrations/0037_polymarket_builder_fee_reconciliation.sql",
+        "supabase/migrations/0038_attribution_to_payout_accounting_chain.sql",
+      ],
+    },
+    profile: { currentUserWritePath: missingTables.includes("public.profiles") ? "skipped" : dashboardPath.ok ? "ok" : "failed" },
+    ambassadorCode: { createReadPath: dashboardPath },
+    rewards: { emptySummaryPath: dashboardPath },
+    code: missingTables.length > 0 ? "ambassador_tables_missing" : dashboardPath.code,
+  };
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -1014,6 +1093,12 @@ async function handleRequest(
         const permissionError = requireAdminPermissionResponse(user, "polymarket:read");
         if (permissionError) return permissionError;
         return adminPolymarketStatusResponse(request, adminSupabase);
+      }
+
+      if (apiPath === "admin/ambassador-dashboard-health" && request.method === "GET") {
+        const permissionError = requireAdminPermissionResponse(user, "admin:read");
+        if (permissionError) return permissionError;
+        return NextResponse.json(await readAmbassadorDashboardHealth(adminActorId), { headers: privateNoStoreHeaders });
       }
 
       if (apiPath === "admin/withdrawals" && request.method === "GET") {

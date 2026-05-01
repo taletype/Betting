@@ -409,12 +409,7 @@ test("Polymarket trade ticket hides manual L2 credentials unless debug flag is e
     process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG = "true";
     assert.equal(isPolymarketManualL2CredentialsDebugEnabled(), true);
     const debugMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, baseProps));
-    assert.match(debugMarkup, /<details/);
-    assert.match(debugMarkup, /開發者測試：手動輸入 L2 憑證/);
-    assert.match(debugMarkup, /只供測試。正式用戶不應手動貼上 API secret 或 passphrase。/);
-    assert.match(debugMarkup, /API key/);
-    assert.match(debugMarkup, /API secret/);
-    assert.match(debugMarkup, /Passphrase/);
+    assert.doesNotMatch(debugMarkup, /API key|API secret|Passphrase|開發者測試：手動輸入 L2 憑證|user-owned-secret|user-owned-passphrase/);
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG;
     else process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG = previous;

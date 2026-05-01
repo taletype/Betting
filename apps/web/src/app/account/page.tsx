@@ -10,6 +10,7 @@ import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 import { getSiteUrl } from "../../lib/site-url";
 import { resolveAmbassadorDashboardState, sanitizeAmbassadorDashboardDiagnostic } from "../ambassador-dashboard-state";
+import { AccountWalletVerificationCard } from "./account-wallet-verification-card";
 
 export function AccountReferralSection({
   dashboard,
@@ -102,14 +103,13 @@ export async function renderAccountPage(resolvedState?: Awaited<ReturnType<typeo
             <div className="kv"><span className="kv-key">User ID</span><span className="kv-value mono">{state.user.id}</span></div>
             <div className="kv"><span className="kv-key">{copy.email}</span><span className="kv-value">{state.user.email ?? ""}</span></div>
             <div className="kv"><span className="kv-key">登入狀態</span><span className="kv-value">已登入</span></div>
-            <div className="kv"><span className="kv-key">已驗證錢包</span><span className="kv-value">待驗證（請於下方連接）</span></div>
-            <div className="kv"><span className="kv-key">目前連接錢包</span><span className="kv-value">請查看下方「增值錢包」卡片狀態</span></div>
             <div className="kv"><span className="kv-key">{copy.readinessStatus}</span><span className="kv-value">{getLocaleCopy(defaultLocale).research.readinessCopy.feature_disabled}</span></div>
             <form action={logoutAction}>
               <button type="submit">{copy.logout}</button>
             </form>
           </section>
 
+          <AccountWalletVerificationCard />
           <ThirdwebWalletFundingCard surface="account" />
 
           {state.kind === "expired_session" ? (

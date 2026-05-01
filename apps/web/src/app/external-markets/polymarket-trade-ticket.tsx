@@ -172,9 +172,6 @@ export function PolymarketTradeTicket(props: Props) {
   const [credentialStatusLoading, setCredentialStatusLoading] = useState(Boolean(props.loggedIn));
   const [credentialStatusCheckedAt, setCredentialStatusCheckedAt] = useState<string | null>(null);
   const [l2CredentialReady, setL2CredentialReady] = useState(props.hasCredentials);
-  const [credentialKey, setCredentialKey] = useState("");
-  const [credentialSecret, setCredentialSecret] = useState("");
-  const [credentialPassphrase, setCredentialPassphrase] = useState("");
   const [credentialSubmitting, setCredentialSubmitting] = useState(false);
   const [signedOrder, setSignedOrder] = useState<SignedPolymarketOrder | null>(null);
   const [flowStatus, setFlowStatus] = useState<string | null>(null);
@@ -258,7 +255,6 @@ export function PolymarketTradeTicket(props: Props) {
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
-  const manualCredentialDebugEnabled = isPolymarketManualL2CredentialsDebugEnabled();
   const l2SignatureSetupEnabled = isPolymarketL2SignatureSetupEnabled();
   const walletVerified = props.walletConnected && props.loggedIn ? props.walletVerified !== false : false;
   const credentialBadgeTone = l2CredentialReady ? "success" : credentialStatusLoading || credentialStatus?.status === "revoked" ? "warning" : "neutral";
@@ -385,48 +381,6 @@ export function PolymarketTradeTicket(props: Props) {
       trackFunnelEvent("l2_credentials_missing", { market: props.marketTitle, action: "setup_completed" });
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : "未能設定 Polymarket 交易權限。");
-    } finally {
-      setCredentialSubmitting(false);
-    }
-  };
-
-  const submitCredentials = async () => {
-    setFlowError(null);
-    setFlowStatus(null);
-    setCredentialSubmitting(true);
-
-    try {
-      const response = await fetch("/api/polymarket/l2-credentials", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          credentials: {
-            key: credentialKey.trim(),
-            secret: credentialSecret.trim(),
-            passphrase: credentialPassphrase.trim(),
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response, "未能儲存 Polymarket 憑證。"));
-      }
-
-      const payload = await response.json();
-      if (!isL2CredentialStatusResponse(payload)) {
-        throw new Error("Polymarket 權限狀態回應格式不正確。");
-      }
-      setCredentialStatus(payload);
-      setL2CredentialReady(payload.status === "present");
-      setCredentialStatusCheckedAt(new Date().toISOString());
-      setCredentialKey("");
-      setCredentialSecret("");
-      setCredentialPassphrase("");
-      setFlowStatus("Polymarket 交易權限已安全儲存，現在可以繼續後續簽署流程。");
-      trackFunnelEvent("l2_credentials_missing", { market: props.marketTitle, action: "setup_completed" });
-    } catch (error) {
-      setFlowError(error instanceof Error ? error.message : "未能儲存 Polymarket 憑證。");
     } finally {
       setCredentialSubmitting(false);
     }
@@ -621,37 +575,6 @@ export function PolymarketTradeTicket(props: Props) {
             {credentialStatusLoading ? "檢查中" : "重新整理狀態"}
           </button>
         </div>
-        {manualCredentialDebugEnabled ? (
-          <details>
-            <summary>開發者測試：手動輸入 L2 憑證</summary>
-            <div className="warning-card">只供測試。正式用戶不應手動貼上 API secret 或 passphrase。</div>
-            <div className="ticket-form-grid">
-            <label className="stack">
-              API key
-              <input className="control-lg" value={credentialKey} onChange={(event) => setCredentialKey(event.target.value)} autoComplete="off" />
-            </label>
-            <label className="stack">
-              API secret
-              <input className="control-lg" type="password" value={credentialSecret} onChange={(event) => setCredentialSecret(event.target.value)} autoComplete="off" />
-            </label>
-            <label className="stack">
-              Passphrase
-              <input className="control-lg" type="password" value={credentialPassphrase} onChange={(event) => setCredentialPassphrase(event.target.value)} autoComplete="off" />
-            </label>
-            <div className="button-row">
-              <button
-                type="button"
-                className="primary-cta"
-                disabled={credentialSubmitting || !credentialKey.trim() || !credentialSecret.trim() || !credentialPassphrase.trim()}
-                onClick={() => void submitCredentials()}
-              >
-                {credentialSubmitting ? "儲存中" : "開發者測試儲存 L2 憑證"}
-              </button>
-            </div>
-            <div className="muted">提交前請先在帳戶頁完成已連結錢包驗證，系統只接受與已驗證錢包一致的使用者憑證。</div>
-            </div>
-          </details>
-        ) : null}
       </section>
 
       <div className="readiness-grid compact-status-grid">

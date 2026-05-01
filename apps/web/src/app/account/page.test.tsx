@@ -27,6 +27,9 @@ test("account signed-in + dashboard OK shows referral code and real user details
   assert.match(markup, /HKREF001/);
   assert.match(markup, /user-real-123/);
   assert.match(markup, /real\.user@example\.com/);
+  assert.match(markup, /錢包驗證/);
+  assert.doesNotMatch(markup, /待驗證（請於下方連接）/);
+  assert.doesNotMatch(markup, /請查看下方「增值錢包」卡片狀態/);
 });
 
 test("account signed-in + dashboard 401 shows expired-session copy", async () => {
