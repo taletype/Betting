@@ -234,16 +234,12 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
       },
     });
 
-    let ledger = tradeAttribution.status === "confirmed"
+    const ledger = tradeAttribution.status === "confirmed"
       ? await accountConfirmedBuilderTradeRewards(transaction, {
           tradeAttributionId: tradeAttribution.id,
           config: getAmbassadorRewardsConfig(),
         })
       : [];
-
-    if (ledger.length > 0) {
-      ledger = await markRewardsPayable(transaction, tradeAttribution.id);
-    }
 
     await insertAuditRecord(transaction, {
       actorUserId: adminUserId,
