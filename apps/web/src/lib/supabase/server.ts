@@ -2,22 +2,35 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
 import { createSupabaseServerClient } from "@bet/supabase/server";
+import { isAdminRole } from "../../app/api/auth";
 
 export interface CurrentUser {
   id: string;
   email: string | null;
   role: string;
+  roles: string[];
 }
+
+const normalizeRoles = (roles: ReadonlyArray<string | null | undefined>): string[] =>
+  Array.from(new Set(roles.map((role) => role?.trim()).filter((role): role is string => Boolean(role))));
 
 const mapUser = (user: {
   id: string;
   email?: string | null;
   app_metadata?: Record<string, unknown>;
-}): CurrentUser => ({
-  id: user.id,
-  email: user.email ?? null,
-  role: typeof user.app_metadata?.role === "string" ? user.app_metadata.role : "user",
-});
+}): CurrentUser => {
+  const primaryRole = typeof user.app_metadata?.role === "string" ? user.app_metadata.role : "user";
+  const roleList = Array.isArray(user.app_metadata?.roles)
+    ? user.app_metadata.roles.filter((role): role is string => typeof role === "string")
+    : [];
+  const roles = normalizeRoles([primaryRole, ...roleList]);
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    role: roles[0] ?? "user",
+    roles,
+  };
+};
 
 export const createClient = async () => {
   const cookieStore = await cookies();
@@ -47,7 +60,7 @@ export const requireCurrentUser = async (): Promise<CurrentUser> => {
 
 export const requireCurrentAdmin = async (): Promise<CurrentUser> => {
   const user = await requireCurrentUser();
-  if (user.role !== "admin") redirect("/account");
+  if (!user.roles.some(isAdminRole)) redirect("/account");
   return user;
 };
 
