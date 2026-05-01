@@ -9,7 +9,7 @@ import { PendingReferralApplier } from "../pending-referral-applier";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 import { getSiteUrl } from "../../lib/site-url";
-import { resolveAmbassadorDashboardState } from "../ambassador-dashboard-state";
+import { resolveAmbassadorDashboardState, sanitizeAmbassadorDashboardDiagnostic } from "../ambassador-dashboard-state";
 
 export function AccountReferralSection({
   dashboard,
@@ -96,11 +96,11 @@ export async function renderAccountPage(resolvedState?: Awaited<ReturnType<typeo
         </section>
       ) : (
         <>
-          <FunnelEventTracker name="signup_completed" metadata={{ user: "session" }} />
+          <FunnelEventTracker name="signup_completed" metadata={{ user: state.user.id }} />
           <PendingReferralApplier />
           <section className="panel stack">
-            <div className="kv"><span className="kv-key">User ID</span><span className="kv-value mono">session</span></div>
-            <div className="kv"><span className="kv-key">{copy.email}</span><span className="kv-value">-</span></div>
+            <div className="kv"><span className="kv-key">User ID</span><span className="kv-value mono">{state.user.id}</span></div>
+            <div className="kv"><span className="kv-key">{copy.email}</span><span className="kv-value">{state.user.email ?? ""}</span></div>
             <div className="kv"><span className="kv-key">登入狀態</span><span className="kv-value">已登入</span></div>
             <div className="kv"><span className="kv-key">已驗證錢包</span><span className="kv-value">待驗證（請於下方連接）</span></div>
             <div className="kv"><span className="kv-key">目前連接錢包</span><span className="kv-value">請查看下方「增值錢包」卡片狀態</span></div>
@@ -121,7 +121,7 @@ export async function renderAccountPage(resolvedState?: Awaited<ReturnType<typeo
             <section className="panel stack">
               <div className="empty-state">已登入，但推薦資料暫時未能載入。請重新整理或稍後再試。</div>
               <a href="/account">重新整理</a>
-              {diagnostics ? <div className="muted mono">錯誤代碼: {state.code ?? "unknown"} · 路由狀態: {state.status} · 來源: {state.source ?? "same-site API"}</div> : null}
+              {diagnostics ? <div className="muted mono">錯誤代碼: {sanitizeAmbassadorDashboardDiagnostic(state.code) ?? "unknown"} · 路由狀態: {state.status} · 來源: {sanitizeAmbassadorDashboardDiagnostic(state.source) ?? "same-site API"}</div> : null}
             </section>
           ) : (
             <AccountReferralSection dashboard={dashboard} unavailable={false} />

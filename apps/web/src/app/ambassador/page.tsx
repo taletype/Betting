@@ -2,7 +2,7 @@ import React from "react";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
 import { isApiResponseError, toBigInt } from "../../lib/api";
-import { resolveAmbassadorDashboardState, type AmbassadorDashboardState } from "../ambassador-dashboard-state";
+import { resolveAmbassadorDashboardState, sanitizeAmbassadorDashboardDiagnostic, type AmbassadorDashboardState } from "../ambassador-dashboard-state";
 import { applyReferralCodeAction } from "../auth-actions";
 import { ReferralFunnelChart, RewardSplitChart } from "../charts/market-charts";
 import { PendingReferralApplier } from "../pending-referral-applier";
@@ -144,12 +144,14 @@ const dashboardErrorHint = (error: { status: number; code?: string | null; sourc
       ? error as { status: number; code?: string | null; source?: string | null }
       : null;
   if (!normalized) return null;
+  const safeCode = sanitizeAmbassadorDashboardDiagnostic(normalized.code);
+  const safeSource = sanitizeAmbassadorDashboardDiagnostic(normalized.source);
   const labels = locale === "en"
     ? { code: "error code", status: "route status", source: "source" }
     : locale === "zh-CN"
       ? { code: "错误代码", status: "路由状态", source: "来源" }
       : { code: "錯誤代碼", status: "路由狀態", source: "來源" };
-  return `${labels.code}: ${normalized.code ?? "unknown"} · ${labels.status}: ${normalized.status} · ${labels.source}: ${normalized.source ?? "same-site API"}`;
+  return `${labels.code}: ${safeCode ?? "unknown"} · ${labels.status}: ${normalized.status} · ${labels.source}: ${safeSource ?? "same-site API"}`;
 };
 
 export async function renderAmbassadorPage(locale: AppLocale, {

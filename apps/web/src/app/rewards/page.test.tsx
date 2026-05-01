@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import RewardsPage from "./page";
+import { renderRewardsPage as renderRewardsPageView } from "./page";
 
 type FetchMock = typeof globalThis.fetch;
+const user = { id: "user-real-123", email: "real.user@example.com" };
 
 const dashboardResponse = (overrides?: Partial<Record<string, unknown>>) => ({
   ambassadorCode: {
@@ -108,7 +109,7 @@ const renderRewardsPage = async (payload = dashboardResponse()) => {
   });
 
   try {
-    return renderToStaticMarkup(await RewardsPage());
+    return renderToStaticMarkup(await renderRewardsPageView("zh-HK", { kind: "ok", user, dashboard: payload as any }));
   } finally {
     globalThis.fetch = originalFetch;
   }

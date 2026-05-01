@@ -191,11 +191,11 @@ const statusTone = (status: string): Tone => {
   return "neutral";
 };
 
-export async function renderRewardsPage(locale: AppLocale) {
+export async function renderRewardsPage(locale: AppLocale, resolvedState?: Awaited<ReturnType<typeof resolveAmbassadorDashboardState>>) {
   const copy = getLocaleCopy(locale).rewards;
   const authCopy = getLocaleCopy(locale).auth;
   const pageCopy = rewardsPageCopy[locale];
-  const state = await resolveAmbassadorDashboardState();
+  const state = resolvedState ?? await resolveAmbassadorDashboardState();
   const dashboard = state.kind === "ok" ? state.dashboard : null;
   const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
   const approvedRewards = dashboard ? toBigInt(dashboard!.rewards.approvedRewards) : 0n;
