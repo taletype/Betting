@@ -35,7 +35,6 @@ export const MarketSchema = z.object({
   outcomes: z.array(OutcomeSchema).default([]),
 });
 
-
 export const ExternalSourceSchema = z.enum(["polymarket", "kalshi"]);
 
 export const ExternalOutcomeSchema = z.object({
@@ -182,7 +181,6 @@ export const MarketTradesSchema = z.object({
   trades: z.array(RecentTradeSchema),
 });
 
-
 export const LinkedWalletSchema = z.object({
   id: UuidSchema,
   chain: z.literal("base"),
@@ -204,7 +202,6 @@ export const DepositRecordSchema = z.object({
   createdAt: TimestampSchema,
   verifiedAt: TimestampSchema,
 });
-
 
 export const WithdrawalRecordSchema = z.object({
   id: UuidSchema,
@@ -283,9 +280,11 @@ export const AmbassadorRewardLedgerSchema = z.object({
   sourceTradeAttributionId: UuidSchema,
   rewardType: z.enum(["platform_revenue", "direct_referrer_commission", "trader_cashback"]),
   amountUsdcAtoms: MoneySchema,
-  status: z.enum(["pending", "payable", "paid", "void"]),
+  status: z.enum(["pending", "payable", "approved", "paid", "void"]),
   createdAt: TimestampSchema,
   payableAt: TimestampSchema.nullable(),
+  reservedByPayoutId: UuidSchema.nullable().optional(),
+  reservedAt: TimestampSchema.nullable().optional(),
   approvedAt: TimestampSchema.nullable(),
   paidAt: TimestampSchema.nullable(),
   voidedAt: TimestampSchema.nullable(),
