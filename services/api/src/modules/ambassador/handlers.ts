@@ -7,10 +7,12 @@ import {
   createAmbassadorCodeForUser,
   createReferralAttribution,
   disableAmbassadorCode,
+  findOpenRewardPayoutForRecipient,
   getAmbassadorRewardsConfig,
   listAdminAmbassadorOverview,
   markRewardPayoutPaid,
   markRewardsPayable,
+  normalizePayoutWalletAddress,
   overrideReferralAttribution,
   readAmbassadorDashboard,
   recordBuilderTradeAttribution,
@@ -336,14 +338,49 @@ export const requestAmbassadorRewardPayout = async (input: {
 
   const userId = input.userId;
   const db = createDatabaseClient();
-  return db.transaction((transaction) =>
-    requestRewardPayout(transaction, {
+  return db.transaction(async (transaction) => {
+    const payableRows = await transaction.query<{ id: string; amount_usdc_atoms: bigint }>(
+      `
+        select id, amount_usdc_atoms
+          from public.ambassador_reward_ledger
+         where recipient_user_id = $1::uuid
+           and status = 'payable'
+         for update
+      `,
+      [userId],
+    );
+    const lockedPayableRewards = payableRows.reduce((sum, row) => sum + row.amount_usdc_atoms, 0n);
+    const normalizedDestinationValue = input.destinationType === "wallet"
+      ? normalizePayoutWalletAddress(input.destinationValue)
+      : input.destinationValue;
+
+    const payout = await requestRewardPayout(transaction, {
       recipientUserId: userId,
       destinationType: input.destinationType,
-      destinationValue: input.destinationValue,
+      destinationValue: normalizedDestinationValue,
       config: getAmbassadorRewardsConfig(),
-    }),
-  );
+    });
+    const [reserved] = await transaction.query<{ amount: bigint }>(
+      `
+        select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount
+          from public.ambassador_reward_ledger
+         where recipient_user_id = $1::uuid
+           and status = 'approved'
+           and reserved_by_payout_id = $2::uuid
+      `,
+      [userId, payout.id],
+    );
+    if ((reserved?.amount ?? 0n) !== lockedPayableRewards) {
+      throw new Error("payout request must reserve the exact payable reward amount");
+    }
+
+    const persisted = await findOpenRewardPayoutForRecipient(transaction, userId);
+    if (!persisted || persisted.id !== payout.id) {
+      throw new Error("failed to read requested reward payout");
+    }
+
+    return persisted;
+  });
 };
 
 export const approveAdminRewardPayout = async (input: {
