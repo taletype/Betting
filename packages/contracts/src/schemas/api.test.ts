@@ -291,7 +291,7 @@ test("admin and external market schemas parse expected wire payloads", () => {
   );
 });
 
-test("ambassador reward schemas parse direct-only wire payloads", () => {
+test("ambassador reward schemas parse reserved payout rows", () => {
   const code = {
     id: rewardId,
     code: "HKREF001",
@@ -316,10 +316,12 @@ test("ambassador reward schemas parse direct-only wire payloads", () => {
     sourceTradeAttributionId: tradeAttributionId,
     rewardType: "direct_referrer_commission",
     amountUsdcAtoms: "300000",
-    status: "pending",
+    status: "approved",
     createdAt: now,
-    payableAt: null,
-    approvedAt: null,
+    payableAt: now,
+    reservedByPayoutId: withdrawalId,
+    reservedAt: now,
+    approvedAt: now,
     paidAt: null,
     voidedAt: null,
     voidReason: null,
@@ -350,9 +352,9 @@ test("ambassador reward schemas parse direct-only wire payloads", () => {
       attribution,
       directReferrals: [],
       rewards: {
-        pendingRewards: "300000",
+        pendingRewards: "0",
         payableRewards: "0",
-        approvedRewards: "0",
+        approvedRewards: "300000",
         paidRewards: "0",
         voidRewards: "0",
         directReferralCount: 0,
