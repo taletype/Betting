@@ -1,7 +1,8 @@
 import React from "react";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
-import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
+import { toBigInt } from "../../lib/api";
+import { resolveAmbassadorDashboardState } from "../ambassador-dashboard-state";
 import { PayoutStatusChart, RewardSplitChart, VolumeHistoryChart } from "../charts/market-charts";
 import { PendingReferralNotice } from "../pending-referral-notice";
 import { BetaLaunchDisclosure, EmptyState, MetricCard, SharedRewardDisclosure, SharedSafetyDisclosure, SafetyDisclosure, StatusChip, type Tone } from "../product-ui";
@@ -194,10 +195,11 @@ export async function renderRewardsPage(locale: AppLocale) {
   const copy = getLocaleCopy(locale).rewards;
   const authCopy = getLocaleCopy(locale).auth;
   const pageCopy = rewardsPageCopy[locale];
-  const dashboard = await getAmbassadorDashboard().catch(() => null);
+  const state = await resolveAmbassadorDashboardState();
+  const dashboard = state.kind === "ok" ? state.dashboard : null;
   const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
-  const approvedRewards = dashboard ? toBigInt(dashboard.rewards.approvedRewards) : 0n;
-  const payableRewards = dashboard ? toBigInt(dashboard.rewards.payableRewards) : 0n;
+  const approvedRewards = dashboard ? toBigInt(dashboard!.rewards.approvedRewards) : 0n;
+  const payableRewards = dashboard ? toBigInt(dashboard!.rewards.payableRewards) : 0n;
   const hasOpenPayout = dashboard?.payouts.some((payout) => payout.status === "requested" || payout.status === "approved") ?? false;
   const payoutDisabledReason = !dashboard
     ? null
@@ -229,17 +231,27 @@ export async function renderRewardsPage(locale: AppLocale) {
       <SharedRewardDisclosure locale={locale} />
       <SafetyDisclosure title={pageCopy.accountingNoticeTitle}>{pageCopy.accountingNoticeBody}</SafetyDisclosure>
 
-      {!dashboard ? (
+      {state.kind === "signed_out" ? (
         <section className="panel stack">
           <EmptyState title={authCopy.sessionRequired}>{pageCopy.signedOutBody}</EmptyState>
           <a href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
         </section>
+      ) : state.kind === "expired_session" ? (
+        <section className="panel stack">
+          <EmptyState title="登入狀態已過期，請重新登入。">登入狀態已過期，請重新登入。</EmptyState>
+          <a href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
+        </section>
+      ) : state.kind === "unavailable" ? (
+        <section className="panel stack">
+          <EmptyState title="已登入，但獎勵資料暫時未能載入。請重新整理或稍後再試。">已登入，但獎勵資料暫時未能載入。請重新整理或稍後再試。</EmptyState>
+          <a href={getLocaleHref(locale, "/rewards")}>{locale === "en" ? "Retry" : "重新整理"}</a>
+        </section>
       ) : (
         <>
           <section className="grid">
-            <MetricCard label={pageCopy.pendingRewards} value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" note={pageCopy.pendingNote} />
-            <MetricCard label={pageCopy.payableRewards} value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" note={pageCopy.payableNote} />
-            <MetricCard label={pageCopy.paidRewards} value={formatUsdc(dashboard.rewards.paidRewards, locale)} note={pageCopy.paidNote} />
+            <MetricCard label={pageCopy.pendingRewards} value={formatUsdc(dashboard!.rewards.pendingRewards, locale)} tone="warning" note={pageCopy.pendingNote} />
+            <MetricCard label={pageCopy.payableRewards} value={formatUsdc(dashboard!.rewards.payableRewards, locale)} tone="success" note={pageCopy.payableNote} />
+            <MetricCard label={pageCopy.paidRewards} value={formatUsdc(dashboard!.rewards.paidRewards, locale)} note={pageCopy.paidNote} />
             {approvedRewards > 0n || hasOpenPayout ? (
               <MetricCard label={pageCopy.approvedPayout} value={formatUsdc(approvedRewards, locale)} tone="warning" note={pageCopy.approvedPayoutNote} />
             ) : null}
@@ -248,20 +260,20 @@ export async function renderRewardsPage(locale: AppLocale) {
           <section className="grid">
             <RewardSplitChart
               points={[
-                { label: pageCopy.pendingShort, value: toUsdcNumber(dashboard.rewards.pendingRewards), tone: "volume" },
-                { label: pageCopy.payableShort, value: toUsdcNumber(dashboard.rewards.payableRewards), tone: "bid" },
-                { label: pageCopy.paidShort, value: toUsdcNumber(dashboard.rewards.paidRewards), tone: "liquidity" },
+                { label: pageCopy.pendingShort, value: toUsdcNumber(dashboard!.rewards.pendingRewards), tone: "volume" },
+                { label: pageCopy.payableShort, value: toUsdcNumber(dashboard!.rewards.payableRewards), tone: "bid" },
+                { label: pageCopy.paidShort, value: toUsdcNumber(dashboard!.rewards.paidRewards), tone: "liquidity" },
               ]}
             />
             <PayoutStatusChart
               points={["requested", "approved", "paid", "failed", "cancelled"].map((status) => ({
                 label: copy.payoutStatuses[status] ?? status,
-                value: dashboard.payouts.filter((payout) => payout.status === status).length,
+                value: dashboard!.payouts.filter((payout) => payout.status === status).length,
                 tone: status === "paid" ? "bid" : status === "failed" || status === "cancelled" ? "ask" : "volume",
               }))}
             />
             <VolumeHistoryChart
-              points={dashboard.rewardLedger.map((entry) => ({
+              points={dashboard!.rewardLedger.map((entry) => ({
                 timestamp: entry.createdAt,
                 value: toUsdcNumber(entry.amountUsdcAtoms),
               }))}
@@ -293,7 +305,7 @@ export async function renderRewardsPage(locale: AppLocale) {
 
           <section className="panel stack">
             <h2 className="section-title">{copy.ledger}</h2>
-            {dashboard.rewardLedger.length === 0 ? (
+            {dashboard!.rewardLedger.length === 0 ? (
               <EmptyState title={pageCopy.rewardLedgerEmptyTitle}>{pageCopy.rewardLedgerEmptyBody}</EmptyState>
             ) : (
               <table className="table">
@@ -308,7 +320,7 @@ export async function renderRewardsPage(locale: AppLocale) {
                   </tr>
                 </thead>
                 <tbody>
-                  {dashboard.rewardLedger.map((entry) => {
+                  {dashboard!.rewardLedger.map((entry) => {
                     const builderFeeRevenue = estimateBuilderFeeRevenue(entry.amountUsdcAtoms, entry.rewardType);
 
                     return (
@@ -329,7 +341,7 @@ export async function renderRewardsPage(locale: AppLocale) {
 
           <section className="panel stack">
             <h2 className="section-title">{copy.payouts}</h2>
-            {dashboard.payouts.length === 0 ? (
+            {dashboard!.payouts.length === 0 ? (
               <EmptyState title={pageCopy.payoutEmptyTitle}>{pageCopy.payoutEmptyBody}</EmptyState>
             ) : (
               <table className="table">
@@ -346,7 +358,7 @@ export async function renderRewardsPage(locale: AppLocale) {
                   </tr>
                 </thead>
                 <tbody>
-                  {dashboard.payouts.map((payout) => (
+                  {dashboard!.payouts.map((payout) => (
                     <tr key={payout.id}>
                       <td>{formatDateTime(locale, payout.createdAt)}</td>
                       <td>{payout.reviewedAt ? formatDateTime(locale, payout.reviewedAt) : "-"}</td>

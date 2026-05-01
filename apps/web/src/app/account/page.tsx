@@ -1,21 +1,22 @@
 import React from "react";
 import type { GetAmbassadorDashboardResponse } from "@bet/contracts";
-import { getAmbassadorDashboard } from "../../lib/api";
 import { formatUsdc } from "../../lib/format";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { applyReferralCodeAction, logoutAction } from "../auth-actions";
-import { getCurrentWebUser } from "../auth-session";
 import { FunnelEventTracker } from "../funnel-analytics";
 import { PendingReferralNotice, ReferralAttributionResultNotice } from "../pending-referral-notice";
 import { PendingReferralApplier } from "../pending-referral-applier";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { ThirdwebWalletFundingCard } from "../thirdweb-wallet-funding-card";
 import { getSiteUrl } from "../../lib/site-url";
+import { resolveAmbassadorDashboardState } from "../ambassador-dashboard-state";
 
 export function AccountReferralSection({
   dashboard,
+  unavailable,
 }: {
   dashboard: GetAmbassadorDashboardResponse | null;
+  unavailable?: boolean;
 }) {
   const copy = getLocaleCopy(defaultLocale).auth;
 
@@ -61,6 +62,8 @@ export function AccountReferralSection({
             />
             <a href="/rewards">查看獎勵</a>
           </>
+        ) : unavailable ? (
+          <div className="empty-state">已登入，但推薦碼暫時未能載入。請重新整理或稍後再試。</div>
         ) : (
           <div className="empty-state">登入後可在此查看你的推薦碼及邀請連結。</div>
         )}
@@ -69,12 +72,13 @@ export function AccountReferralSection({
   );
 }
 
-export default async function AccountPage() {
+export async function renderAccountPage(resolvedState?: Awaited<ReturnType<typeof resolveAmbassadorDashboardState>>) {
   const copy = getLocaleCopy(defaultLocale).auth;
   const rewardsCopy = getLocaleCopy(defaultLocale).rewards;
-  const walletCopy = getLocaleCopy(defaultLocale).wallet;
-  const user = await getCurrentWebUser();
-  const dashboard = user ? await getAmbassadorDashboard().catch(() => null) : null;
+  const state = resolvedState ?? await resolveAmbassadorDashboardState();
+  const dashboard = state.kind === "ok" ? state.dashboard : null;
+  const userSignedIn = state.kind !== "signed_out";
+  const diagnostics = state.kind === "unavailable" && process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
 
   return (
     <main className="stack">
@@ -85,7 +89,7 @@ export default async function AccountPage() {
         <PendingReferralNotice />
       </section>
 
-      {!user ? (
+      {state.kind === "signed_out" ? (
         <section className="panel stack">
           <div className="empty-state">{copy.sessionRequired}</div>
           <a href="/login">{copy.login}</a>
@@ -95,35 +99,54 @@ export default async function AccountPage() {
           <FunnelEventTracker name="signup_completed" metadata={{ user: "session" }} />
           <PendingReferralApplier />
           <section className="panel stack">
-            <div className="kv"><span className="kv-key">User ID</span><span className="kv-value mono">{user.id}</span></div>
-            <div className="kv"><span className="kv-key">{copy.email}</span><span className="kv-value">{user.email ?? "-"}</span></div>
-            <div className="kv"><span className="kv-key">{copy.walletStatus}</span><span className="kv-value">{walletCopy.notConnected}</span></div>
+            <div className="kv"><span className="kv-key">User ID</span><span className="kv-value mono">session</span></div>
+            <div className="kv"><span className="kv-key">{copy.email}</span><span className="kv-value">-</span></div>
+            <div className="kv"><span className="kv-key">登入狀態</span><span className="kv-value">已登入</span></div>
+            <div className="kv"><span className="kv-key">已驗證錢包</span><span className="kv-value">待驗證（請於下方連接）</span></div>
+            <div className="kv"><span className="kv-key">目前連接錢包</span><span className="kv-value">請查看下方「增值錢包」卡片狀態</span></div>
             <div className="kv"><span className="kv-key">{copy.readinessStatus}</span><span className="kv-value">{getLocaleCopy(defaultLocale).research.readinessCopy.feature_disabled}</span></div>
             <form action={logoutAction}>
               <button type="submit">{copy.logout}</button>
             </form>
           </section>
 
-          <ThirdwebWalletFundingCard surface="account" walletConnected={false} />
+          <ThirdwebWalletFundingCard surface="account" />
 
-          <AccountReferralSection dashboard={dashboard} />
+          {state.kind === "expired_session" ? (
+            <section className="panel stack">
+              <div className="empty-state">登入狀態已過期，請重新登入。</div>
+              <a href="/login">{copy.login}</a>
+            </section>
+          ) : state.kind === "unavailable" ? (
+            <section className="panel stack">
+              <div className="empty-state">已登入，但推薦資料暫時未能載入。請重新整理或稍後再試。</div>
+              <a href="/account">重新整理</a>
+              {diagnostics ? <div className="muted mono">錯誤代碼: {state.code ?? "unknown"} · 路由狀態: {state.status} · 來源: {state.source ?? "same-site API"}</div> : null}
+            </section>
+          ) : (
+            <AccountReferralSection dashboard={dashboard} unavailable={false} />
+          )}
 
           <section className="panel stack">
             <strong>獎勵摘要</strong>
-            {dashboard ? (
+            {state.kind === "ok" ? (
               <>
-                <div className="kv"><span className="kv-key">直接推薦</span><span className="kv-value">{dashboard.rewards.directReferralCount.toLocaleString(defaultLocale)}</span></div>
-                <div className="kv"><span className="kv-key">{rewardsCopy.statuses.pending}</span><span className="kv-value">{formatUsdc(dashboard.rewards.pendingRewards, defaultLocale)}</span></div>
-                <div className="kv"><span className="kv-key">{rewardsCopy.statuses.payable}</span><span className="kv-value">{formatUsdc(dashboard.rewards.payableRewards, defaultLocale)}</span></div>
-                <div className="kv"><span className="kv-key">{rewardsCopy.payouts}</span><span className="kv-value">{dashboard.payouts.length.toLocaleString(defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">直接推薦</span><span className="kv-value">{dashboard!.rewards.directReferralCount.toLocaleString(defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">{rewardsCopy.statuses.pending}</span><span className="kv-value">{formatUsdc(dashboard!.rewards.pendingRewards, defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">{rewardsCopy.statuses.payable}</span><span className="kv-value">{formatUsdc(dashboard!.rewards.payableRewards, defaultLocale)}</span></div>
+                <div className="kv"><span className="kv-key">{rewardsCopy.payouts}</span><span className="kv-value">{dashboard!.payouts.length.toLocaleString(defaultLocale)}</span></div>
                 <div className="muted">獎勵只屬帳務紀錄，不會加入或修改交易餘額；支付需要管理員人手審批。</div>
               </>
             ) : (
-              <div className="empty-state">登入後可查看推薦、獎勵及支付申請狀態。</div>
+              <div className="empty-state">已登入，但獎勵摘要暫時未能載入。請重新整理或稍後再試。</div>
             )}
           </section>
         </>
       )}
     </main>
   );
+}
+
+export default async function AccountPage() {
+  return renderAccountPage();
 }
