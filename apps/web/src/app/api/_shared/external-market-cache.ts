@@ -196,9 +196,15 @@ export const isCachedMarketStale = (row: ExternalMarketCacheRow): boolean =>
   !row.stale_after || new Date(row.stale_after).getTime() <= Date.now();
 
 const toStatus = (row: ExternalMarketCacheRow): PublicExternalMarketRecord["status"] => {
+  const provenance = readJsonObject(row.source_provenance);
+  const flags = readJsonObject(provenance.statusFlags);
   return resolvePolymarketMarketStatus({
-    active: row.is_active,
-    closed: row.resolution_status === "closed",
+    active: typeof flags.active === "boolean" ? flags.active : row.is_active,
+    closed: typeof flags.closed === "boolean" ? flags.closed : row.resolution_status === "closed",
+    archived: typeof flags.archived === "boolean" ? flags.archived : row.resolution_status === "cancelled",
+    cancelled: typeof flags.cancelled === "boolean" ? flags.cancelled : row.resolution_status === "cancelled",
+    acceptingOrders: typeof flags.acceptingOrders === "boolean" ? flags.acceptingOrders : undefined,
+    enableOrderBook: typeof flags.enableOrderBook === "boolean" ? flags.enableOrderBook : undefined,
     status: row.resolution_status ?? undefined,
     closeTime: row.close_time ?? undefined,
     endDate: row.close_time ?? undefined,

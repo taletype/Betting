@@ -27,6 +27,11 @@ const market: ExternalMarketApiRecord = {
   lastTradePrice: 0.51,
   volume24h: 10,
   volumeTotal: 100,
+  sourceProvenance: {
+    statusFlags: { active: true, closed: false, acceptingOrders: true, enableOrderBook: true },
+    stale: false,
+    staleAfter: "2099-05-01T00:00:00.000Z",
+  },
   lastSyncedAt: "2026-05-01T00:00:00.000Z",
   createdAt: "2026-05-01T00:00:00.000Z",
   updatedAt: "2026-05-01T00:00:00.000Z",
@@ -68,6 +73,83 @@ const baseInput = () => ({
   l2CredentialsPresent: true,
   userSigningAvailable: true,
   submitterAvailable: true,
+});
+
+test("market state labels never mask missing credentials or disabled submitter as closed", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ tick_size: "0.01", min_order_size: "5", bids: [], asks: [] }))) as typeof globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: undefined }, async () => {
+    const missingCredentials = await previewPolymarketOrder(
+      { ...baseInput(), l2CredentialsPresent: false },
+      [market],
+      new Date("2026-05-01T00:00:00.000Z"),
+    );
+    assert.match(missingCredentials.disabledReasons.join(" "), /設定 Polymarket 交易權限/);
+    assert.doesNotMatch(missingCredentials.disabledReasons.join(" "), /市場已關閉/);
+
+    const disabledFeature = await previewPolymarketOrder(
+      baseInput(),
+      [market],
+      new Date("2026-05-01T00:00:00.000Z"),
+    );
+    assert.match(disabledFeature.disabledReasons.join(" "), /實盤提交已停用/);
+    assert.doesNotMatch(disabledFeature.disabledReasons.join(" "), /市場已關閉/);
+
+    const disabledSubmitter = await previewPolymarketOrder(
+      { ...baseInput(), submitterAvailable: false },
+      [market],
+      new Date("2026-05-01T00:00:00.000Z"),
+    );
+    assert.match(disabledSubmitter.disabledReasons.join(" "), /實盤提交已停用/);
+    assert.doesNotMatch(disabledSubmitter.disabledReasons.join(" "), /市場已關閉/);
+  });
+});
+
+test("order preview exposes precise Polymarket market tradability labels", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ tick_size: "0.01", min_order_size: "5", bids: [], asks: [] }))) as typeof globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await withEnv({ POLY_BUILDER_CODE: VALID_BUILDER_CODE, POLYMARKET_ROUTED_TRADING_ENABLED: "true" }, async () => {
+    const cases: Array<[string, Partial<ExternalMarketApiRecord>, string]> = [
+      ["closed", { status: "closed", sourceProvenance: { statusFlags: { closed: true } } }, "市場已關閉"],
+      ["resolved", { status: "resolved", resolvedAt: "2026-05-01T00:00:00.000Z" }, "市場已結算"],
+      ["cancelled", { status: "cancelled", sourceProvenance: { statusFlags: { cancelled: true } } }, "市場已取消"],
+      ["not-accepting", { sourceProvenance: { statusFlags: { active: true, closed: false, acceptingOrders: false } } }, "市場暫不接受訂單"],
+      ["orderbook-disabled", { sourceProvenance: { statusFlags: { active: true, closed: false, enableOrderBook: false } } }, "訂單簿暫不可用"],
+    ];
+
+    for (const [id, overrides, label] of cases) {
+      const preview = await previewPolymarketOrder(
+        baseInput(),
+        [{ ...market, id, externalId: "condition-1", ...overrides }],
+        new Date("2026-05-01T00:00:00.000Z"),
+      );
+      assert.equal(preview.market?.tradable, false);
+      assert.match(preview.disabledReasons.join(" "), new RegExp(label));
+      assert.equal(preview.market?.tradabilityLabel, label);
+    }
+
+    const pastButAccepting = await previewPolymarketOrder(
+      baseInput(),
+      [{
+        ...market,
+        closeTime: "2026-04-01T00:00:00.000Z",
+        endTime: "2026-04-01T00:00:00.000Z",
+        sourceProvenance: { statusFlags: { active: true, closed: false, acceptingOrders: true } },
+      }],
+      new Date("2026-05-01T00:00:00.000Z"),
+    );
+    assert.equal(pastButAccepting.market?.tradable, true);
+    assert.equal(pastButAccepting.market?.tradabilityCode, "tradable");
+    assert.equal(pastButAccepting.disabledReasonCodes.includes("market_not_tradable"), false);
+  });
 });
 
 test("order preview validates side, price, size, and token id", async (t) => {
@@ -129,7 +211,7 @@ test("preview returns exact disabled reasons for missing wallet, credentials, an
       preview.disabledReasons.filter((reason) =>
         ["連接錢包", "設定 Polymarket 交易權限", "Builder Code 未設定", "實盤提交已停用"].includes(reason),
       ),
-      ["實盤提交已停用", "連接錢包", "設定 Polymarket 交易權限", "Builder Code 未設定"],
+      ["連接錢包", "設定 Polymarket 交易權限", "Builder Code 未設定", "實盤提交已停用"],
     );
     assert.doesNotMatch(preview.disabledReasonCodes.join(" "), /geo|region/);
   });

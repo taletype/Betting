@@ -38,6 +38,8 @@ interface Props {
   hasCredentials: boolean;
   userSigningAvailable?: boolean;
   marketTradable: boolean;
+  marketTradabilityLabel?: string;
+  marketTradabilityReason?: string;
   orderValid?: boolean;
   submitterAvailable: boolean;
   userSigned?: boolean;
@@ -58,7 +60,7 @@ const statusTone = (status: PolymarketReadinessChecklistStatus): "success" | "wa
 
 const statusLabel = (status: PolymarketReadinessChecklistStatus): string => {
   if (status === "complete") return "完成";
-  if (status === "unavailable") return "已關閉";
+  if (status === "unavailable") return "不可用";
   if (status === "disabled") return "實盤提交已停用";
   if (status === "checking") return "檢查中";
   return "待處理";
@@ -72,7 +74,7 @@ const getTradeTicketActionLabel = (
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
   if (input.walletVerified === false) return "驗證此 EVM 錢包";
   if (!input.hasCredentials) return "設定 Polymarket 交易權限";
-  if (!input.marketTradable) return "市場已關閉";
+  if (!input.marketTradable) return input.marketTradabilityLabel ?? "市場只供瀏覽";
   if (input.orderValid === false) return "請輸入有效價格及數量";
   if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
   if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false || !input.featureEnabled) return "實盤提交已停用";
@@ -378,7 +380,7 @@ export function PolymarketTradeTicket(props: Props) {
   const tradeButtonLabel = getTradeTicketActionLabel(readinessInput, readiness);
   const disabled =
     tradeButtonLabel === "請輸入有效價格及數量" ||
-    tradeButtonLabel === "市場已關閉" ||
+    !props.marketTradable ||
     tradeButtonLabel === "實盤提交已停用";
   const publicTradingReady = Boolean(
     props.featureEnabled &&
@@ -396,7 +398,7 @@ export function PolymarketTradeTicket(props: Props) {
       ? "交易介面預覽；實盤提交已停用"
       : props.marketTradable
         ? "交易介面預覽"
-        : "市場已關閉";
+        : props.marketTradabilityLabel ?? "市場只供瀏覽";
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
@@ -578,7 +580,7 @@ export function PolymarketTradeTicket(props: Props) {
       return;
     }
     if (!props.marketTradable) {
-      setFlowError("市場已關閉。");
+      setFlowError(`${props.marketTradabilityLabel ?? "市場只供瀏覽"}。`);
       return;
     }
     setFlowStatus("請在錢包確認 Polymarket 訂單簽署；本平台不會提交交易。");
@@ -785,7 +787,7 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">錢包地址</span><span className="kv-value">{walletAddressKnown ? "已確認" : "未知"}</span></div>
         <div className="kv"><span className="kv-key">錢包資金</span><span className="kv-value">{walletConnected && thirdweb.configured ? "檢查中" : "待處理"}</span></div>
         <div className="kv"><span className="kv-key">Polymarket 交易權限</span><span className="kv-value">{effectiveHasCredentials ? "已就緒" : "需要"}</span></div>
-        <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "已關閉"}</span></div>
+        <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : props.marketTradabilityLabel ?? "市場只供瀏覽"}</span></div>
         <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>
         <div className="kv">
           <span className="kv-key">非託管交易</span>

@@ -92,7 +92,11 @@ const makePolymarketRecord = (overrides: Record<string, unknown> = {}) => ({
   volume24h: 500,
   volumeTotal: 10000,
   liquidity: 10000,
-  sourceProvenance: { stale: false, staleAfter: "2099-05-01T01:00:00.000Z" },
+  sourceProvenance: {
+    stale: false,
+    staleAfter: "2099-05-01T01:00:00.000Z",
+    statusFlags: { active: true, closed: false, acceptingOrders: true, enableOrderBook: true },
+  },
   lastSyncedAt: "2099-05-01T01:00:00.000Z",
   lastUpdatedAt: "2099-05-01T01:00:00.000Z",
   createdAt: "2026-05-01T01:00:00.000Z",
@@ -657,7 +661,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
           lastTradePrice: 0.51,
           volume24h: 10,
           volumeTotal: 100,
-          sourceProvenance: { stale: false, staleAfter: "2099-05-01T01:00:00.000Z" },
+          sourceProvenance: { stale: false, staleAfter: "2099-05-01T01:00:00.000Z", statusFlags: { active: true, closed: false, acceptingOrders: true, enableOrderBook: true } },
           lastSyncedAt: "2026-05-01T01:00:00.000Z",
           lastUpdatedAt: "2099-05-01T01:00:00.000Z",
           createdAt: "2026-05-01T01:00:00.000Z",
@@ -716,7 +720,7 @@ test("Polymarket page browsing works without builder code and shows disabled tra
     const markup = renderToStaticMarkup(await PolymarketPage());
     assert.match(markup, /連接錢包/);
     assert.match(markup, /交易介面預覽/);
-    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /登入以保存推薦獎勵/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /disabled=""/);
   });
@@ -814,6 +818,75 @@ test("Polymarket detail page renders hero image from image_url", async (t) => {
   assert.match(markup, /data-copy-value="http:\/\/127\.0\.0\.1:3000\/polymarket\/poly-detail-image\?ref=HKREF001"/);
   assert.match(markup, /複製市場連結/);
   assert.match(markup, /複製市場推薦連結/);
+});
+
+test("Polymarket detail treats live order flags as open even when end date is old", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = makePolymarketDetailFetch({
+    slug: "poly-live-old-date",
+    externalId: "POLY-LIVE-OLD-DATE",
+    title: "Live market with old date",
+    closeTime: "2024-01-01T00:00:00.000Z",
+    endTime: "2024-01-01T00:00:00.000Z",
+    sourceProvenance: {
+      stale: false,
+      staleAfter: "2099-05-01T01:00:00.000Z",
+      statusFlags: {
+        active: true,
+        closed: false,
+        acceptingOrders: true,
+        enableOrderBook: true,
+        endDate: "2024-01-01T00:00:00.000Z",
+      },
+    },
+  });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-live-old-date" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /Live market with old date/);
+  assert.match(markup, /可交易/);
+  assert.match(markup, /連接錢包/);
+  assert.doesNotMatch(markup, /市場已關閉/);
+});
+
+test("Polymarket detail shows precise orderbook disabled state", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = makePolymarketDetailFetch({
+    slug: "poly-orderbook-disabled",
+    externalId: "POLY-ORDERBOOK-DISABLED",
+    title: "Orderbook disabled market",
+    sourceProvenance: {
+      stale: false,
+      staleAfter: "2099-05-01T01:00:00.000Z",
+      statusFlags: {
+        active: true,
+        closed: false,
+        enableOrderBook: false,
+      },
+    },
+  });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { default: DetailPage } = await import("../polymarket/[slug]/page");
+  const markup = renderToStaticMarkup(await DetailPage({
+    params: Promise.resolve({ slug: "poly-orderbook-disabled" }),
+    searchParams: Promise.resolve({}),
+  }));
+
+  assert.match(markup, /Orderbook disabled market/);
+  assert.match(markup, /訂單簿暫不可用/);
+  assert.doesNotMatch(markup, /市場已關閉/);
 });
 
 test("Polymarket detail page falls back to icon_url when image_url is missing", async (t) => {
@@ -1069,10 +1142,10 @@ test("restricted Polymarket detail renders data but disables trading", async (t)
   }));
 
   assert.match(markup, /Restricted market still renders/);
-  assert.match(markup, /市場已關閉/);
-  assert.match(markup, /此市場已關閉或已結算/);
+  assert.match(markup, /市場暫不可交易/);
+  assert.match(markup, /Polymarket reports this market as restricted/);
   assert.match(markup, /市場受限制/);
-  assert.doesNotMatch(markup, /active \/ closed \/ archived \/ restricted<\/span><span class="kv-value">是 \/ 否 \/ 否 \/ 是/);
+  assert.doesNotMatch(markup, /active \/ closed \/ archived \/ cancelled \/ accepting orders \/ order book \/ restricted<\/span><span class="kv-value">是 \/ 否 \/ 否 \/ 未知 \/ 未知 \/ 未知 \/ 是/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
   assert.match(markup, /disabled=""/);
 });
@@ -1218,7 +1291,7 @@ test("cancelled Polymarket detail page renders safely with disabled trade CTA", 
 
   assert.match(markup, /Cancelled market detail remains browsable/);
   assert.match(markup, /已取消/);
-  assert.match(markup, /市場已關閉/);
+  assert.match(markup, /市場已取消/);
   assert.match(markup, /透過 Polymarket 交易/);
   assert.match(markup, /disabled=""/);
 });
@@ -2001,8 +2074,8 @@ test("Polymarket readiness prioritizes user blockers while preserving launch che
   assert.deepEqual(getPolymarketRoutingDisabledReasons(input).slice(0, 4), [
     "wallet_not_connected",
     "credentials_missing",
-    "feature_disabled",
     "signature_required",
+    "feature_disabled",
   ]);
 
   const checklist = getPolymarketReadinessChecklist(input);
@@ -2056,9 +2129,9 @@ test("Polymarket trade ticket renders action-first non-login states", () => {
   const missingCredentials = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials={false} />);
   assert.match(missingCredentials, /設定 Polymarket 交易權限/);
 
-  const restrictedMarket = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials marketTradable={false} />);
-  assert.match(restrictedMarket, /市場已關閉/);
-  assert.match(restrictedMarket, /此市場已關閉或已結算/);
+  const restrictedMarket = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials marketTradable={false} marketTradabilityLabel="訂單簿暫不可用" marketTradabilityReason="Polymarket order book is disabled for this market." />);
+  assert.match(restrictedMarket, /訂單簿暫不可用/);
+  assert.match(restrictedMarket, /Polymarket order book is disabled for this market/);
   assert.doesNotMatch(restrictedMarket, /實際交易是否可提交|合規檢查判斷/);
 
   const disabledSubmitter = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials submitModeEnabled={false} />);

@@ -27,10 +27,11 @@ export const setAuthCallbackDependenciesForTests = (dependencies: {
   referralApplier = dependencies.referralApplier ?? captureAmbassadorReferralDb;
 };
 
-const callbackFailureRedirect = (requestUrl: URL, next: string): NextResponse => {
+const callbackFailureRedirect = (requestUrl: URL, next: string, refCode: string | null): NextResponse => {
   const loginUrl = new URL("/login", requestUrl.origin);
   loginUrl.searchParams.set("auth", "callback_failed");
   loginUrl.searchParams.set("next", next);
+  if (refCode) loginUrl.searchParams.set("ref", refCode);
   return NextResponse.redirect(loginUrl);
 };
 
@@ -57,13 +58,14 @@ const applyPendingReferral = async (
   request: NextRequest,
   response: NextResponse,
   userId: string,
+  urlRefCode: string | null,
 ): Promise<void> => {
   const rawPendingCode = request.cookies.get(pendingReferralCookieName)?.value;
-  const code = getPendingReferralCode(request);
-  if (rawPendingCode && !code) {
+  const cookieCode = getPendingReferralCode(request);
+  if (rawPendingCode && !cookieCode) {
     clearPendingReferralCookie(response);
-    return;
   }
+  const code = urlRefCode ?? cookieCode;
   if (!code) return;
 
   try {
@@ -75,8 +77,10 @@ const applyPendingReferral = async (
     });
     clearPendingReferralCookie(response);
   } catch (error) {
-    console.warn("failed to apply pending referral after auth callback", error);
     const message = error instanceof Error ? error.message : String(error);
+    console.warn("failed to apply pending referral after auth callback", {
+      terminal: isTerminalReferralApplyFailure(0, message),
+    });
     if (isTerminalReferralApplyFailure(0, message)) {
       clearPendingReferralCookie(response);
     }
@@ -90,12 +94,17 @@ export async function GET(request: NextRequest) {
   const tokenType = requestUrl.searchParams.get("type");
   const requestedNext = requestUrl.searchParams.get("next") ?? "/account";
   const next = normalizeAuthNextPath(requestedNext);
+  const refCode = normalizeReferralCode(requestUrl.searchParams.get("ref"));
 
   if (!code && !tokenHash) {
-    return callbackFailureRedirect(requestUrl, next);
+    return callbackFailureRedirect(requestUrl, next, refCode);
   }
 
-  const response = NextResponse.redirect(new URL(next, requestUrl.origin));
+  const successUrl = new URL(next, requestUrl.origin);
+  if (refCode && successUrl.pathname === "/polymarket" && !successUrl.searchParams.has("ref")) {
+    successUrl.searchParams.set("ref", refCode);
+  }
+  const response = NextResponse.redirect(successUrl);
 
   try {
     const supabase: SupabaseServerClient = supabaseServerClientFactory({
@@ -128,10 +137,10 @@ export async function GET(request: NextRequest) {
       throw userError ?? new Error("auth callback did not return a session user");
     }
 
-    await applyPendingReferral(request, response, data.user.id);
+    await applyPendingReferral(request, response, data.user.id, refCode);
   } catch (error) {
-    console.warn("failed to exchange auth callback code", error);
-    return callbackFailureRedirect(requestUrl, next);
+    console.warn("failed to complete auth callback", { reason: error instanceof Error && error.message === "auth callback has unsupported token type" ? "unsupported_token_type" : "callback_failed" });
+    return callbackFailureRedirect(requestUrl, next, refCode);
   }
 
   return response;

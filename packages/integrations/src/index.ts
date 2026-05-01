@@ -60,6 +60,7 @@ export * from "./polymarket/gamma";
 export * from "./polymarket/clob";
 export * from "./polymarket/builder";
 export * from "./polymarket/normalize";
+export * from "./polymarket/tradability";
 export * from "./polymarket/data";
 export * from "./polymarket/trades";
 export * from "./polymarket/types";

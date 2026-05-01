@@ -58,7 +58,7 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">熱門市場候選</span><span className="kv-value">{count(statusPayload.marketCounts.smartEligible)}</span></div>
         <div className="kv"><span className="kv-key">開放市場</span><span className="kv-value">{count(statusPayload.marketCounts.open)}</span></div>
         <div className="kv"><span className="kv-key">已結束市場</span><span className="kv-value">{count(statusPayload.marketCounts.closed)}</span></div>
-        <div className="kv"><span className="kv-key">已解決市場</span><span className="kv-value">{count(statusPayload.marketCounts.resolved)}</span></div>
+        <div className="kv"><span className="kv-key">已結算市場</span><span className="kv-value">{count(statusPayload.marketCounts.resolved)}</span></div>
         <div className="kv"><span className="kv-key">已取消市場</span><span className="kv-value">{count(statusPayload.marketCounts.cancelled)}</span></div>
         <div className="kv"><span className="kv-key">資料可能過期</span><span className="kv-value">{count(statusPayload.marketCounts.stale)}</span></div>
         <div className="kv"><span className="kv-key">暫無價格</span><span className="kv-value">{count(statusPayload.marketCounts.noPrice)}</span></div>
@@ -87,7 +87,7 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">/api/external/markets status</span><span className="kv-value">{status(publicPages.externalMarketsStatus)}</span></div>
         <div className="kv"><span className="kv-key">latest market count</span><span className="kv-value">{count(publicPages.latestMarketCount)}</span></div>
         <div className="kv"><span className="kv-key">Supabase cache reachable</span><span className="kv-value">{yesNoUnknown(publicPages.supabaseCacheReachable)}</span></div>
-        <div className="kv"><span className="kv-key">newest last_synced_at</span><span className="kv-value">{publicPages.newestLastSyncedAt ? formatDateTime(defaultLocale, publicPages.newestLastSyncedAt) : "-"}</span></div>
+        <div className="kv"><span className="kv-key">latest lastSyncedAt</span><span className="kv-value">{publicPages.newestLastSyncedAt ? formatDateTime(defaultLocale, publicPages.newestLastSyncedAt) : "-"}</span></div>
         <div className="kv"><span className="kv-key">stale market count</span><span className="kv-value">{count(publicPages.staleMarketCount)}</span></div>
         <div className="kv"><span className="kv-key">last sync status</span><span className="kv-value">{publicPages.lastSyncStatus ?? "-"}</span></div>
         <div className="kv"><span className="kv-key">fallback used last request</span><span className="kv-value">{yesNoUnknown(publicPages.fallbackUsedLastRequest)}</span></div>

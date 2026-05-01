@@ -26,9 +26,9 @@ import { Breadcrumb, SectionAccordion } from "../../product-ui";
 import { getExternalMarket, getExternalMarketHistory, getExternalMarketOrderbook, getExternalMarketStats, getExternalMarketTrades, listExternalMarkets, type ExternalMarketApiRecord } from "../../../lib/api";
 import {
   hasExternalMarketPriceData,
-  isExternalMarketOpenNow,
   isExternalMarketStale,
 } from "../../../lib/external-market-status";
+import { getExternalPolymarketTradability } from "../../../lib/polymarket-tradability";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../../lib/locale";
 import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../../../lib/market-localization";
 import { normalizeReferralCode } from "../../../lib/referral-capture";
@@ -205,13 +205,13 @@ const hasValidTradeData = (market: ExternalMarketApiRecord): boolean =>
     hasExternalMarketPriceData(market),
   );
 
-const isMarketTradable = (market: ExternalMarketApiRecord, stale: boolean): boolean =>
-  isExternalMarketOpenNow(market) && !stale && hasValidTradeData(market);
-
 const getStatusFlags = (market: ExternalMarketApiRecord): {
   active: boolean | null;
   closed: boolean | null;
   archived: boolean | null;
+  cancelled: boolean | null;
+  acceptingOrders: boolean | null;
+  enableOrderBook: boolean | null;
   restricted: boolean | null;
 } => {
   const provenance = market.sourceProvenance ?? market.provenance;
@@ -222,6 +222,9 @@ const getStatusFlags = (market: ExternalMarketApiRecord): {
     active: readFlag("active"),
     closed: readFlag("closed"),
     archived: readFlag("archived"),
+    cancelled: readFlag("cancelled") ?? readFlag("canceled"),
+    acceptingOrders: readFlag("acceptingOrders") ?? readFlag("accepting_orders"),
+    enableOrderBook: readFlag("enableOrderBook") ?? readFlag("enable_order_book") ?? readFlag("orderBookEnabled"),
     restricted: readFlag("restricted"),
   };
 };
@@ -272,6 +275,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
       hasCredentials: false,
       userSigningAvailable: false,
       marketTradable: false,
+      marketTradabilityLabel: "市場資料可能過期",
+      marketTradabilityReason: "外部 Polymarket 資料暫時不可用。",
       orderValid: false,
       submitterAvailable,
       marketTitle: fallbackTitle,
@@ -360,11 +365,21 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const stale = stats?.stale || isExternalMarketStale(market);
   const externalDataUnavailable = stale || !stats || history.length === 0 || visibleOrderbook.length === 0;
   const statusFlags = getStatusFlags(market);
-  const upstreamTradable = statusFlags.active !== false && statusFlags.archived !== true && statusFlags.restricted !== true;
-  const marketTradable = upstreamTradable && isMarketTradable(market, Boolean(stale));
-  const orderValid = hasValidTradeData(market);
   const restricted = statusFlags.restricted === true;
-  const browseOnly = restricted || stale || !marketTradable;
+  const rawTradability = getExternalPolymarketTradability(market, { stale: Boolean(stale) });
+  const marketTradability = restricted && rawTradability.code !== "closed" && rawTradability.code !== "resolved" && rawTradability.code !== "cancelled"
+    ? {
+        ...rawTradability,
+        tradable: false,
+        code: "inactive" as const,
+        labelZhHk: "市場暫不可交易",
+        labelEn: "Market temporarily unavailable",
+        reason: "Polymarket reports this market as restricted.",
+      }
+    : rawTradability;
+  const marketTradable = marketTradability.tradable;
+  const orderValid = hasValidTradeData(market);
+  const browseOnly = !marketTradable || marketTradability.code === "unknown" || marketTradability.code === "stale";
   const yesPrice = getOutcomePrice(market, "yes");
   const noPrice = getOutcomePrice(market, "no");
   const debugVisible = isMarketDebugVisible();
@@ -380,18 +395,25 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     hasCredentials: false,
     userSigningAvailable: false,
     marketTradable,
+    marketTradabilityLabel: marketTradability.labelZhHk,
+    marketTradabilityReason: marketTradability.reason,
     orderValid,
     submitterAvailable,
   };
   const topBlockingReason = getPolymarketTopBlockingReason(routingInput);
-  const topBlockingReasonLabel = topBlockingReason ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason : copy.submitUserSignedOrder;
+  const topBlockingReasonLabel = topBlockingReason === "market_not_tradable"
+    ? marketTradability.labelZhHk
+    : topBlockingReason
+      ? copy.readinessCopy[topBlockingReason] ?? topBlockingReason
+      : copy.submitUserSignedOrder;
   const disabledReasons = getPolymarketRoutingDisabledReasons(routingInput);
   const tradeActionLabel = (reason: PolymarketRoutingReadiness | null): string => {
     if (reason === "wallet_not_connected") return "連接錢包";
     if (reason === "wallet_funds_insufficient") return "增值錢包";
     if (reason === "credentials_missing") return "設定 Polymarket 交易權限";
     if (reason === "submit_mode_disabled" || reason === "submitter_unavailable" || reason === "feature_disabled") return "實盤提交已停用";
-    if (reason === "market_not_tradable" || reason === "invalid_order") return "市場只供瀏覽";
+    if (reason === "market_not_tradable") return marketTradability.labelZhHk;
+    if (reason === "invalid_order") return "價格或數量無效";
     if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
     return copy.tradeViaPolymarket;
   };
@@ -414,6 +436,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     hasCredentials: false,
     userSigningAvailable: false,
     marketTradable,
+    marketTradabilityLabel: marketTradability.labelZhHk,
+    marketTradabilityReason: marketTradability.reason,
     orderValid,
     submitterAvailable,
     marketTitle: localizedTitle,
@@ -454,7 +478,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               <div className={`badge badge-${browseOnly ? "warning" : "success"}`}>{copy.statuses[market.status] ?? market.status}</div>
               <div className="badge badge-info">Beta</div>
               <div className="badge badge-success">非託管</div>
-              {browseOnly ? <div className="badge badge-warning">市場只供瀏覽</div> : null}
+              {browseOnly ? <div className="badge badge-warning">{marketTradability.code === "unknown" ? "市場只供瀏覽" : marketTradability.labelZhHk}</div> : <div className="badge badge-success">可交易</div>}
               {!hasExternalMarketPriceData(market) ? <div className="badge badge-warning">暫無價格</div> : null}
               {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
               {!submitModeEnabled ? <div className="badge badge-warning">實盤提交已停用</div> : null}
@@ -484,7 +508,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
             <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
             {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
             <div className="market-actions">
-              <button type="button" className="button-link primary-cta" disabled>{browseOnly ? "市場只供瀏覽" : tradeActionLabel(topBlockingReason)}</button>
+              <button type="button" className="button-link primary-cta" disabled>{browseOnly ? (marketTradability.code === "unknown" ? "市場只供瀏覽" : marketTradability.labelZhHk) : tradeActionLabel(topBlockingReason)}</button>
               <TrackedCopyButton
                 value={baseMarketShareUrl}
                 label="複製市場連結"
@@ -504,8 +528,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
 
           {!marketTradable ? (
             <section className="panel disclosure-card stack">
-              <strong>市場只供瀏覽</strong>
-              <p className="muted">此市場已關閉、已結算、資料可能過期或暫無可用價格，因此不會進入交易準備流程。</p>
+              <strong>{marketTradability.code === "unknown" ? "市場只供瀏覽" : marketTradability.labelZhHk}</strong>
+              <p className="muted">{marketTradability.reason} 頁面保持安全瀏覽狀態，不會提交交易或更改任何內部帳務紀錄。</p>
             </section>
           ) : null}
           {externalDataUnavailable ? (
@@ -582,7 +606,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               <div className="meta-item"><div className="meta-key">{copy.provenance}</div><div className="meta-val">資料來源：Polymarket API</div></div>
               <div className="meta-item"><div className="meta-key">{copy.externalId}</div><div className="meta-val mono">{market.externalId}</div></div>
               <div className="meta-item"><div className="meta-key">{copy.lastSynced}</div><div className="meta-val">{lastUpdated}</div></div>
-              <div className="meta-item"><div className="meta-key">交易狀態</div><div className="meta-val">{publicTradingStatusLabel}</div></div>
+              <div className="meta-item"><div className="meta-key">交易狀態</div><div className="meta-val">{marketTradability.labelZhHk}；{publicTradingStatusLabel}</div></div>
               <div className="meta-item"><div className="meta-key">Builder Code</div><div className="meta-val">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</div></div>
             </div>
           </SectionAccordion>
@@ -645,7 +669,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
                 <div className="kv"><span className="kv-key">{copy.provenance}</span><span className="kv-value">{formatProvenance(market)}</span></div>
                 <div className="kv"><span className="kv-key">原始 route slug</span><span className="kv-value mono">{slugResolution.decodedSlug}</span></div>
                 <div className="kv"><span className="kv-key">Gamma canonical slug</span><span className="kv-value mono">{market.slug}</span></div>
-                <div className="kv"><span className="kv-key">active / closed / archived / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.restricted)}</span></div>
+                <div className="kv"><span className="kv-key">active / closed / archived / cancelled / accepting orders / order book / restricted</span><span className="kv-value">{yesNo(statusFlags.active)} / {yesNo(statusFlags.closed)} / {yesNo(statusFlags.archived)} / {yesNo(statusFlags.cancelled)} / {yesNo(statusFlags.acceptingOrders)} / {yesNo(statusFlags.enableOrderBook)} / {yesNo(statusFlags.restricted)}</span></div>
               </div>
             </section>
           ) : null}
@@ -680,7 +704,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               </div>
               <ul className="readiness-reason-list">
                 {(disabledReasons.length ? disabledReasons : ["signature_required" as const]).map((reason) => (
-                  <li key={reason}>{copy.readinessCopy[reason] ?? reason}</li>
+                  <li key={reason}>{reason === "market_not_tradable" ? marketTradability.labelZhHk : copy.readinessCopy[reason] ?? reason}</li>
                 ))}
               </ul>
               <p className="muted">交易介面預覽；只有所有生產準備檢查通過且實盤提交啟用後，才會允許提交用戶自行簽署的訂單。</p>

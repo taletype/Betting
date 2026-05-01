@@ -69,6 +69,40 @@ interface FetchModeResult {
   staleAfter: string;
 }
 
+const readRawRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+const readBooleanFlag = (record: Record<string, unknown>, ...keys: string[]): boolean | null => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true") return true;
+      if (normalized === "false") return false;
+    }
+  }
+  return null;
+};
+
+const getStatusFlags = (rawJson: unknown): Record<string, unknown> => {
+  const raw = readRawRecord(rawJson);
+  const candidateMarket = Array.isArray(raw.markets) && raw.markets[0] && typeof raw.markets[0] === "object"
+    ? raw.markets[0] as Record<string, unknown>
+    : raw;
+  return {
+    active: readBooleanFlag(candidateMarket, "active") ?? readBooleanFlag(raw, "active"),
+    closed: readBooleanFlag(candidateMarket, "closed") ?? readBooleanFlag(raw, "closed"),
+    archived: readBooleanFlag(candidateMarket, "archived") ?? readBooleanFlag(raw, "archived"),
+    cancelled: readBooleanFlag(candidateMarket, "cancelled", "canceled") ?? readBooleanFlag(raw, "cancelled", "canceled"),
+    acceptingOrders: readBooleanFlag(candidateMarket, "accepting_orders", "acceptingOrders") ?? readBooleanFlag(raw, "accepting_orders", "acceptingOrders"),
+    enableOrderBook: readBooleanFlag(candidateMarket, "enable_order_book", "enableOrderBook", "orderBookEnabled") ?? readBooleanFlag(raw, "enable_order_book", "enableOrderBook", "orderBookEnabled"),
+    restricted: readBooleanFlag(candidateMarket, "restricted") ?? readBooleanFlag(raw, "restricted"),
+    endDate: typeof candidateMarket.endDate === "string" ? candidateMarket.endDate : typeof raw.endDate === "string" ? raw.endDate : null,
+    endDateIso: typeof candidateMarket.end_date_iso === "string" ? candidateMarket.end_date_iso : typeof raw.end_date_iso === "string" ? raw.end_date_iso : null,
+  };
+};
+
 const defaultStaleMs = (mode: PolymarketCacheSyncMode): number => {
   if (mode === "smart") return 60_000;
   if (mode === "archive_closed") return 12 * 60 * 60 * 1000;
@@ -170,6 +204,7 @@ export async function syncPolymarketMarketCache(
           cacheWriter: "web-sync-polymarket",
           fetchedVia: "public-gamma-events-paginated",
           syncMode,
+          statusFlags: getStatusFlags(record.rawJson),
         },
         staleAfter,
       })),

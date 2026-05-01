@@ -35,6 +35,7 @@ import {
 import { getMarketQualityScore } from "../../lib/external-market-ranking";
 import { formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../../lib/market-localization";
+import { getExternalPolymarketTradability } from "../../lib/polymarket-tradability";
 import { siteCopy } from "../../lib/i18n";
 import { normalizeReferralCode } from "../../lib/referral-capture";
 import { getSiteUrl } from "../../lib/site-url";
@@ -152,7 +153,7 @@ const feedCopy: Record<AppLocale, {
     viewModesAria: "Polymarket market view",
     views: [["smart", "Smart Feed"], ["all", "All Markets"]],
     search: "Search",
-    searchPlaceholder: "Search markets, slug, or external ID",
+    searchPlaceholder: "Search markets, teams, countries, slug, or ID",
     filter: "Filter",
     sort: "Sort",
     apply: "Apply",
@@ -233,7 +234,7 @@ const feedCopy: Record<AppLocale, {
     viewModesAria: "Polymarket 市場檢視",
     views: [["smart", "熱門市場"], ["all", "全部市場"]],
     search: "搜尋",
-    searchPlaceholder: "搜尋市場、slug 或外部 ID",
+    searchPlaceholder: "搜尋市場、隊伍、國家、slug 或 ID",
     filter: "篩選",
     sort: "排序",
     apply: "套用",
@@ -314,7 +315,7 @@ const feedCopy: Record<AppLocale, {
     viewModesAria: "Polymarket 市场视图",
     views: [["smart", "热门市场"], ["all", "全部市场"]],
     search: "搜索",
-    searchPlaceholder: "搜索市场、slug 或外部 ID",
+    searchPlaceholder: "搜索市场、队伍、国家、slug 或 ID",
     filter: "筛选",
     sort: "排序",
     apply: "应用",
@@ -564,6 +565,12 @@ const buildLocalizedFeedHref = (locale: AppLocale, params: MarketFeedSearchParam
   return query ? `${localized}?${query}` : localized;
 };
 
+const buildLoginHref = (locale: AppLocale, refCode: string | null): string => {
+  const search = new URLSearchParams({ next: "/polymarket" });
+  if (refCode) search.set("ref", refCode);
+  return `${getLocaleHref(locale, "/login")}?${search.toString()}`;
+};
+
 const translationBadge = (market: ExternalMarketApiRecord, locale: AppLocale): string | null => {
   const copy = siteCopy[locale];
   if (market.translationStatus === "pending" || market.translationStatus === "failed" || market.translationStatus === "skipped") return copy.translationPending;
@@ -608,23 +615,34 @@ const buildDetailHref = (locale: AppLocale, market: ExternalMarketApiRecord, ref
   return `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(routeKey)}`)}?${search.toString()}`;
 };
 
-const isBrowseOnlyMarket = (market: ExternalMarketApiRecord): boolean =>
-  !isExternalMarketOpenNow(market) ||
-  isExternalMarketStale(market) ||
-  !hasExternalMarketPriceData(market) ||
-  market.status === "closed" ||
-  market.status === "resolved" ||
-  market.status === "cancelled";
+const getMarketTradability = (market: ExternalMarketApiRecord) =>
+  getExternalPolymarketTradability(market, { stale: isExternalMarketStale(market) });
 
-const getMarketBadges = (market: ExternalMarketApiRecord, ui: (typeof feedCopy)[AppLocale]): string[] => {
+const isBrowseOnlyMarket = (market: ExternalMarketApiRecord): boolean =>
+  !getMarketTradability(market).tradable || !hasExternalMarketPriceData(market);
+
+const getTradabilityLabel = (market: ExternalMarketApiRecord, locale: AppLocale): string => {
+  const tradability = getMarketTradability(market);
+  return locale === "en" ? tradability.labelEn : tradability.labelZhHk;
+};
+
+const getMarketBadges = (market: ExternalMarketApiRecord, ui: (typeof feedCopy)[AppLocale], locale: AppLocale): string[] => {
   const badges = new Set<string>();
-  if (isExternalMarketOpenNow(market) && !isExternalMarketStale(market)) badges.add(ui.activeBadge);
+  const tradability = getMarketTradability(market);
+  if (tradability.tradable && !isExternalMarketStale(market)) badges.add(ui.activeBadge);
   if ((market.volume24h ?? market.volumeTotal ?? 0) <= 0) badges.add(ui.lowVolumeBadge);
   if (!hasExternalMarketPriceData(market)) badges.add(ui.noPriceBadge);
   if (isExternalMarketStale(market)) badges.add(ui.staleData);
-  if (market.status === "closed") badges.add(ui.tableHeaders[0] === "Status" ? "Closed" : ui.tableHeaders[0] === "状态" ? "已结束" : "已結束");
-  if (market.status === "resolved") badges.add(ui.tableHeaders[0] === "Status" ? "Resolved" : ui.tableHeaders[0] === "状态" ? "已解决" : "已解決");
-  if (market.status === "cancelled") badges.add(ui.tableHeaders[0] === "Status" ? "Cancelled" : ui.tableHeaders[0] === "状态" ? "已取消" : "已取消");
+  if (
+    tradability.code === "closed" ||
+    tradability.code === "resolved" ||
+    tradability.code === "cancelled" ||
+    tradability.code === "inactive" ||
+    tradability.code === "not_accepting_orders" ||
+    tradability.code === "orderbook_disabled"
+  ) {
+    badges.add(getTradabilityLabel(market, locale));
+  }
   if (isBrowseOnlyMarket(market)) badges.add(ui.browseOnlyBadge);
   badges.add(ui.nonCustodialBadge);
   if (!isBrowseOnlyMarket(market)) badges.add(ui.userSignedBadge);
@@ -639,6 +657,10 @@ const getMarketActionLabel = (
   ui: (typeof feedCopy)[AppLocale],
 ): string => {
   if (isBrowseOnlyMarket(market)) return ui.browseOnlyCta;
+  if (_topReason === "wallet_not_connected") return "連接錢包";
+  if (_topReason === "credentials_missing") return "設定 Polymarket 交易權限";
+  if (_topReason === "submitter_unavailable" || _topReason === "feature_disabled" || _topReason === "submit_mode_disabled") return "實盤提交已停用";
+  if (_topReason === "signature_required") return "準備自行簽署訂單";
   return copy.tradeViaPolymarket;
 };
 
@@ -788,6 +810,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         </div>
         <aside className="hero-status-panel stack" aria-label="Polymarket referral and launch status">
           {refCode ? <div className="banner banner-success referral-banner">{ui.referralPrefix}{refCode}</div> : <PendingReferralNotice prefix={ui.referralPrefix} />}
+          {!currentUser ? <Link className="button-link secondary" href={buildLoginHref(locale, refCode)}>登入以保存推薦獎勵</Link> : null}
           <div className="share-inline">
             <span className="metric-label">{ui.inviteFriends}</span>
             <TrackedCopyButton
@@ -945,7 +968,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   });
                   const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
                   const marketActionLabel = getMarketActionLabel(market, marketTopReason, disabledReasonLabel, copy, ui);
-                  const marketBadges = getMarketBadges(market, ui);
+                  const marketBadges = getMarketBadges(market, ui, locale);
                   const stale = isExternalMarketStale(market);
 
                   return (
@@ -1012,7 +1035,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             const closeState = getCloseState(market, locale);
             const stale = isExternalMarketStale(market);
             const noTradeData = !hasExternalMarketActivity(market) || !hasExternalMarketPriceData(market);
-            const marketBadges = getMarketBadges(market, ui);
+            const marketBadges = getMarketBadges(market, ui, locale);
 
             return (
             <div key={`${market.source}:${market.externalId}`} className="panel stack market-card">

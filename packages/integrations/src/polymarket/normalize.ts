@@ -1,4 +1,5 @@
 import type { NormalizedExternalMarket, NormalizedExternalOutcome } from "../index";
+import { getPolymarketTradability } from "./tradability";
 import type { PolymarketEvent, PolymarketMarket, PolymarketToken } from "./types";
 
 const parseNumber = (value: unknown): number | null => {
@@ -77,20 +78,21 @@ const selectIconUrl = (market: PolymarketMarket): string | null =>
 const getStatusString = (market: PolymarketMarket): string | null =>
   getString(market.status ?? market.resolutionStatus ?? market.resolution_status)?.toLowerCase() ?? null;
 
-const hasPastTime = (value: unknown, now: Date): boolean => {
-  const iso = toIsoOrNull(value);
-  return iso !== null && new Date(iso).getTime() <= now.getTime();
-};
-
 export const resolvePolymarketMarketStatus = (
   market: Pick<
     PolymarketMarket,
     | "active"
     | "archived"
+    | "accepting_orders"
+    | "acceptingOrders"
     | "cancelled"
+    | "canceled"
     | "closed"
     | "closedTime"
     | "closeTime"
+    | "enable_order_book"
+    | "enableOrderBook"
+    | "orderBookEnabled"
     | "endDate"
     | "end_date_iso"
     | "resolved_at"
@@ -101,21 +103,10 @@ export const resolvePolymarketMarketStatus = (
   >,
   now = new Date(),
 ): NormalizedExternalMarket["status"] => {
-  const status = getStatusString(market as PolymarketMarket);
-
-  if (status === "resolved" || market.resolved_at || market.resolvedAt) return "resolved";
-  if (status === "cancelled" || status === "canceled" || market.cancelled === true || market.archived === true) return "cancelled";
-  if (status === "closed" || market.closed === true) return "closed";
-  if (
-    hasPastTime(market.closeTime, now) ||
-    hasPastTime(market.closedTime, now) ||
-    hasPastTime(market.endDate, now) ||
-    hasPastTime(market.end_date_iso, now)
-  ) {
-    return "closed";
-  }
-  if (market.active === false) return "closed";
-
+  const tradability = getPolymarketTradability(market, { now });
+  if (tradability.code === "resolved") return "resolved";
+  if (tradability.code === "cancelled") return "cancelled";
+  if (tradability.code === "closed" || tradability.code === "inactive") return "closed";
   return "open";
 };
 

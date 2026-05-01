@@ -17,8 +17,8 @@ export function verifyCronRequest(request: Request) {
     return Response.json(
       {
         ok: false,
-        error: "CRON_SECRET is not configured — cron requests cannot be verified",
-        code: "CRON_SECRET_MISSING",
+        error: "Cron authentication is not configured",
+        code: "CRON_AUTH_MISSING",
       },
       { status: 500 },
     );

@@ -46,7 +46,7 @@ test("signed-out app shell shows login and no duplicate account item", () => {
   assert.equal(countText(markup, "帳戶"), 0);
 });
 
-test("signed-in app shell shows exactly one account item", () => {
+test("signed-in app shell shows account and logout items", () => {
   const markup = renderToStaticMarkup(
     <AppShell locale="zh-HK" authenticated>
       <main>content</main>
@@ -54,8 +54,10 @@ test("signed-in app shell shows exactly one account item", () => {
   );
 
   assert.match(markup, /class="auth-state-button" href="\/account"/);
+  assert.match(markup, />登出<\/button>/);
   assert.doesNotMatch(markup, /class="auth-state-button" href="\/login"/);
   assert.equal(countText(markup, "帳戶"), 1);
+  assert.equal(countText(markup, "登出"), 1);
 });
 
 test("app shell shows admin only when allowed", () => {

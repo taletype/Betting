@@ -7,11 +7,9 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@bet/supabase/server";
 
 import { captureAmbassadorReferral } from "../lib/api";
-import { buildMagicLinkRedirectTo } from "../lib/auth-redirect";
-import { pendingReferralCookieName } from "../lib/referral-capture";
+import { buildMagicLinkRedirectTo, getMagicLinkSiteUrl, normalizeAuthNextPath } from "../lib/auth-redirect";
+import { normalizeReferralCode, pendingReferralCookieName } from "../lib/referral-capture";
 import { isPublicSupabaseConfigError } from "../lib/supabase/config";
-
-const getSiteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 const getServerSupabase = async () => {
   const cookieStore = await cookies();
@@ -22,27 +20,39 @@ const getServerSupabase = async () => {
   });
 };
 
+const loginRedirect = (params: Record<string, string | null | undefined>): string => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value);
+  }
+  const query = search.toString();
+  return query ? `/login?${query}` : "/login";
+};
+
 export const sendMagicLinkAction = async (formData: FormData) => {
   const email = String(formData.get("email") ?? "").trim();
-  const next = String(formData.get("next") ?? "/account");
+  const next = normalizeAuthNextPath(String(formData.get("next") ?? "/account"));
+  const refCode = normalizeReferralCode(String(formData.get("ref") ?? ""));
   if (!email) {
-    redirect("/login?sent=0");
+    redirect(loginRedirect({ sent: "0", next, ref: refCode ?? undefined }));
   }
 
   try {
     const supabase = await getServerSupabase();
+    const siteUrl = getMagicLinkSiteUrl();
     await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: buildMagicLinkRedirectTo(getSiteUrl(), next),
+        emailRedirectTo: buildMagicLinkRedirectTo(siteUrl, next, refCode),
       },
     });
   } catch (error) {
-    console.warn("magic link auth failed", error);
-    redirect(isPublicSupabaseConfigError(error) ? "/login?auth=unavailable" : "/login?auth=failed");
+    const unavailable = isPublicSupabaseConfigError(error) || (error instanceof Error && error.message === "AUTH_SITE_URL_REQUIRED");
+    console.warn("magic link auth failed", { reason: unavailable ? "auth_unavailable" : "send_failed" });
+    redirect(loginRedirect({ auth: unavailable ? "unavailable" : "failed", next, ref: refCode ?? undefined }));
   }
 
-  redirect("/login?sent=1");
+  redirect(loginRedirect({ sent: "1", next, ref: refCode ?? undefined }));
 };
 
 export const logoutAction = async () => {

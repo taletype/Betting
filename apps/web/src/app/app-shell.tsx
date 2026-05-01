@@ -2,6 +2,7 @@ import React from "react";
 import { getLocaleCopy, getLocaleHref, type AppLocale } from "../lib/locale";
 import { siteCopy } from "../lib/i18n";
 import { getPublicBetaLaunchState } from "../lib/launch-mode";
+import { logoutAction } from "./auth-actions";
 import { LanguageSwitcher } from "./language-switcher";
 
 export function AppShell({
@@ -63,9 +64,20 @@ export function AppShell({
               );
             })}
           </nav>
-          <a className="auth-state-button" href={getLocaleHref(locale, authenticated ? "/account" : "/login")}>
-            {authenticated ? copy.shell.nav.account : copy.auth.login}
-          </a>
+          {authenticated ? (
+            <>
+              <a className="auth-state-button" href={getLocaleHref(locale, "/account")}>
+                {copy.shell.nav.account}
+              </a>
+              <form action={logoutAction}>
+                <button className="auth-state-button" type="submit">{copy.auth.logout}</button>
+              </form>
+            </>
+          ) : (
+            <a className="auth-state-button" href={getLocaleHref(locale, "/login")}>
+              {copy.auth.login}
+            </a>
+          )}
           <LanguageSwitcher currentLocale={locale} />
         </div>
       </header>

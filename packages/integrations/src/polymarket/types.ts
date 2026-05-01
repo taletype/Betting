@@ -5,6 +5,11 @@ export interface PolymarketEvent {
   question?: string;
   description?: string;
   active?: boolean;
+  accepting_orders?: boolean;
+  acceptingOrders?: boolean;
+  enable_order_book?: boolean;
+  enableOrderBook?: boolean;
+  orderBookEnabled?: boolean;
   closed?: boolean;
   endDate?: string;
   end_date_iso?: string;
@@ -45,8 +50,14 @@ export interface PolymarketMarket {
   resolution_status?: string;
   archived?: boolean;
   cancelled?: boolean;
+  canceled?: boolean;
   closed?: boolean;
   active?: boolean;
+  accepting_orders?: boolean;
+  acceptingOrders?: boolean;
+  enable_order_book?: boolean;
+  enableOrderBook?: boolean;
+  orderBookEnabled?: boolean;
   restricted?: boolean;
   endDate?: string;
   end_date_iso?: string;

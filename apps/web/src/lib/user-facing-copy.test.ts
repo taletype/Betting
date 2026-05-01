@@ -125,7 +125,7 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "連接錢包",
     "設定 Polymarket 交易權限",
     "Builder Code 未設定",
-    "市場已關閉",
+    "市場只供瀏覽",
     "價格或數量無效",
     "需要用戶自行簽署訂單",
     "準備自行簽署訂單",

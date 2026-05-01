@@ -117,6 +117,25 @@ test("auth callback applies pending referral only after session exists", async (
   }
 });
 
+test("auth callback applies URL referral and preserves it on Polymarket redirect", async () => {
+  const applied: Array<{ userId: string; code: string }> = [];
+  setAuthCallbackDependenciesForTests({
+    supabaseServerClientFactory: mockSupabaseFactory({ userId: "user-1" }) as never,
+    referralApplier: (async (userId: string, code: string) => {
+      applied.push({ userId, code });
+      return null;
+    }) as never,
+  });
+  try {
+    const response = await GET(new NextRequest("https://bet.example/auth/callback?code=abc&next=/polymarket&ref=friend001"));
+
+    assert.equal(response.headers.get("location"), "https://bet.example/polymarket?ref=FRIEND001");
+    assert.deepEqual(applied, [{ userId: "user-1", code: "FRIEND001" }]);
+  } finally {
+    setAuthCallbackDependenciesForTests({});
+  }
+});
+
 test("auth callback keeps pending referral when apply has non-terminal failure", async () => {
   setAuthCallbackDependenciesForTests({
     supabaseServerClientFactory: mockSupabaseFactory({ userId: "user-1" }) as never,
@@ -167,6 +186,24 @@ test("auth callback redirects failure to login with safe error", async () => {
     assert.equal(location.pathname, "/login");
     assert.equal(location.searchParams.get("auth"), "callback_failed");
     assert.equal(location.searchParams.get("next"), "/account");
+  } finally {
+    setAuthCallbackDependenciesForTests({});
+  }
+});
+
+test("auth callback failure preserves safe next and referral without raw errors", async () => {
+  setAuthCallbackDependenciesForTests({
+    supabaseServerClientFactory: mockSupabaseFactory({ userId: null, exchangeError: new Error("raw provider failure") }) as never,
+  });
+  try {
+    const response = await GET(new NextRequest("https://bet.example/auth/callback?code=abc&next=/polymarket&ref=friend001"));
+    const location = new URL(response.headers.get("location") ?? "");
+
+    assert.equal(location.pathname, "/login");
+    assert.equal(location.searchParams.get("auth"), "callback_failed");
+    assert.equal(location.searchParams.get("next"), "/polymarket");
+    assert.equal(location.searchParams.get("ref"), "FRIEND001");
+    assert.doesNotMatch(location.href, /raw provider failure/);
   } finally {
     setAuthCallbackDependenciesForTests({});
   }

@@ -39,14 +39,14 @@ test("verifyCronRequest fails closed when CRON_SECRET is missing or empty", asyn
     const response = verifyCronRequest(new Request("http://localhost/api/cron/candles"));
     assert.equal(response?.status, 500);
     const payload = await response?.json() as { code?: string };
-    assert.equal(payload.code, "CRON_SECRET_MISSING");
+    assert.equal(payload.code, "CRON_AUTH_MISSING");
   });
 
   await withEnv({ CRON_SECRET: "   " }, async () => {
     const response = verifyCronRequest(new Request("http://localhost/api/cron/candles"));
     assert.equal(response?.status, 500);
     const payload = await response?.json() as { code?: string };
-    assert.equal(payload.code, "CRON_SECRET_MISSING");
+    assert.equal(payload.code, "CRON_AUTH_MISSING");
   });
 });
 
@@ -74,7 +74,7 @@ test("cron endpoints reject requests when CRON_SECRET is missing", async () => {
     const response = await candlesGET(new Request("http://localhost/api/cron/candles"));
     const payload = await response.json() as { code?: string };
     assert.equal(response.status, 500);
-    assert.equal(payload.code, "CRON_SECRET_MISSING");
+    assert.equal(payload.code, "CRON_AUTH_MISSING");
   });
 });
 

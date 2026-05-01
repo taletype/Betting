@@ -34,8 +34,10 @@ test("login and signup pages render zh-HK copy", async () => {
     const login = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
     const signup = renderToStaticMarkup(await SignupPage());
 
-    assert.match(login, /登入/);
+    assert.match(login, /以電郵連結登入/);
     assert.match(login, /發送登入連結/);
+    assert.match(login, /登入後可保存推薦獎勵及帳戶資料。/);
+    assert.match(login, /瀏覽市場不需要登入。/);
     assert.match(signup, /註冊/);
     assert.match(signup, /以電郵繼續/);
   });
@@ -47,8 +49,26 @@ test("login and signup pages display pending referral from query string", async 
 
   assert.match(login, /你正在使用推薦碼：FRIEND001/);
   assert.match(login, /登入後會自動嘗試套用此推薦碼。/);
+  assert.match(login, /name="ref" value="FRIEND001"/);
   assert.match(signup, /你正在使用推薦碼：FRIEND001/);
   assert.match(signup, /登入後會自動嘗試套用此推薦碼。/);
+  assert.match(signup, /name="ref" value="FRIEND001"/);
+});
+
+test("login page shows sent and callback failure states safely", async () => {
+  await withEnv({
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "public-anon-key",
+  }, async () => {
+    const sent = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ sent: "1", next: "/polymarket", ref: "friend001" }) }));
+    const failed = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ auth: "callback_failed", next: "/polymarket" }) }));
+
+    assert.match(sent, /登入連結已發送，請檢查你的電郵。/);
+    assert.match(sent, /登入後會返回：\/polymarket/);
+    assert.match(sent, /推薦碼會在登入確認後套用：FRIEND001/);
+    assert.match(failed, /登入連結已失效或無法確認，請重新發送。/);
+    assert.doesNotMatch(failed, /raw provider failure|stack trace|supabase error/i);
+  });
 });
 
 test("malformed referral code shows safe failure copy", async () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { normalizePolymarketMarket, resolvePolymarketMarketStatus } from "./normalize";
+import { getPolymarketTradability } from "./tradability";
 
 test("normalizes gamma market payload into external market", () => {
   const market = normalizePolymarketMarket({
@@ -125,4 +126,68 @@ test("normalizes closed/resolved/cancelled and past close markets away from open
     closed: false,
     endDate: new Date(now.getTime() - 60_000).toISOString(),
   }, now), "closed");
+});
+
+test("live Polymarket order flags override stale close dates during normalization", () => {
+  const now = new Date("2026-05-01T00:00:00.000Z");
+
+  assert.equal(resolvePolymarketMarketStatus({
+    active: true,
+    closed: false,
+    accepting_orders: true,
+    endDate: "2026-04-01T00:00:00.000Z",
+  }, now), "open");
+
+  assert.equal(resolvePolymarketMarketStatus({
+    active: true,
+    closed: false,
+    enable_order_book: true,
+    closeTime: "2026-04-01T00:00:00.000Z",
+  }, now), "open");
+});
+
+test("terminal Polymarket states still win during normalization", () => {
+  const now = new Date("2026-05-01T00:00:00.000Z");
+
+  assert.equal(resolvePolymarketMarketStatus({ closed: true }, now), "closed");
+  assert.equal(resolvePolymarketMarketStatus({ status: "closed" }, now), "closed");
+  assert.equal(resolvePolymarketMarketStatus({ resolved_at: "2026-04-01T00:00:00.000Z" }, now), "resolved");
+  assert.equal(resolvePolymarketMarketStatus({ resolutionStatus: "resolved" }, now), "resolved");
+  assert.equal(resolvePolymarketMarketStatus({ cancelled: true }, now), "cancelled");
+  assert.equal(resolvePolymarketMarketStatus({ archived: true }, now), "cancelled");
+  assert.equal(resolvePolymarketMarketStatus({ active: false }, now), "closed");
+  assert.equal(resolvePolymarketMarketStatus({ endDate: "2026-04-01T00:00:00.000Z" }, now), "closed");
+});
+
+test("accepting order and orderbook flags produce precise tradability labels", () => {
+  const now = new Date("2026-05-01T00:00:00.000Z");
+
+  assert.deepEqual(
+    {
+      code: getPolymarketTradability({ active: true, closed: false, accepting_orders: false }, { now }).code,
+      label: getPolymarketTradability({ active: true, closed: false, accepting_orders: false }, { now }).labelZhHk,
+      normalizedStatus: resolvePolymarketMarketStatus({ active: true, closed: false, accepting_orders: false }, now),
+    },
+    {
+      code: "not_accepting_orders",
+      label: "市場暫不接受訂單",
+      normalizedStatus: "open",
+    },
+  );
+
+  const orderbookDisabled = getPolymarketTradability({
+    active: true,
+    closed: false,
+    enable_order_book: false,
+  }, { now });
+  assert.equal(orderbookDisabled.code, "orderbook_disabled");
+  assert.equal(orderbookDisabled.labelZhHk, "訂單簿暫不可用");
+});
+
+test("status open without live Polymarket order flags is browse-only unknown, not closed", () => {
+  const result = getPolymarketTradability({ status: "open" }, { now: new Date("2026-05-01T00:00:00.000Z") });
+
+  assert.equal(result.tradable, false);
+  assert.equal(result.code, "unknown");
+  assert.equal(result.labelZhHk, "市場只供瀏覽");
 });

@@ -1,4 +1,5 @@
 import type { ExternalMarketApiRecord } from "./api";
+import { getExternalPolymarketTradability } from "./polymarket-tradability";
 
 const toTime = (value: string | null | undefined): number | null => {
   if (!value) return null;
@@ -44,6 +45,20 @@ export const hasExternalMarketPriceData = (market: ExternalMarketApiRecord): boo
 
 export const isExternalMarketOpenNow = (market: ExternalMarketApiRecord): boolean => {
   if (market.status !== "open" || market.resolvedAt) return false;
+  if (market.source === "polymarket") {
+    const tradability = getExternalPolymarketTradability(market);
+    if (tradability.code === "tradable") return true;
+    if (
+      tradability.code === "closed" ||
+      tradability.code === "resolved" ||
+      tradability.code === "cancelled" ||
+      tradability.code === "inactive" ||
+      tradability.code === "not_accepting_orders" ||
+      tradability.code === "orderbook_disabled"
+    ) {
+      return false;
+    }
+  }
   const closeTime = toTime(market.closeTime ?? market.endTime);
   return closeTime === null || closeTime > Date.now();
 };

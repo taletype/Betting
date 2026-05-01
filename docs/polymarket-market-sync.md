@@ -55,3 +55,7 @@ Each run stores diagnostics in `external_market_sync_runs.diagnostics`:
 The cache reader currently filters and sorts in memory over a 10,000-row read window. This is acceptable while active full sync remains capped at `maxMarkets <= 5000`. If archive ingestion grows beyond 10,000 cached rows, move filtering, sorting, and pagination into database queries.
 
 Live trading remains separately gated by the Polymarket routing preflight and kill-switch controls; market sync does not change that gate.
+
+## Tradability Flags
+
+Sync stores first-class Polymarket status flags in `source_provenance.statusFlags`, including `active`, `closed`, `archived`, `cancelled`, `acceptingOrders`, `enableOrderBook`, `restricted`, and upstream end dates when available. Public readers use these flags before falling back to old close-time inference, so a market with live `active=true`, `closed=false`, and order acceptance/orderbook signals is not mislabeled as closed only because a legacy date is old.

@@ -70,6 +70,8 @@ export interface PolymarketRoutingReadinessInput {
   hasCredentials: boolean;
   userSigningAvailable?: boolean;
   marketTradable: boolean;
+  marketTradabilityLabel?: string;
+  marketTradabilityReason?: string;
   orderValid?: boolean;
   submitterAvailable: boolean;
   submitterEndpointAvailable?: boolean;
@@ -86,7 +88,7 @@ const tradingDisabledReasonZh: Record<PolymarketTradingReadinessCheck, string> =
   walletConnected: "連接錢包",
   polymarketCredentialsReady: "設定 Polymarket 交易權限",
   userCanSignOrder: "需要用戶自行簽署訂單",
-  marketTradable: "市場已關閉",
+  marketTradable: "市場暫時不可交易",
   balanceAllowanceReady: "餘額或授權不足",
   submitterReady: "實盤提交已停用",
   attributionRecordingReady: "實盤提交已停用",
@@ -96,15 +98,15 @@ export const getPolymarketTradingReadiness = (
   input: PolymarketRoutingReadinessInput,
 ): PolymarketTradingReadiness => {
   const checks: Record<PolymarketTradingReadinessCheck, boolean> = {
-    routedTradingEnabled: input.featureEnabled,
-    betaUserAllowlisted: input.betaUserAllowlisted !== false,
-    builderCodeConfigured: input.hasBuilderCode,
     walletConnected: input.walletConnected && input.walletAddressKnown !== false,
     polymarketCredentialsReady: input.hasCredentials,
     userCanSignOrder: input.userSigningAvailable !== false && input.userSigned === true,
+    builderCodeConfigured: input.hasBuilderCode,
+    routedTradingEnabled: input.featureEnabled,
+    submitterReady: input.featureEnabled && input.submitModeEnabled === true && input.submitterAvailable && input.submitterEndpointAvailable !== false,
+    betaUserAllowlisted: input.betaUserAllowlisted !== false,
     marketTradable: input.marketTradable && input.orderValid !== false,
     balanceAllowanceReady: input.balanceAllowanceReady !== false && input.walletFundsSufficient !== false,
-    submitterReady: input.featureEnabled && input.submitModeEnabled === true && input.submitterAvailable && input.submitterEndpointAvailable !== false,
     attributionRecordingReady: input.attributionRecordingReady !== false,
   };
   const missingChecks = (Object.keys(checks) as PolymarketTradingReadinessCheck[]).filter((check) => !checks[check]);
@@ -126,17 +128,17 @@ export const getPolymarketRoutingReadiness = (
   if (input.walletFundsSufficient === false || input.fundingAvailable === false) return "wallet_funds_insufficient";
   if (input.walletVerified === false) return "wallet_not_connected";
   if (!input.hasCredentials) return "credentials_missing";
-  if (input.orderValid === false) return "invalid_order";
-  if (!input.marketTradable) return "market_not_tradable";
+  if (input.userSigningAvailable === false) return "signature_required";
+  if (!input.userSigned) return "signature_required";
+  if (!input.hasBuilderCode) return "builder_code_missing";
   if (!input.featureEnabled) return "feature_disabled";
   if (input.betaUserAllowlisted === false) return "beta_user_not_allowlisted";
   if (input.submitModeEnabled === false) return "submit_mode_disabled";
   if (!input.submitterAvailable) return "submitter_unavailable";
   if (input.submitterEndpointAvailable === false) return "submitter_unavailable";
-  if (!input.hasBuilderCode) return "builder_code_missing";
+  if (!input.marketTradable) return "market_not_tradable";
+  if (input.orderValid === false) return "invalid_order";
   if (input.submitted) return "submitted";
-  if (input.userSigningAvailable === false) return "signature_required";
-  if (!input.userSigned) return "signature_required";
   return "ready_to_submit";
 };
 
@@ -149,15 +151,15 @@ export const getPolymarketRoutingDisabledReasons = (
   if (input.walletConnected && input.walletAddressKnown === false) reasons.push("wallet_not_connected");
   if (input.walletFundsSufficient === false || (input.walletConnected && input.fundingAvailable === false)) reasons.push("wallet_funds_insufficient");
   if (!input.hasCredentials) reasons.push("credentials_missing");
-  if (input.orderValid === false) reasons.push("invalid_order");
-  if (!input.marketTradable) reasons.push("market_not_tradable");
+  if (input.userSigningAvailable === false || !input.userSigned) reasons.push("signature_required");
+  if (!input.hasBuilderCode) reasons.push("builder_code_missing");
   if (!input.featureEnabled) reasons.push("feature_disabled");
   if (input.betaUserAllowlisted === false) reasons.push("beta_user_not_allowlisted");
   if (input.submitModeEnabled === false) reasons.push("submit_mode_disabled");
   if (!input.submitterAvailable) reasons.push("submitter_unavailable");
   if (input.submitterEndpointAvailable === false) reasons.push("submitter_unavailable");
-  if (!input.hasBuilderCode) reasons.push("builder_code_missing");
-  if (input.userSigningAvailable === false || !input.userSigned) reasons.push("signature_required");
+  if (!input.marketTradable) reasons.push("market_not_tradable");
+  if (input.orderValid === false) reasons.push("invalid_order");
 
   return reasons;
 };
@@ -171,14 +173,14 @@ export const getPolymarketTopBlockingReason = (
   if (!input.walletConnected || input.walletAddressKnown === false) return "wallet_not_connected";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || (input.walletConnected && input.fundingAvailable === false)) return "wallet_funds_insufficient";
   if (!input.hasCredentials) return "credentials_missing";
+  if (input.userSigningAvailable === false || !input.userSigned) return "signature_required";
+  if (!input.hasBuilderCode) return "builder_code_missing";
   if (!input.featureEnabled) return "feature_disabled";
   if (input.submitModeEnabled === false) return "submit_mode_disabled";
   if (!input.submitterAvailable || input.submitterEndpointAvailable === false) return "submitter_unavailable";
-  if (input.orderValid === false) return "invalid_order";
-  if (!input.marketTradable) return "market_not_tradable";
   if (input.betaUserAllowlisted === false) return "beta_user_not_allowlisted";
-  if (!input.hasBuilderCode) return "builder_code_missing";
-  if (input.userSigningAvailable === false || !input.userSigned) return "signature_required";
+  if (!input.marketTradable) return "market_not_tradable";
+  if (input.orderValid === false) return "invalid_order";
   if (input.submitted) return null;
   return null;
 };
@@ -247,13 +249,13 @@ export const getPolymarketReadinessChecklist = (
       id: "market_status",
       label: input.marketTradable && (input.featureEnabled === false || input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false) ? "交易狀態" : "市場狀態",
       explanation: !input.marketTradable
-        ? "此市場已關閉或已結算。"
+        ? input.marketTradabilityReason ?? `${input.marketTradabilityLabel ?? "此市場"}，目前只供瀏覽。`
         : input.featureEnabled === false || input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false
           ? "目前只提供市場瀏覽及訂單預覽。"
           : "市場可交易。",
       status: input.marketTradable ? (input.featureEnabled === false || input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false ? "disabled" : "complete") : "unavailable",
       actionLabel: !input.marketTradable
-        ? "市場已關閉"
+        ? input.marketTradabilityLabel ?? "市場只供瀏覽"
         : input.featureEnabled === false || input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false
           ? "實盤提交已停用"
           : undefined,

@@ -3,6 +3,19 @@ import { fetchPolymarketGammaEventMarketBySlug, fetchPolymarketGammaEventMarkets
 type NormalizedGammaMarket = Awaited<ReturnType<typeof fetchPolymarketGammaMarkets>>[number]["market"];
 type GammaProvenance = Awaited<ReturnType<typeof fetchPolymarketGammaMarkets>>[number]["provenance"];
 
+const readBooleanFlag = (record: Record<string, unknown>, ...keys: string[]): boolean | null => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true") return true;
+      if (normalized === "false") return false;
+    }
+  }
+  return null;
+};
+
 export interface PublicExternalMarketRecord {
   id: string;
   source: "polymarket" | "kalshi";
@@ -115,10 +128,15 @@ const mapGammaMarket = (
     dataPath: "fallback",
     fetchedVia: options.fetchedVia ?? "public-gamma-fallback",
     statusFlags: {
-      active: rawRecord.active === undefined ? null : rawRecord.active === true,
-      closed: rawRecord.closed === undefined ? null : rawRecord.closed === true,
-      archived: rawRecord.archived === undefined ? null : rawRecord.archived === true,
-      restricted: rawRecord.restricted === undefined ? null : rawRecord.restricted === true,
+      active: readBooleanFlag(rawRecord, "active"),
+      closed: readBooleanFlag(rawRecord, "closed"),
+      archived: readBooleanFlag(rawRecord, "archived"),
+      cancelled: readBooleanFlag(rawRecord, "cancelled", "canceled"),
+      acceptingOrders: readBooleanFlag(rawRecord, "accepting_orders", "acceptingOrders"),
+      enableOrderBook: readBooleanFlag(rawRecord, "enable_order_book", "enableOrderBook", "orderBookEnabled"),
+      restricted: readBooleanFlag(rawRecord, "restricted"),
+      endDate: typeof rawRecord.endDate === "string" ? rawRecord.endDate : null,
+      endDateIso: typeof rawRecord.end_date_iso === "string" ? rawRecord.end_date_iso : null,
     },
     stale: false,
   };

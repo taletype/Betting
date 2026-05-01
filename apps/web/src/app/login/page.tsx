@@ -21,19 +21,21 @@ export default async function LoginPage({
   const malformedRef = Boolean(params?.ref) && !refCode;
   const authConfigured = hasPublicSupabaseConfig();
   const authUnavailable = !authConfigured;
+  const signupHref = refCode ? `/signup?next=${encodeURIComponent(next)}&ref=${encodeURIComponent(refCode)}` : `/signup?next=${encodeURIComponent(next)}`;
 
   return (
     <main className="stack">
       <section className="hero landing-hero">
         <div className="hero-copy stack">
           <span className="badge badge-warning">BETA ACCESS</span>
-          <h1>{copy.loginTitle}</h1>
+          <h1>以電郵連結登入</h1>
           <p>{copy.loginSubtitle}</p>
+          <p className="muted">登入後可保存推薦獎勵及帳戶資料。瀏覽市場不需要登入。</p>
           <div className="grid">
             <div className="panel stack">
               <span className="metric-label">身份驗證</span>
               <strong>以電郵連結登入</strong>
-              <p className="muted">輸入電郵後，我們會發送一次性登入連結。登入後可查看帳戶、推薦碼、邀請連結及獎勵帳務狀態。</p>
+              <p className="muted">輸入電郵後，我們會發送一次性登入連結。登入後可保存推薦獎勵及帳戶資料。</p>
             </div>
             <div className="panel stack">
               <span className="metric-label">Beta 限制</span>
@@ -69,6 +71,7 @@ export default async function LoginPage({
 
           <form action={sendMagicLinkAction} className="stack">
             <input type="hidden" name="next" value={next} />
+            {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
             <label className="stack">
               <span className="metric-label">{copy.email}</span>
               <input name="email" type="email" placeholder={copy.emailPlaceholder} required disabled={!authConfigured} />
@@ -76,10 +79,12 @@ export default async function LoginPage({
             <button type="submit" disabled={!authConfigured}>{authConfigured ? copy.sendMagicLink : "Auth 尚未設定"}</button>
           </form>
 
+          <div className="muted">登入後會返回：{next}</div>
+          {refCode ? <div className="muted">推薦碼會在登入確認後套用：{refCode}</div> : null}
           <div className="banner banner-warning">
-            登入只會建立網站會話。任何 Polymarket 操作、錢包連接或資金轉移，均需由你在第三方官方流程中自行確認。
+            登入只會建立網站會話。瀏覽市場不需要登入。任何 Polymarket 操作、錢包連接或資金轉移，均需由你在第三方官方流程中自行確認。
           </div>
-          <Link className="secondary-cta" href="/signup">{copy.signup}</Link>
+          <Link className="secondary-cta" href={signupHref}>{copy.signup}</Link>
         </aside>
       </section>
     </main>

@@ -1,9 +1,11 @@
 import React from "react";
 import Link from "next/link";
 
+import { normalizeAuthNextPath } from "../../lib/auth-redirect";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { normalizeReferralCode } from "../../lib/referral-capture";
 import { pendingReferralPrimaryCopy, pendingReferralSecondaryCopy } from "../../lib/referral-ui";
+import { getSiteUrl } from "../../lib/site-url";
 import { hasPublicSupabaseConfig } from "../../lib/supabase/config";
 import { sendMagicLinkAction } from "../auth-actions";
 import { FunnelEventTracker } from "../funnel-analytics";
@@ -11,18 +13,18 @@ import { MalformedReferralNotice, PendingReferralNotice } from "../pending-refer
 import { TrackedCopyButton } from "../tracked-copy-button";
 
 interface SignupPageProps {
-  searchParams?: Promise<{ ref?: string }>;
+  searchParams?: Promise<{ ref?: string; next?: string }>;
 }
-
-const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 
 export default async function SignupPage({ searchParams }: SignupPageProps = {}) {
   const params = await searchParams;
+  const next = normalizeAuthNextPath(params?.next);
   const refCode = normalizeReferralCode(params?.ref);
   const malformedRef = Boolean(params?.ref) && !refCode;
   const copy = getLocaleCopy(defaultLocale).auth;
-  const inviteUrl = `${siteUrl()}/signup${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const inviteUrl = `${getSiteUrl()}/signup${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const authConfigured = hasPublicSupabaseConfig();
+  const loginHref = refCode ? `/login?next=${encodeURIComponent(next)}&ref=${encodeURIComponent(refCode)}` : `/login?next=${encodeURIComponent(next)}`;
 
   return (
     <main className="stack">
@@ -65,7 +67,8 @@ export default async function SignupPage({ searchParams }: SignupPageProps = {})
             <span className="badge badge-info">EMAIL</span>
           </div>
           <form action={sendMagicLinkAction} className="stack">
-            <input type="hidden" name="next" value="/account" />
+            <input type="hidden" name="next" value={next} />
+            {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
             <label className="stack">
               <span className="metric-label">{copy.email}</span>
               <input name="email" type="email" placeholder={copy.emailPlaceholder} required disabled={!authConfigured} />
@@ -73,7 +76,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps = {})
             {!authConfigured ? <div className="error-state">{copy.authUnavailable}</div> : null}
             <button type="submit" disabled={!authConfigured}>{authConfigured ? copy.continueWithEmail : "Auth 尚未設定"}</button>
           </form>
-          <Link className="secondary-cta" href="/login">{copy.login}</Link>
+          <Link className="secondary-cta" href={loginHref}>{copy.login}</Link>
           <div className="share-block stack">
             <strong>邀請連結</strong>
             <p className="muted">複製連結給朋友，推薦碼會自動附在註冊入口。</p>
