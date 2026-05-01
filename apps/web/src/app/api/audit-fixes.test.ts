@@ -112,3 +112,11 @@ test("ambassador payout requests atomically reserve payable rewards before retur
   assert.match(source, /status = 'approved'/);
   assert.match(source, /reserved_by_payout_id = \$2::uuid[\s\S]+if \(\(reserved\?\.amount \?\? 0n\) !== payableRewards\)/);
 });
+
+test("ambassador rewards cannot auto-create payout requests from config or payable transitions", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
+
+  assert.match(source, /AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED must remain false; payout requests must stay manual/);
+  assert.doesNotMatch(source, /const maybeCreateAutoPayoutRequest = async/);
+  assert.doesNotMatch(source, /markRewardsPayableDb[\s\S]+ambassador_reward_payouts/);
+});
