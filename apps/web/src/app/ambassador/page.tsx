@@ -1,7 +1,8 @@
 import React from "react";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
-import { getAmbassadorDashboard, isApiResponseError, toBigInt } from "../../lib/api";
+import { isApiResponseError, toBigInt } from "../../lib/api";
+import { resolveAmbassadorDashboardState, type AmbassadorDashboardState } from "../ambassador-dashboard-state";
 import { applyReferralCodeAction } from "../auth-actions";
 import { ReferralFunnelChart, RewardSplitChart } from "../charts/market-charts";
 import { PendingReferralApplier } from "../pending-referral-applier";
@@ -9,7 +10,6 @@ import { PendingReferralNotice } from "../pending-referral-notice";
 import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure, SharedRewardDisclosure, SharedSafetyDisclosure, StatusChip } from "../product-ui";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { getSiteUrl } from "../../lib/site-url";
-import { getCurrentWebUser, type WebSessionUser } from "../auth-session";
 
 export const dynamic = "force-dynamic";
 
@@ -136,38 +136,34 @@ const getMarketSlug = (searchParams?: Record<string, string | string[] | undefin
 const showOperatorDiagnostics = (): boolean =>
   process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
 
-const dashboardErrorHint = (error: unknown, locale: AppLocale): string | null => {
-  if (!showOperatorDiagnostics() || !isApiResponseError(error)) return null;
+const dashboardErrorHint = (error: { status: number; code?: string | null; source?: string | null } | unknown, locale: AppLocale): string | null => {
+  if (!showOperatorDiagnostics()) return null;
+  const normalized = isApiResponseError(error)
+    ? { status: error.status, code: error.code, source: error.source }
+    : error && typeof error === "object" && "status" in error
+      ? error as { status: number; code?: string | null; source?: string | null }
+      : null;
+  if (!normalized) return null;
   const labels = locale === "en"
     ? { code: "error code", status: "route status", source: "source" }
     : locale === "zh-CN"
       ? { code: "错误代码", status: "路由状态", source: "来源" }
       : { code: "錯誤代碼", status: "路由狀態", source: "來源" };
-  return `${labels.code}: ${error.code ?? "unknown"} · ${labels.status}: ${error.status} · ${labels.source}: ${error.source ?? "same-site API"}`;
+  return `${labels.code}: ${normalized.code ?? "unknown"} · ${labels.status}: ${normalized.status} · ${labels.source}: ${normalized.source ?? "same-site API"}`;
 };
 
 export async function renderAmbassadorPage(locale: AppLocale, {
   searchParams,
-  currentUser,
-  dashboardLoader = getAmbassadorDashboard,
+  dashboardState,
 }: Readonly<{
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-  currentUser?: WebSessionUser | null;
-  dashboardLoader?: typeof getAmbassadorDashboard;
+  dashboardState?: AmbassadorDashboardState;
 }> = {}) {
   const copy = getLocaleCopy(locale).ambassador;
   const authCopy = getLocaleCopy(locale).auth;
   const pageCopy = ambassadorPageCopy[locale];
-  const user = currentUser === undefined ? await getCurrentWebUser() : currentUser;
-  let dashboard: Awaited<ReturnType<typeof getAmbassadorDashboard>> | null = null;
-  let dashboardError: unknown = null;
-  if (user) {
-    try {
-      dashboard = await dashboardLoader();
-    } catch (error) {
-      dashboardError = error;
-    }
-  }
+  const state = dashboardState ?? await resolveAmbassadorDashboardState();
+  const dashboard = state.kind === "ok" ? state.dashboard : null;
   const siteUrl = getSiteUrl();
   const resolvedSearchParams = await searchParams;
   const marketSlug = getMarketSlug(resolvedSearchParams);
@@ -210,7 +206,7 @@ export async function renderAmbassadorPage(locale: AppLocale, {
         </div>
       </SafetyDisclosure>
 
-      {!user ? (
+      {state.kind === "signed_out" ? (
         <section className="panel stack">
           <EmptyState title={authCopy.sessionRequired}>{pageCopy.signedOutBody}</EmptyState>
           <span className="sr-only">{pageCopy.copyMarketReferralLink}</span>
@@ -219,23 +215,22 @@ export async function renderAmbassadorPage(locale: AppLocale, {
             <a className="button-link secondary" href={getLocaleHref(locale, "/signup")}>{authCopy.signup}</a>
           </div>
         </section>
-      ) : dashboardError ? (
+      ) : state.kind === "expired_session" ? (
         <section className="panel stack">
-          <EmptyState title={isApiResponseError(dashboardError) && dashboardError.status === 401 ? pageCopy.expiredSession : pageCopy.dashboardUnavailable}>
-            {isApiResponseError(dashboardError) && dashboardError.status === 401 ? pageCopy.expiredSession : pageCopy.referralCodeNote}
-          </EmptyState>
-          {dashboardErrorHint(dashboardError, locale) ? (
-            <p className="muted mono">{dashboardErrorHint(dashboardError, locale)}</p>
+          <EmptyState title={pageCopy.expiredSession}>{pageCopy.expiredSession}</EmptyState>
+          <div className="market-actions">
+            <a className="button-link" href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
+          </div>
+        </section>
+      ) : state.kind === "unavailable" ? (
+        <section className="panel stack">
+          <EmptyState title={pageCopy.dashboardUnavailable}>{pageCopy.referralCodeNote}</EmptyState>
+          {dashboardErrorHint({ status: state.status, code: state.code, source: state.source }, locale) ? (
+            <p className="muted mono">{dashboardErrorHint({ status: state.status, code: state.code, source: state.source }, locale)}</p>
           ) : null}
-          {isApiResponseError(dashboardError) && dashboardError.status === 401 ? (
-            <div className="market-actions">
-              <a className="button-link" href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
-            </div>
-          ) : (
-            <div className="market-actions">
-              <a className="button-link" href={getLocaleHref(locale, "/ambassador")}>{locale === "en" ? "Retry" : locale === "zh-CN" ? "重新整理" : "重新整理"}</a>
-            </div>
-          )}
+          <div className="market-actions">
+            <a className="button-link" href={getLocaleHref(locale, "/ambassador")}>{locale === "en" ? "Retry" : locale === "zh-CN" ? "重新整理" : "重新整理"}</a>
+          </div>
         </section>
       ) : !dashboard?.ambassadorCode?.code ? (
         <section className="panel stack">
