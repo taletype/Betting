@@ -102,3 +102,13 @@ test("admin mock builder attribution keeps confirmed rewards pending until expli
   assert.doesNotMatch(source, /recordAdminMockBuilderTradeAttributionDb[\s\S]+set status = 'payable'/);
   assert.doesNotMatch(source, /recordAdminMockBuilderTradeAttributionDb[\s\S]+maybeCreateAutoPayoutRequest/);
 });
+
+test("ambassador payout requests atomically reserve payable rewards before returning", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
+
+  assert.match(source, /requestAmbassadorPayoutDb = async[\s\S]+return db\.transaction\(async \(transaction\) => \{/);
+  assert.match(source, /from public\.ambassador_reward_ledger[\s\S]+status = 'payable'[\s\S]+for update/);
+  assert.match(source, /reserved_by_payout_id = \$2::uuid/);
+  assert.match(source, /status = 'approved'/);
+  assert.match(source, /reserved_by_payout_id = \$2::uuid[\s\S]+if \(\(reserved\?\.amount \?\? 0n\) !== payableRewards\)/);
+});
