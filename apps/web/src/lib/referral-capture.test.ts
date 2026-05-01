@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   appendReferralToInternalHref,
   createReferralApplyIdempotencyKey,
+  isTerminalReferralApplyFailure,
   normalizeReferralCode,
   readReferralCodeFromSearch,
   selectReferralCodeToPersist,
@@ -60,4 +61,14 @@ test("referral rejection reasons are safe user-facing copy", () => {
   assert.equal(mapReferralRejectionReason("ambassador code is disabled"), "推薦碼已停用");
   assert.equal(mapReferralRejectionReason("self-referrals are not allowed"), "不能使用自己的推薦碼");
   assert.equal(mapReferralRejectionReason("same_user_multiple_ref_codes"), "已有推薦來源");
+});
+
+test("pending referral clears only after terminal apply failures", () => {
+  assert.equal(isTerminalReferralApplyFailure(400, "ambassador code is malformed"), true);
+  assert.equal(isTerminalReferralApplyFailure(400, "invalid ambassador code"), true);
+  assert.equal(isTerminalReferralApplyFailure(400, "ambassador code is disabled"), true);
+  assert.equal(isTerminalReferralApplyFailure(400, "self-referrals are not allowed"), true);
+  assert.equal(isTerminalReferralApplyFailure(500, "database unavailable"), false);
+  assert.equal(isTerminalReferralApplyFailure(401, "Authentication required"), false);
+  assert.equal(isTerminalReferralApplyFailure(429, "rate limited"), false);
 });

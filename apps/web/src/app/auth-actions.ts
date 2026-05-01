@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@bet/supabase/server";
 
 import { captureAmbassadorReferral } from "../lib/api";
+import { buildMagicLinkRedirectTo } from "../lib/auth-redirect";
 import { pendingReferralCookieName } from "../lib/referral-capture";
 import { isPublicSupabaseConfigError } from "../lib/supabase/config";
 
@@ -33,7 +34,7 @@ export const sendMagicLinkAction = async (formData: FormData) => {
     await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next.startsWith("/") ? next : "/account")}`,
+        emailRedirectTo: buildMagicLinkRedirectTo(getSiteUrl(), next),
       },
     });
   } catch (error) {

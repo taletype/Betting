@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 
+import { normalizeAuthNextPath } from "../../lib/auth-redirect";
 import { defaultLocale, getLocaleCopy } from "../../lib/locale";
 import { normalizeReferralCode } from "../../lib/referral-capture";
 import { pendingReferralPrimaryCopy, pendingReferralSecondaryCopy } from "../../lib/referral-ui";
@@ -15,7 +16,7 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const copy = getLocaleCopy(defaultLocale).auth;
-  const next = params?.next?.startsWith("/") ? params.next : "/account";
+  const next = normalizeAuthNextPath(params?.next);
   const refCode = normalizeReferralCode(params?.ref);
   const malformedRef = Boolean(params?.ref) && !refCode;
   const authUnavailable = params?.auth === "unavailable" && !hasPublicSupabaseConfig();

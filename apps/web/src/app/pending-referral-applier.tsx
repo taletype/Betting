@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { clearPendingReferralCode } from "./referral-capture";
 import {
   createReferralApplyIdempotencyKey,
+  isTerminalReferralApplyFailure,
   pendingReferralCookieName,
   pendingReferralStorageKey,
   referralAttributionResultStorageKey,
@@ -56,7 +57,9 @@ export function PendingReferralApplier() {
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
         writeResult({ status: "refused", code, reason: mapReferralRejectionReason(payload.error) ?? "推薦碼無效" });
-        clearPendingReferralCode();
+        if (isTerminalReferralApplyFailure(response.status, payload.error)) {
+          clearPendingReferralCode();
+        }
         trackFunnelEvent("referral_attribution_rejected", { code, reason: payload.error ?? "request_failed" });
         router.refresh();
         return;

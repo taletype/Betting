@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@bet/supabase/server";
+import { normalizeAuthNextPath } from "../../../lib/auth-redirect";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const requestedNext = requestUrl.searchParams.get("next") ?? "/account";
-  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/account";
+  const next = normalizeAuthNextPath(requestedNext);
   const response = NextResponse.redirect(new URL(next, requestUrl.origin));
 
   if (code) {
