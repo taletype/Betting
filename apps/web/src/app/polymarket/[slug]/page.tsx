@@ -391,8 +391,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
     if (reason === "wallet_funds_insufficient") return "增值錢包";
     if (reason === "credentials_missing") return "設定 Polymarket 交易權限";
     if (reason === "submit_mode_disabled" || reason === "submitter_unavailable" || reason === "feature_disabled") return "實盤提交已停用";
-    if (reason === "market_not_tradable") return "市場已關閉";
-    if (reason === "invalid_order") return "請輸入有效價格及數量";
+    if (reason === "market_not_tradable" || reason === "invalid_order") return "市場只供瀏覽";
     if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
     return copy.tradeViaPolymarket;
   };
@@ -455,6 +454,9 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
               <div className={`badge badge-${browseOnly ? "warning" : "success"}`}>{copy.statuses[market.status] ?? market.status}</div>
               <div className="badge badge-info">Beta</div>
               <div className="badge badge-success">非託管</div>
+              {browseOnly ? <div className="badge badge-warning">市場只供瀏覽</div> : null}
+              {!hasExternalMarketPriceData(market) ? <div className="badge badge-warning">暫無價格</div> : null}
+              {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
               {!submitModeEnabled ? <div className="badge badge-warning">實盤提交已停用</div> : null}
               {restricted ? <div className="badge badge-warning">市場受限制</div> : null}
             </div>
@@ -482,7 +484,7 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
             <p className="market-hero-warning">{copy.nonCustodialNotice}</p>
             {refCode ? <div className="banner banner-success">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice />}
             <div className="market-actions">
-              <button type="button" className="button-link primary-cta" disabled>{tradeActionLabel(topBlockingReason)}</button>
+              <button type="button" className="button-link primary-cta" disabled>{browseOnly ? "市場只供瀏覽" : tradeActionLabel(topBlockingReason)}</button>
               <TrackedCopyButton
                 value={baseMarketShareUrl}
                 label="複製市場連結"
@@ -502,8 +504,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
 
           {!marketTradable ? (
             <section className="panel disclosure-card stack">
-              <strong>市場已關閉</strong>
-              <p className="muted">此市場已關閉或已結算。</p>
+              <strong>市場只供瀏覽</strong>
+              <p className="muted">此市場已關閉、已結算、資料可能過期或暫無可用價格，因此不會進入交易準備流程。</p>
             </section>
           ) : null}
           {externalDataUnavailable ? (

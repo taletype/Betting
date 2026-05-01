@@ -23,6 +23,7 @@ import {
   listExternalMarketsWithMetadata,
   type ExternalMarketApiRecord,
   type ExternalMarketStatusQuery,
+  type ExternalMarketViewQuery,
   type ExternalMarketsLoadErrorCode,
 } from "../../lib/api";
 import {
@@ -31,6 +32,7 @@ import {
   isExternalMarketOpenNow,
   isExternalMarketStale,
 } from "../../lib/external-market-status";
+import { getMarketQualityScore } from "../../lib/external-market-ranking";
 import { formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { getOriginalMarketTitle, localizeMarketTitle, localizeOutcomeLabel } from "../../lib/market-localization";
 import { siteCopy } from "../../lib/i18n";
@@ -66,6 +68,8 @@ const feedCopy: Record<AppLocale, {
   rewardNote: string;
   eligibleRewards: string;
   controlsAria: string;
+  viewModesAria: string;
+  views: Array<["smart" | "all", string]>;
   search: string;
   searchPlaceholder: string;
   filter: string;
@@ -77,6 +81,26 @@ const feedCopy: Record<AppLocale, {
   statuses: Array<[string, string]>;
   sorts: Array<[string, string]>;
   staleWarning: string;
+  activeBadge: string;
+  lowVolumeBadge: string;
+  noPriceBadge: string;
+  browseOnlyBadge: string;
+  browseOnlyCta: string;
+  nonCustodialBadge: string;
+  userSignedBadge: string;
+  visibleCount: string;
+  totalSynced: string;
+  viewingSmart: string;
+  viewingAll: string;
+  loadMore: string;
+  previousPage: string;
+  nextPage: string;
+  smartEmptyTitle: string;
+  smartEmptyBody: string;
+  allEmptyTitle: string;
+  allEmptyBody: string;
+  searchEmpty: string;
+  clearSearch: string;
   loadFailedTitle: string;
   refreshMarkets: string;
   emptyTitle: string;
@@ -125,6 +149,8 @@ const feedCopy: Record<AppLocale, {
     rewardNote: "Reward note",
     eligibleRewards: "Eligible trades can earn rewards",
     controlsAria: "Polymarket market controls",
+    viewModesAria: "Polymarket market view",
+    views: [["smart", "Smart Feed"], ["all", "All Markets"]],
     search: "Search",
     searchPlaceholder: "Search markets, slug, or external ID",
     filter: "Filter",
@@ -133,9 +159,29 @@ const feedCopy: Record<AppLocale, {
     refresh: "Refresh",
     categoriesAria: "Polymarket categories",
     sortAria: "Polymarket sort",
-    statuses: [["all", "All"], ["open", "Open"], ["closing", "Closing soon"], ["volume", "High volume"], ["liquidity", "High liquidity"], ["closed", "Closed"]],
-    sorts: [["trending", "Trending"], ["volume", "Volume"], ["liquidity", "Liquidity"], ["latest", "Latest"], ["close", "Closing soon"]],
+    statuses: [["all", "All"], ["open", "Open"], ["closing", "Closing soon"], ["volume", "High volume"], ["liquidity", "High liquidity"], ["closed", "Closed"], ["resolved", "Resolved"], ["cancelled", "Cancelled"]],
+    sorts: [["trending", "Trending"], ["volume", "Volume"], ["liquidity", "Liquidity"], ["latest", "Latest"], ["close", "Closing soon"], ["quality", "Quality"]],
     staleWarning: "Market data may be stale. Please try again later.",
+    activeBadge: "Active",
+    lowVolumeBadge: "Low volume",
+    noPriceBadge: "No price",
+    browseOnlyBadge: "Browse only",
+    browseOnlyCta: "Browse only",
+    nonCustodialBadge: "Non-custodial",
+    userSignedBadge: "User-signed",
+    visibleCount: "Showing {count} markets",
+    totalSynced: "{count} synced markets",
+    viewingSmart: "Viewing: Smart Feed",
+    viewingAll: "Viewing: All Markets",
+    loadMore: "Load more",
+    previousPage: "Previous",
+    nextPage: "Next",
+    smartEmptyTitle: "No matching smart markets right now",
+    smartEmptyBody: "Switch to All Markets to browse every synced market.",
+    allEmptyTitle: "No synced market data right now",
+    allEmptyBody: "Please try again later.",
+    searchEmpty: "No markets found for \"{q}\"",
+    clearSearch: "Clear search",
     loadFailedTitle: "Market data could not be refreshed",
     refreshMarkets: "Refresh markets",
     emptyTitle: "No market data right now",
@@ -184,6 +230,8 @@ const feedCopy: Record<AppLocale, {
     rewardNote: "返佣說明",
     eligibleRewards: "符合條件的交易可獲返佣",
     controlsAria: "Polymarket market controls",
+    viewModesAria: "Polymarket 市場檢視",
+    views: [["smart", "熱門市場"], ["all", "全部市場"]],
     search: "搜尋",
     searchPlaceholder: "搜尋市場、slug 或外部 ID",
     filter: "篩選",
@@ -192,9 +240,29 @@ const feedCopy: Record<AppLocale, {
     refresh: "刷新",
     categoriesAria: "Polymarket 類別",
     sortAria: "Polymarket 排序",
-    statuses: [["all", "全部"], ["open", "開放"], ["closing", "即將結束"], ["volume", "高成交量"], ["liquidity", "高流動性"], ["closed", "已結束"]],
-    sorts: [["trending", "熱門"], ["volume", "成交量"], ["liquidity", "流動性"], ["latest", "最新"], ["close", "即將結束"]],
+    statuses: [["all", "全部"], ["open", "開放"], ["closing", "即將結束"], ["volume", "高成交量"], ["liquidity", "高流動性"], ["closed", "已結束"], ["resolved", "已解決"], ["cancelled", "已取消"]],
+    sorts: [["trending", "熱門"], ["volume", "成交量"], ["liquidity", "流動性"], ["latest", "最新"], ["close", "即將結束"], ["quality", "品質"]],
     staleWarning: "市場資料可能已過期，請稍後再試。",
+    activeBadge: "活躍",
+    lowVolumeBadge: "低成交量",
+    noPriceBadge: "暫無價格",
+    browseOnlyBadge: "只供瀏覽",
+    browseOnlyCta: "市場只供瀏覽",
+    nonCustodialBadge: "非託管",
+    userSignedBadge: "用戶自行簽署",
+    visibleCount: "顯示 {count} 個市場",
+    totalSynced: "共 {count} 個已同步市場",
+    viewingSmart: "正在查看：熱門市場",
+    viewingAll: "正在查看：全部市場",
+    loadMore: "載入更多",
+    previousPage: "上一頁",
+    nextPage: "下一頁",
+    smartEmptyTitle: "暫時未有符合條件的熱門市場",
+    smartEmptyBody: "可切換至「全部市場」查看所有已同步市場",
+    allEmptyTitle: "暫時未有已同步市場資料",
+    allEmptyBody: "請稍後再試",
+    searchEmpty: "找不到符合「{q}」的市場",
+    clearSearch: "清除搜尋",
     loadFailedTitle: "市場資料暫時未能更新",
     refreshMarkets: "重新整理市場",
     emptyTitle: "暫時未有市場資料",
@@ -243,6 +311,8 @@ const feedCopy: Record<AppLocale, {
     rewardNote: "返佣说明",
     eligibleRewards: "符合条件的交易可获返佣",
     controlsAria: "Polymarket market controls",
+    viewModesAria: "Polymarket 市场视图",
+    views: [["smart", "热门市场"], ["all", "全部市场"]],
     search: "搜索",
     searchPlaceholder: "搜索市场、slug 或外部 ID",
     filter: "筛选",
@@ -251,9 +321,29 @@ const feedCopy: Record<AppLocale, {
     refresh: "刷新",
     categoriesAria: "Polymarket 类别",
     sortAria: "Polymarket 排序",
-    statuses: [["all", "全部"], ["open", "开放"], ["closing", "即将结束"], ["volume", "高成交量"], ["liquidity", "高流动性"], ["closed", "已结束"]],
-    sorts: [["trending", "热门"], ["volume", "成交量"], ["liquidity", "流动性"], ["latest", "最新"], ["close", "即将结束"]],
+    statuses: [["all", "全部"], ["open", "开放"], ["closing", "即将结束"], ["volume", "高成交量"], ["liquidity", "高流动性"], ["closed", "已结束"], ["resolved", "已解决"], ["cancelled", "已取消"]],
+    sorts: [["trending", "热门"], ["volume", "成交量"], ["liquidity", "流动性"], ["latest", "最新"], ["close", "即将结束"], ["quality", "品质"]],
     staleWarning: "市场数据可能已过期，请稍后再试。",
+    activeBadge: "活跃",
+    lowVolumeBadge: "低成交量",
+    noPriceBadge: "暂无价格",
+    browseOnlyBadge: "只供浏览",
+    browseOnlyCta: "市场只供浏览",
+    nonCustodialBadge: "非托管",
+    userSignedBadge: "用户自行签署",
+    visibleCount: "显示 {count} 个市场",
+    totalSynced: "共 {count} 个已同步市场",
+    viewingSmart: "正在查看：热门市场",
+    viewingAll: "正在查看：全部市场",
+    loadMore: "加载更多",
+    previousPage: "上一页",
+    nextPage: "下一页",
+    smartEmptyTitle: "暂时没有符合条件的热门市场",
+    smartEmptyBody: "可切换至「全部市场」查看所有已同步市场",
+    allEmptyTitle: "暂时没有已同步市场数据",
+    allEmptyBody: "请稍后再试",
+    searchEmpty: "找不到符合“{q}”的市场",
+    clearSearch: "清除搜索",
     loadFailedTitle: "市场数据暂时未能更新",
     refreshMarkets: "重新整理市场",
     emptyTitle: "暂时没有市场数据",
@@ -336,6 +426,9 @@ interface MarketFeedSearchParams {
   sort?: string;
   ref?: string;
   market?: string;
+  view?: string;
+  offset?: string;
+  limit?: string;
 }
 
 const toTime = (value: string | null | undefined): number | null => {
@@ -345,6 +438,24 @@ const toTime = (value: string | null | undefined): number | null => {
 };
 
 const isDefaultFeedStatus = (status: string | undefined): boolean => !status || !["all", "open", "closing", "volume", "liquidity", "closed", "resolved", "cancelled"].includes(status);
+
+const normalizeFeedView = (view: string | undefined): ExternalMarketViewQuery => view === "all" ? "all" : "smart";
+
+const normalizeFeedStatus = (view: ExternalMarketViewQuery, status: string | undefined): string => {
+  if (status && ["all", "open", "closing", "volume", "liquidity", "closed", "resolved", "cancelled"].includes(status)) {
+    return status;
+  }
+  return view === "all" ? "all" : "open";
+};
+
+const normalizeFeedSort = (sort: string | undefined): "trending" | "volume" | "liquidity" | "latest" | "close" | "quality" =>
+  sort === "volume" || sort === "liquidity" || sort === "latest" || sort === "close" || sort === "quality" ? sort : "trending";
+
+const normalizePositiveInteger = (value: string | undefined, fallback: number, max: number): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(max, Math.trunc(parsed));
+};
 
 const isDefaultFeedMarket = (market: ExternalMarketApiRecord): boolean =>
   isExternalMarketOpenNow(market) &&
@@ -358,17 +469,15 @@ const isExplicitlyStaleMarket = (market: ExternalMarketApiRecord): boolean => {
 };
 
 const qualityScore = (market: ExternalMarketApiRecord): number =>
-  (market.status === "open" ? 8 : 0) +
-  (hasExternalMarketActivity(market) ? 4 : 0) +
-  (hasExternalMarketPriceData(market) ? 2 : 0) +
-  (!isExternalMarketStale(market) ? 1 : 0);
+  getMarketQualityScore(market);
 
 const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: MarketFeedSearchParams) => {
   const q = params?.q?.trim().toLowerCase() ?? "";
-  const status = params?.status?.trim();
-  const sort = params?.sort ?? "trending";
+  const view = normalizeFeedView(params?.view);
+  const status = normalizeFeedStatus(view, params?.status?.trim());
+  const sort = normalizeFeedSort(params?.sort);
   const market = params?.market?.trim().toLowerCase() ?? "";
-  const defaultFeed = isDefaultFeedStatus(status);
+  const defaultFeed = view === "smart" && isDefaultFeedStatus(params?.status?.trim());
   const defaultCandidate = (item: ExternalMarketApiRecord, allowStale: boolean): boolean =>
     isExternalMarketOpenNow(item) &&
     hasExternalMarketActivity(item) &&
@@ -381,18 +490,21 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
     if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
       return false;
     }
-    if (defaultFeed || status === "open") {
+    if (view === "smart" && (defaultFeed || status === "open")) {
       return defaultCandidate(item, allowStaleDefault);
+    }
+    if (view === "all" && status === "open") {
+      return isExternalMarketOpenNow(item);
     }
     if (status === "closing") {
       const closeTime = toTime(item.closeTime);
-      return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && closeTime !== null && closeTime > Date.now() && closeTime <= Date.now() + 72 * 60 * 60 * 1000;
+      return isExternalMarketOpenNow(item) && closeTime !== null && closeTime > Date.now() && closeTime <= Date.now() + 72 * 60 * 60 * 1000;
     }
     if (status === "volume") {
-      return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.volume24h ?? item.volumeTotal ?? 0) > 0;
+      return isExternalMarketOpenNow(item) && (item.volume24h ?? item.volumeTotal ?? 0) > 0;
     }
     if (status === "liquidity") {
-      return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.liquidity ?? 0) > 0;
+      return isExternalMarketOpenNow(item) && (item.liquidity ?? 0) > 0;
     }
     if (status === "closed") {
       return item.status === "closed" || item.status === "resolved" || item.status === "cancelled";
@@ -411,6 +523,7 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
         return aTime - bTime;
       }
       if (sort === "latest") return (toTime(b.createdAt) ?? 0) - (toTime(a.createdAt) ?? 0);
+      if (sort === "quality") return qualityScore(b) - qualityScore(a);
       const volumeDelta = (b.volume24h ?? 0) - (a.volume24h ?? 0);
       if (volumeDelta !== 0) return volumeDelta;
       const liquidityDelta = (b.liquidity ?? b.volumeTotal ?? 0) - (a.liquidity ?? a.volumeTotal ?? 0);
@@ -433,8 +546,12 @@ const buildFeedHref = (params: MarketFeedSearchParams | undefined, next: MarketF
 
   if (merged.q) search.set("q", merged.q);
   if (merged.status) search.set("status", merged.status);
+  if (merged.view && merged.view !== "smart") search.set("view", merged.view);
   if (merged.sort && merged.sort !== "trending") search.set("sort", merged.sort);
+  if (merged.market) search.set("market", merged.market);
   if (merged.ref) search.set("ref", merged.ref);
+  if (merged.limit) search.set("limit", merged.limit);
+  if (merged.offset) search.set("offset", merged.offset);
 
   const query = search.toString();
   return query ? `/polymarket?${query}` : "/polymarket";
@@ -491,6 +608,40 @@ const buildDetailHref = (locale: AppLocale, market: ExternalMarketApiRecord, ref
   return `${getLocaleHref(locale, `/polymarket/${encodeURIComponent(routeKey)}`)}?${search.toString()}`;
 };
 
+const isBrowseOnlyMarket = (market: ExternalMarketApiRecord): boolean =>
+  !isExternalMarketOpenNow(market) ||
+  isExternalMarketStale(market) ||
+  !hasExternalMarketPriceData(market) ||
+  market.status === "closed" ||
+  market.status === "resolved" ||
+  market.status === "cancelled";
+
+const getMarketBadges = (market: ExternalMarketApiRecord, ui: (typeof feedCopy)[AppLocale]): string[] => {
+  const badges = new Set<string>();
+  if (isExternalMarketOpenNow(market) && !isExternalMarketStale(market)) badges.add(ui.activeBadge);
+  if ((market.volume24h ?? market.volumeTotal ?? 0) <= 0) badges.add(ui.lowVolumeBadge);
+  if (!hasExternalMarketPriceData(market)) badges.add(ui.noPriceBadge);
+  if (isExternalMarketStale(market)) badges.add(ui.staleData);
+  if (market.status === "closed") badges.add(ui.tableHeaders[0] === "Status" ? "Closed" : ui.tableHeaders[0] === "状态" ? "已结束" : "已結束");
+  if (market.status === "resolved") badges.add(ui.tableHeaders[0] === "Status" ? "Resolved" : ui.tableHeaders[0] === "状态" ? "已解决" : "已解決");
+  if (market.status === "cancelled") badges.add(ui.tableHeaders[0] === "Status" ? "Cancelled" : ui.tableHeaders[0] === "状态" ? "已取消" : "已取消");
+  if (isBrowseOnlyMarket(market)) badges.add(ui.browseOnlyBadge);
+  badges.add(ui.nonCustodialBadge);
+  if (!isBrowseOnlyMarket(market)) badges.add(ui.userSignedBadge);
+  return [...badges];
+};
+
+const getMarketActionLabel = (
+  market: ExternalMarketApiRecord,
+  _topReason: PolymarketRoutingReadiness | null,
+  _disabledReasonLabel: (reason: PolymarketRoutingReadiness) => string,
+  copy: ReturnType<typeof getLocaleCopy>["research"],
+  ui: (typeof feedCopy)[AppLocale],
+): string => {
+  if (isBrowseOnlyMarket(market)) return ui.browseOnlyCta;
+  return copy.tradeViaPolymarket;
+};
+
 const isAllowlistedPolymarketBetaUser = (user: { id: string; email: string | null } | null): boolean => {
   if (!user) return false;
   const allowlist = (process.env.POLYMARKET_ROUTED_TRADING_ALLOWLIST ?? "")
@@ -504,6 +655,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const copy = getLocaleCopy(locale).research;
   const ui = feedCopy[locale];
   let markets: ExternalMarketApiRecord[] = [];
+  let pagination: Awaited<ReturnType<typeof listExternalMarketsWithMetadata>>["pagination"];
   let loadFailed = false;
   let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
@@ -523,12 +675,26 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
     : routedTradingEnabled
       ? (locale === "en" ? "Trading preview enabled; live submission remains disabled" : locale === "zh-CN" ? "交易界面预览已启用；实盘提交仍然停用" : "交易介面預覽已啟用；實盤提交仍然停用")
       : (locale === "en" ? "Trading preview; live submission disabled" : locale === "zh-CN" ? "交易界面预览；实盘提交停用" : "交易介面預覽；實盤提交停用");
-  const normalizedParams: MarketFeedSearchParams = { ...params, ref: refCode ?? params?.ref ?? undefined };
+  const selectedView = normalizeFeedView(params?.view);
+  const selectedStatus = normalizeFeedStatus(selectedView, params?.status?.trim());
+  const selectedSort = normalizeFeedSort(params?.sort);
+  const selectedLimit = normalizePositiveInteger(params?.limit, 100, 250);
+  const selectedOffset = normalizePositiveInteger(params?.offset, 0, Number.MAX_SAFE_INTEGER);
+  const normalizedParams: MarketFeedSearchParams = {
+    ...params,
+    view: selectedView === "all" ? "all" : undefined,
+    status: selectedStatus,
+    sort: selectedSort === "trending" ? undefined : selectedSort,
+    limit: params?.limit,
+    offset: params?.offset,
+    ref: refCode ?? params?.ref ?? undefined,
+  };
   const dataReadiness = getPublicExternalMarketsReadiness();
-  const selectedStatus = params?.status?.trim();
-  const defaultFeed = isDefaultFeedStatus(selectedStatus);
+  const defaultFeed = selectedView === "smart" && selectedStatus === "open";
   const requestedStatus: ExternalMarketStatusQuery =
-    !selectedStatus || defaultFeed
+    selectedView === "all" && (!params?.status || selectedStatus === "all")
+      ? "all"
+      : !selectedStatus || defaultFeed
       ? "open"
       : selectedStatus === "all" || selectedStatus === "closed"
         ? "all"
@@ -537,8 +703,17 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         : "open";
 
   try {
-    const result = await listExternalMarketsWithMetadata(locale, requestedStatus);
+    const result = await listExternalMarketsWithMetadata({
+      locale,
+      status: requestedStatus,
+      view: selectedView,
+      q: params?.q,
+      sort: selectedSort,
+      limit: params?.limit ? selectedLimit : undefined,
+      offset: params?.offset ? selectedOffset : undefined,
+    });
     markets = result.markets.filter((market) => market.source === "polymarket");
+    pagination = result.pagination;
     fallbackUsed = result.fallbackUsed || result.diagnostics?.fallbackUsedLastRequest === true;
   } catch (error) {
     loadFailed = true;
@@ -638,32 +813,49 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       <section className="market-command-center stack" aria-label={ui.controlsAria}>
         <form className="filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
           {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
+          {selectedView === "all" ? <input type="hidden" name="view" value="all" /> : null}
+          {params?.limit ? <input type="hidden" name="limit" value={String(selectedLimit)} /> : null}
           <label className="stack">
             {ui.search}
             <input name="q" defaultValue={params?.q ?? ""} placeholder={ui.searchPlaceholder} />
           </label>
           <label className="stack">
             {ui.filter}
-            <select name="status" defaultValue={defaultFeed ? "open" : selectedStatus}>
+            <select name="status" defaultValue={selectedStatus}>
               {ui.statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label className="stack">
             {ui.sort}
-            <select name="sort" defaultValue={params?.sort ?? "trending"}>
+            <select name="sort" defaultValue={selectedSort}>
               {ui.sorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <button type="submit">{ui.apply}</button>
-          <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>{ui.refresh}</Link>
+          <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { offset: undefined })}>{ui.refresh}</Link>
         </form>
         <div className="market-feed-nav">
+          <nav className="segmented-control" aria-label={ui.viewModesAria}>
+            {ui.views.map(([view, label]) => (
+              <Link
+                key={view}
+                className={`tab-link ${selectedView === view ? "active" : ""}`}
+                href={buildLocalizedFeedHref(locale, normalizedParams, {
+                  view: view === "all" ? "all" : undefined,
+                  status: view === "all" ? "all" : "open",
+                  offset: undefined,
+                })}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
           <nav className="chip-row" aria-label={ui.categoriesAria}>
             {ui.statuses.map(([status, label]) => (
               <Link
                 key={status}
-                className={`chip ${((defaultFeed ? "open" : selectedStatus) === status) ? "active" : ""}`}
-                href={buildLocalizedFeedHref(locale, normalizedParams, { status })}
+                className={`chip ${selectedStatus === status ? "active" : ""}`}
+                href={buildLocalizedFeedHref(locale, normalizedParams, { status, offset: undefined })}
               >
                 {label}
               </Link>
@@ -673,8 +865,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             {ui.sorts.map(([sort, label]) => (
               <Link
                 key={sort}
-                className={`tab-link ${((params?.sort ?? "trending") === sort) ? "active" : ""}`}
-                href={buildLocalizedFeedHref(locale, normalizedParams, { sort })}
+                className={`tab-link ${selectedSort === sort ? "active" : ""}`}
+                href={buildLocalizedFeedHref(locale, normalizedParams, { sort, offset: undefined })}
               >
                 {label}
               </Link>
@@ -684,6 +876,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
       </section>
       {staleMarketsPresent ? (
         <div className="banner banner-warning">{ui.staleWarning}</div>
+      ) : null}
+      {!loadFailed ? (
+        <div className="market-feed-summary-row">
+          <span className="badge badge-info">{selectedView === "all" ? ui.viewingAll : ui.viewingSmart}</span>
+          <span className="muted">{ui.visibleCount.replace("{count}", String(pagination?.returnedCount ?? visibleMarkets.length))}</span>
+          {typeof pagination?.totalCount === "number" ? (
+            <span className="muted">{ui.totalSynced.replace("{count}", pagination.totalCount.toLocaleString(locale))}</span>
+          ) : null}
+        </div>
       ) : null}
       <section className="stack">
         {loadFailed ? (
@@ -711,11 +912,13 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
-            <strong>{ui.emptyTitle}</strong>
-            <p>{defaultFeed && staleOpenMarketsPresent ? ui.staleWarning : ui.emptyTitle}</p>
+            <strong>{params?.q ? ui.searchEmpty.replace("{q}", params.q) : selectedView === "all" ? ui.allEmptyTitle : ui.smartEmptyTitle}</strong>
+            <p>{defaultFeed && staleOpenMarketsPresent ? ui.staleWarning : selectedView === "all" ? ui.allEmptyBody : ui.smartEmptyBody}</p>
             <span className="sr-only">{ui.emptyActiveSr}</span>
-            {defaultFeed ? (
-              <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>{ui.viewAllMarkets}</Link>
+            {params?.q ? (
+              <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { q: undefined, offset: undefined })}>{ui.clearSearch}</Link>
+            ) : selectedView === "smart" ? (
+              <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { view: "all", status: "all", offset: undefined })}>{ui.viewAllMarkets}</Link>
             ) : (
               <ul>
                 <li>{copy.emptyDetails.externalMarketsEmpty}</li>
@@ -737,10 +940,12 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   const detailPath = buildDetailHref(locale, market, refCode);
                   const marketTopReason = getPolymarketTopBlockingReason({
                     ...statusInput,
-                    marketTradable: market.status === "open" && !isExternalMarketStale(market),
+                    marketTradable: !isBrowseOnlyMarket(market),
                     orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && (market.lastTradePrice ?? market.bestAsk ?? market.bestBid)),
                   });
                   const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+                  const marketActionLabel = getMarketActionLabel(market, marketTopReason, disabledReasonLabel, copy, ui);
+                  const marketBadges = getMarketBadges(market, ui);
                   const stale = isExternalMarketStale(market);
 
                   return (
@@ -748,7 +953,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <td>
                         <div className="stack">
                           <span className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</span>
-                          {stale ? <span className="badge badge-warning">{ui.staleData}</span> : null}
+                          {marketBadges.slice(0, 4).map((badge) => (
+                            <span className={`badge badge-${badge === ui.activeBadge || badge === ui.nonCustodialBadge ? "success" : "warning"}`} key={badge}>{badge}</span>
+                          ))}
                         </div>
                       </td>
                       <td>
@@ -779,8 +986,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       </td>
                       <td>
                         <div className="table-actions">
-                          <Link className="button-link primary-cta" href={detailPath}>{copy.tradeViaPolymarket}</Link>
-                          <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
+                          <Link className="button-link primary-cta" href={detailPath}>{marketActionLabel}</Link>
+                          <span className="muted disabled-inline-reason">{isBrowseOnlyMarket(market) ? ui.browseOnlyBadge : marketDisabledLabel}</span>
                           <Link className="button-link secondary" href={detailPath}>{ui.marketDetails}</Link>
                         </div>
                       </td>
@@ -795,15 +1002,17 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             const detailPath = buildDetailHref(locale, market, refCode);
             const marketTopReason = getPolymarketTopBlockingReason({
               ...statusInput,
-              marketTradable: market.status === "open",
-              orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && market.lastTradePrice),
+              marketTradable: !isBrowseOnlyMarket(market),
+              orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && hasExternalMarketPriceData(market)),
             });
             const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+            const marketActionLabel = getMarketActionLabel(market, marketTopReason, disabledReasonLabel, copy, ui);
             const marketShareUrl = `${getSiteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
             const closeState = getCloseState(market, locale);
             const stale = isExternalMarketStale(market);
             const noTradeData = !hasExternalMarketActivity(market) || !hasExternalMarketPriceData(market);
+            const marketBadges = getMarketBadges(market, ui);
 
             return (
             <div key={`${market.source}:${market.externalId}`} className="panel stack market-card">
@@ -813,7 +1022,9 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="market-card-meta">
                     <div className="badge badge-neutral"><span className="source-dot" aria-hidden="true" />POLYMARKET</div>
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
-                    {stale ? <div className="badge badge-warning">{ui.staleData}</div> : null}
+                    {marketBadges.map((badge) => (
+                      <div className={`badge badge-${badge === ui.activeBadge || badge === ui.nonCustodialBadge || badge === ui.userSignedBadge ? "success" : "warning"}`} key={badge}>{badge}</div>
+                    ))}
                     {noTradeData ? <div className="badge badge-warning">{ui.noTradeData}</div> : null}
                     {translationBadge(market, locale) ? <div className="badge badge-warning">{translationBadge(market, locale)}</div> : null}
                   </div>
@@ -859,8 +1070,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 {copy.closeTime}: {market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"} · {copy.resolution}: {copy.statuses[market.status] ?? market.status} · {copy.source}: {market.source} · {copy.provenance}: {formatProvenance(market)} · {copy.lastSynced}: {market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}
               </div>
               <div className="market-actions compact-actions">
-                <Link className="button-link primary-cta" href={detailPath}>{copy.tradeViaPolymarket}</Link>
-                <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
+                <Link className="button-link primary-cta" href={detailPath}>{marketActionLabel}</Link>
+                <span className="muted disabled-inline-reason">{isBrowseOnlyMarket(market) ? ui.browseOnlyBadge : marketDisabledLabel}</span>
                 <Link className="button-link secondary" href={detailPath}>{ui.marketDetails}</Link>
                 <TrackedCopyButton
                   value={marketShareUrl}
@@ -898,6 +1109,43 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             );
           })}
           </div>
+          {pagination ? (
+            <nav className="pagination-controls" aria-label="Market pagination">
+              {selectedOffset > 0 ? (
+                <Link
+                  className="button-link secondary"
+                  href={buildLocalizedFeedHref(locale, normalizedParams, {
+                    offset: String(Math.max(0, selectedOffset - pagination.limit)),
+                    limit: String(pagination.limit),
+                  })}
+                >
+                  {ui.previousPage}
+                </Link>
+              ) : null}
+              {pagination.nextOffset !== null ? (
+                <>
+                  <Link
+                    className="button-link secondary"
+                    href={buildLocalizedFeedHref(locale, normalizedParams, {
+                      offset: String(pagination.nextOffset),
+                      limit: String(pagination.limit),
+                    })}
+                  >
+                    {ui.nextPage}
+                  </Link>
+                  <Link
+                    className="button-link primary-cta"
+                    href={buildLocalizedFeedHref(locale, normalizedParams, {
+                      offset: String(pagination.nextOffset),
+                      limit: String(pagination.limit),
+                    })}
+                  >
+                    {ui.loadMore}
+                  </Link>
+                </>
+              ) : null}
+            </nav>
+          ) : null}
           </>
         )}
       </section>

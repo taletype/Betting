@@ -18,6 +18,51 @@ export interface FetchPolymarketGammaMarketsOptions {
   timeoutMs?: number;
 }
 
+export interface FetchPolymarketGammaEventMarketsPageOptions {
+  limit?: number;
+  offset?: number;
+  active?: boolean;
+  closed?: boolean;
+  order?: string;
+  ascending?: boolean;
+  timeoutMs?: number;
+}
+
+export interface PolymarketGammaEventMarketsPage {
+  records: PolymarketGammaRecord[];
+  rawCount: number;
+  limit: number;
+  offset: number;
+  nextOffset: number | null;
+  endpointPath: string;
+}
+
+export interface FetchAllPolymarketGammaEventMarketsOptions {
+  pageSize?: number;
+  maxPages?: number;
+  maxMarkets?: number;
+  active?: boolean;
+  closed?: boolean;
+  order?: string;
+  ascending?: boolean;
+  timeoutMs?: number;
+  dedupe?: boolean;
+}
+
+export interface FetchAllPolymarketGammaEventMarketsResult {
+  records: PolymarketGammaRecord[];
+  pagesFetched: number;
+  rawRecordsSeen: number;
+  uniqueMarkets: number;
+  maxPagesReached: boolean;
+  maxMarketsReached: boolean;
+}
+
+const clampInteger = (value: number, min: number, max: number): number => {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+};
+
 const fetchGammaPayload = async (
   endpoint: string,
   timeoutMs: number,
@@ -133,12 +178,22 @@ export const fetchPolymarketGammaMarkets = async (
 export const fetchPolymarketGammaEventMarkets = async (
   options: Omit<FetchPolymarketGammaMarketsOptions, "slug"> = {},
 ): Promise<PolymarketGammaRecord[]> => {
+  const page = await fetchPolymarketGammaEventMarketsPage(options);
+  return page.records;
+};
+
+export const fetchPolymarketGammaEventMarketsPage = async (
+  options: FetchPolymarketGammaEventMarketsPageOptions = {},
+): Promise<PolymarketGammaEventMarketsPage> => {
+  const limit = clampInteger(options.limit ?? 100, 1, 500);
+  const offset = Math.max(0, Math.trunc(options.offset ?? 0));
   const params = new URLSearchParams();
-  params.set("active", "true");
-  params.set("closed", "false");
-  params.set("order", "volume_24hr");
-  params.set("ascending", "false");
-  params.set("limit", String(options.limit ?? 50));
+  params.set("active", String(options.active ?? true));
+  params.set("closed", String(options.closed ?? false));
+  params.set("order", options.order ?? "volume_24hr");
+  params.set("ascending", String(options.ascending ?? false));
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
 
   const endpointPath = `/events?${params.toString()}`;
   const payload = await fetchGammaPayload(
@@ -146,7 +201,81 @@ export const fetchPolymarketGammaEventMarkets = async (
     options.timeoutMs ?? DEFAULT_GAMMA_TIMEOUT_MS,
   );
 
-  return mapGammaEventsPayload(payload, endpointPath);
+  if (!Array.isArray(payload)) {
+    throw new Error("polymarket gamma events response was not an array");
+  }
+
+  return {
+    records: mapGammaEventsPayload(payload, endpointPath),
+    rawCount: payload.length,
+    limit,
+    offset,
+    nextOffset: payload.length === 0 || payload.length < limit ? null : offset + limit,
+    endpointPath,
+  };
+};
+
+export const fetchAllPolymarketGammaEventMarkets = async (
+  options: FetchAllPolymarketGammaEventMarketsOptions = {},
+): Promise<FetchAllPolymarketGammaEventMarketsResult> => {
+  const pageSize = clampInteger(options.pageSize ?? 100, 1, 500);
+  const maxPages = clampInteger(options.maxPages ?? 50, 1, Number.MAX_SAFE_INTEGER);
+  const maxMarkets = clampInteger(options.maxMarkets ?? 5_000, 1, Number.MAX_SAFE_INTEGER);
+  const dedupe = options.dedupe ?? true;
+  const records: PolymarketGammaRecord[] = [];
+  const seenExternalIds = new Set<string>();
+  let pagesFetched = 0;
+  let rawRecordsSeen = 0;
+  let offset = 0;
+  let nextOffset: number | null = 0;
+  let maxPagesReached = false;
+  let maxMarketsReached = false;
+
+  while (nextOffset !== null && pagesFetched < maxPages && records.length < maxMarkets) {
+    const page = await fetchPolymarketGammaEventMarketsPage({
+      active: options.active ?? true,
+      closed: options.closed ?? false,
+      order: options.order ?? "volume_24hr",
+      ascending: options.ascending ?? false,
+      timeoutMs: options.timeoutMs,
+      limit: pageSize,
+      offset,
+    });
+
+    pagesFetched += 1;
+    rawRecordsSeen += page.records.length;
+
+    for (const record of page.records) {
+      if (dedupe && seenExternalIds.has(record.market.externalId)) {
+        continue;
+      }
+      seenExternalIds.add(record.market.externalId);
+      records.push(record);
+      if (records.length >= maxMarkets) {
+        break;
+      }
+    }
+
+    maxMarketsReached = records.length >= maxMarkets;
+    nextOffset = maxMarketsReached ? page.nextOffset : page.nextOffset;
+    offset = page.nextOffset ?? offset;
+    if (page.nextOffset === null) {
+      break;
+    }
+  }
+
+  if (nextOffset !== null && pagesFetched >= maxPages) {
+    maxPagesReached = true;
+  }
+
+  return {
+    records,
+    pagesFetched,
+    rawRecordsSeen,
+    uniqueMarkets: seenExternalIds.size || records.length,
+    maxPagesReached,
+    maxMarketsReached,
+  };
 };
 
 export const fetchPolymarketGammaMarketBySlugOrId = async (

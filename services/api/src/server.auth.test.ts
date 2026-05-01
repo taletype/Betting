@@ -401,7 +401,9 @@ test("wallet link route rejects unverified wallet ownership", async () => {
     );
 
     assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /invalid wallet link challenge|user mismatch/);
+    const payload = await response.json() as { code?: string; message?: string };
+    assert.equal(payload.code, "signature_mismatch");
+    assert.match(payload.message ?? "", /簽署錢包與驗證錢包不一致/);
   } finally {
     server.setApiAuthVerifierForTests(null);
   }

@@ -14,6 +14,13 @@ type SupabaseLike = {
 interface ExternalMarketCacheStatusRow {
   is_active: boolean | null;
   stale_after: string | null;
+  resolution_status?: string | null;
+  best_bid?: string | number | null;
+  best_ask?: string | number | null;
+  volume?: string | number | null;
+  liquidity?: string | number | null;
+  outcomes?: unknown;
+  last_synced_at?: string | null;
 }
 
 interface ExternalMarketSyncRunRow {
@@ -71,6 +78,57 @@ const toIsoOrNull = (value: string | null | undefined): string | null => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
+const readNumber = (value: string | number | null | undefined): number | null => {
+  const parsed = typeof value === "number" ? value : Number(value ?? NaN);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const readOutcomePrice = (value: unknown): boolean => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return [record.lastPrice, record.bestBid, record.bestAsk].some((entry) => {
+    const parsed = typeof entry === "number" ? entry : Number(entry ?? NaN);
+    return Number.isFinite(parsed) && parsed > 0;
+  });
+};
+
+const hasPriceData = (row: ExternalMarketCacheStatusRow): boolean =>
+  [row.best_bid, row.best_ask].some((value) => (readNumber(value) ?? 0) > 0) ||
+  (Array.isArray(row.outcomes) && row.outcomes.some(readOutcomePrice));
+
+const hasActivity = (row: ExternalMarketCacheStatusRow): boolean =>
+  (readNumber(row.volume) ?? 0) > 0 || (readNumber(row.liquidity) ?? 0) > 0;
+
+const isStale = (row: ExternalMarketCacheStatusRow, now: number): boolean =>
+  !row.stale_after || new Date(row.stale_after).getTime() <= now;
+
+const getRowStatus = (row: ExternalMarketCacheStatusRow): "open" | "closed" | "resolved" | "cancelled" => {
+  if (row.resolution_status === "resolved") return "resolved";
+  if (row.resolution_status === "cancelled" || row.resolution_status === "canceled") return "cancelled";
+  if (row.resolution_status === "closed" || row.is_active === false) return "closed";
+  return "open";
+};
+
+const sanitizedDiagnostics = (diagnostics: unknown): Record<string, unknown> | null => {
+  if (!diagnostics || typeof diagnostics !== "object") return null;
+  const record = diagnostics as Record<string, unknown>;
+  const allowed = [
+    "syncMode",
+    "upstream",
+    "fetchedVia",
+    "pagesFetched",
+    "rawRecordsSeen",
+    "uniqueMarkets",
+    "maxPagesReached",
+    "maxMarketsReached",
+    "archiveClosedAttempted",
+    "archiveClosedError",
+    "clobReadEnabled",
+    "privateTradingEndpointsUsed",
+  ];
+  return Object.fromEntries(allowed.filter((key) => key in record).map((key) => [key, record[key]]));
+};
+
 const readCacheRows = async (supabase: SupabaseLike): Promise<ExternalMarketCacheStatusRow[]> => {
   const { data, error } = await (supabase.from("external_market_cache") as {
     select: (columns: string) => {
@@ -83,11 +141,11 @@ const readCacheRows = async (supabase: SupabaseLike): Promise<ExternalMarketCach
       };
     };
   })
-    .select("is_active, stale_after")
+    .select("is_active, stale_after, resolution_status, best_bid, best_ask, volume, liquidity, outcomes, last_synced_at")
     .eq("source", "polymarket")
     .order("stale_after", { ascending: true, nullsFirst: true })
     .order("is_active", { ascending: false })
-    .limit(1000);
+    .limit(10000);
 
   if (error) throw error;
   return data ?? [];
@@ -194,14 +252,42 @@ export const getAdminPolymarketStatusPayload = async (
     .filter((value): value is string => Boolean(value))
     .sort()
     .at(-1) ?? null;
+  const lastRunByMode = (mode: string) => recentRuns.find((run) => {
+    const diagnostics = run.diagnostics && typeof run.diagnostics === "object" ? run.diagnostics as Record<string, unknown> : {};
+    return diagnostics.syncMode === mode || run.sync_kind === `market_list_${mode}` || (mode === "smart" && run.sync_kind === "market_list");
+  }) ?? null;
+  const lastFullRun = lastRunByMode("all_open") ?? lastRunByMode("all");
+  const lastSmartRun = lastRunByMode("smart");
+  const lastArchiveRun = lastRunByMode("archive_closed") ?? lastRunByMode("all");
+  const lastFullDiagnostics = sanitizedDiagnostics(lastFullRun?.diagnostics) ?? {};
+  const newestLastSyncedAt = cacheRows
+    .map((row) => row.last_synced_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
 
   return {
     source: "polymarket",
     marketCounts: {
       total: cacheRows.length,
-      open: cacheRows.filter((row) => row.is_active === true).length,
-      stale: cacheRows.filter((row) => !row.stale_after || new Date(row.stale_after).getTime() <= now).length,
+      smartEligible: cacheRows.filter((row) => getRowStatus(row) === "open" && hasActivity(row) && hasPriceData(row) && !isStale(row, now)).length,
+      open: cacheRows.filter((row) => getRowStatus(row) === "open").length,
+      closed: cacheRows.filter((row) => getRowStatus(row) === "closed").length,
+      resolved: cacheRows.filter((row) => getRowStatus(row) === "resolved").length,
+      cancelled: cacheRows.filter((row) => getRowStatus(row) === "cancelled").length,
+      stale: cacheRows.filter((row) => isStale(row, now)).length,
+      noPrice: cacheRows.filter((row) => !hasPriceData(row)).length,
+      lowVolume: cacheRows.filter((row) => !hasActivity(row)).length,
       errored: recentRuns.filter((run) => run.status === "failure").length,
+      newestLastSyncedAt: toIsoOrNull(newestLastSyncedAt),
+    },
+    syncSummary: {
+      lastSmartSync: toIsoOrNull(lastSmartRun?.finished_at ?? lastSmartRun?.started_at),
+      lastFullOpenSync: toIsoOrNull(lastFullRun?.finished_at ?? lastFullRun?.started_at),
+      lastArchiveSync: toIsoOrNull(lastArchiveRun?.finished_at ?? lastArchiveRun?.started_at),
+      pagesFetchedLastFullSync: toNumber(lastFullDiagnostics.pagesFetched as number | string | null | undefined),
+      maxPagesReachedLastFullSync: lastFullDiagnostics.maxPagesReached === true,
+      maxMarketsReachedLastFullSync: lastFullDiagnostics.maxMarketsReached === true,
     },
     preflight,
     syncCadence: {
@@ -228,7 +314,7 @@ export const getAdminPolymarketStatusPayload = async (
       marketsSeen: toNumber(run.markets_seen),
       marketsUpserted: toNumber(run.markets_upserted),
       errorMessage: run.error_message ?? null,
-      diagnostics: run.diagnostics ?? null,
+      diagnostics: sanitizedDiagnostics(run.diagnostics),
     })),
     builderFeeReconciliation: {
       builderCodeConfigured: preflight.builderCodeConfigured,

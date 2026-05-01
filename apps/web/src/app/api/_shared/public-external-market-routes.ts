@@ -7,6 +7,7 @@ import {
   readExternalMarketsFromCache,
   upsertExternalMarketsCache,
   type ExternalMarketCacheDiagnostics,
+  type ExternalMarketCacheReadOptions,
 } from "./external-market-cache";
 import { applyMarketTranslations, resolveMarketLocale } from "./market-translation";
 import { readExternalMarketBySourceAndId, readExternalMarkets } from "./external-market-read";
@@ -35,19 +36,56 @@ const safeMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Market source unavailable";
 
 type MarketStatusFilter = "open" | "closed" | "resolved" | "cancelled" | "all";
+type MarketViewFilter = "smart" | "all";
+type MarketSortFilter = NonNullable<ExternalMarketCacheReadOptions["sort"]>;
 
-const resolveStatusFilter = (request?: Request): MarketStatusFilter => {
-  const raw = request ? new URL(request.url).searchParams.get("status") : null;
+const resolveStatusFilter = (url?: URL | null): MarketStatusFilter => {
+  const raw = url?.searchParams.get("status");
   if (raw === "closed" || raw === "resolved" || raw === "cancelled" || raw === "all") return raw;
   return "open";
+};
+
+const resolveViewFilter = (url?: URL | null): MarketViewFilter =>
+  url?.searchParams.get("view") === "all" ? "all" : "smart";
+
+const resolveSortFilter = (url?: URL | null): MarketSortFilter => {
+  const raw = url?.searchParams.get("sort");
+  return raw === "volume" || raw === "liquidity" || raw === "latest" || raw === "close" || raw === "quality"
+    ? raw
+    : "trending";
+};
+
+const parseIntegerParam = (url: URL | null, name: "limit" | "offset"): number | undefined => {
+  const raw = url?.searchParams.get(name);
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const resolveReadOptions = (request?: Request): ExternalMarketCacheReadOptions => {
+  const url = request ? new URL(request.url) : null;
+  const status = resolveStatusFilter(url);
+  const explicitView = url?.searchParams.get("view");
+  return {
+    view: explicitView === "all" ? "all" : explicitView === "smart" ? "smart" : status === "open" ? "smart" : "all",
+    status,
+    q: url?.searchParams.get("q") ?? null,
+    sort: resolveSortFilter(url),
+    limit: parseIntegerParam(url, "limit"),
+    offset: parseIntegerParam(url, "offset"),
+  };
 };
 
 const filterMarketsByStatus = <Market extends { status?: unknown }>(
   markets: Market[],
   status: MarketStatusFilter,
-): Market[] => status === "all"
-  ? markets
-  : markets.filter((market) => market.status === status);
+): Market[] => {
+  if (status === "all") return markets;
+  if (status === "closed") {
+    return markets.filter((market) => market.status === "closed" || market.status === "resolved" || market.status === "cancelled");
+  }
+  return markets.filter((market) => market.status === status);
+};
 
 const toTime = (value: string | null | undefined): number | null => {
   if (!value) return null;
@@ -86,6 +124,13 @@ const marketsEnvelope = (input: {
   stale: boolean;
   lastUpdatedAt: string | null;
   markets: unknown[];
+  pagination: {
+    limit: number;
+    offset: number;
+    nextOffset: number | null;
+    returnedCount: number;
+    totalCount: number | null;
+  };
   diagnostics: ExternalMarketCacheDiagnostics;
 }) => ({
   ok: true,
@@ -94,6 +139,7 @@ const marketsEnvelope = (input: {
   stale: input.stale,
   lastUpdatedAt: input.lastUpdatedAt,
   markets: input.markets,
+  pagination: input.pagination,
   diagnostics: {
     supabaseCacheReachable: input.diagnostics.supabaseCacheReachable,
     marketCacheRowCount: input.diagnostics.marketCacheRowCount,
@@ -106,6 +152,65 @@ const marketsEnvelope = (input: {
     errorCode: input.diagnostics.errorCode,
   },
 });
+
+const fallbackPagination = (
+  returnedCount: number,
+  options: ExternalMarketCacheReadOptions,
+  totalCount: number | null = returnedCount,
+) => {
+  const limit = typeof options.limit === "number" && Number.isFinite(options.limit) && options.limit > 0
+    ? Math.min(250, Math.trunc(options.limit))
+    : 100;
+  const offset = typeof options.offset === "number" && Number.isFinite(options.offset) && options.offset > 0
+    ? Math.trunc(options.offset)
+    : 0;
+
+  return {
+    limit,
+    offset,
+    nextOffset: totalCount !== null && offset + returnedCount < totalCount ? offset + limit : null,
+    returnedCount,
+    totalCount,
+  };
+};
+
+const fallbackLimitOffset = (options: ExternalMarketCacheReadOptions) => {
+  const limit = typeof options.limit === "number" && Number.isFinite(options.limit) && options.limit > 0
+    ? Math.min(250, Math.trunc(options.limit))
+    : 100;
+  const offset = typeof options.offset === "number" && Number.isFinite(options.offset) && options.offset > 0
+    ? Math.trunc(options.offset)
+    : 0;
+  return { limit, offset };
+};
+
+const applyFallbackReadOptions = (
+  markets: PublicExternalMarketRecord[],
+  options: ExternalMarketCacheReadOptions,
+): { markets: PublicExternalMarketRecord[]; totalCount: number } => {
+  const q = options.q?.trim().toLowerCase() ?? "";
+  const sort = options.sort ?? "trending";
+  const filtered = q
+    ? markets.filter((market) => `${market.title} ${market.description} ${market.slug} ${market.externalId}`.toLowerCase().includes(q))
+    : [...markets];
+
+  filtered.sort((a, b) => {
+    if (sort === "volume") return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
+    if (sort === "liquidity") return (b.liquidity ?? b.volumeTotal ?? 0) - (a.liquidity ?? a.volumeTotal ?? 0);
+    if (sort === "latest") return new Date(b.lastUpdatedAt ?? b.lastSyncedAt ?? 0).getTime() - new Date(a.lastUpdatedAt ?? a.lastSyncedAt ?? 0).getTime();
+    if (sort === "close") {
+      const aTime = a.closeTime ? new Date(a.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.closeTime ? new Date(b.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    }
+    const openDelta = (b.status === "open" ? 1 : 0) - (a.status === "open" ? 1 : 0);
+    if (openDelta !== 0) return openDelta;
+    return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
+  });
+
+  const { limit, offset } = fallbackLimitOffset(options);
+  return { markets: filtered.slice(offset, offset + limit), totalCount: filtered.length };
+};
 
 const detailEnvelope = (input: {
   market: unknown | null;
@@ -230,19 +335,23 @@ const readPolymarketDetailFallback = async (
 };
 
 export async function externalMarketsResponse(request?: Request, adminSupabase: SupabaseAdminFactory = getAdminSupabase) {
+  const readOptions = resolveReadOptions(request);
   try {
     const supabase = adminSupabase();
     const url = request ? new URL(request.url) : null;
     const locale = resolveMarketLocale(url?.searchParams.get("locale") ?? null);
-    const status = resolveStatusFilter(request);
-    const cached = await readExternalMarketsFromCache(supabase);
+    const status = readOptions.status ?? "open";
+    const view = readOptions.view ?? "smart";
+    const cached = await readExternalMarketsFromCache(supabase, readOptions);
     if (cached.markets.length > 0) {
       const markets = await applyMarketTranslations(supabase, cached.markets, locale);
-      if (status === "open" && !hasFreshOpenMarket(markets)) {
+      if (view === "smart" && status === "open" && !hasFreshOpenMarket(markets)) {
         try {
           const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
           const translatedFallbackMarkets = await applyMarketTranslations(supabase, fallbackMarkets, locale);
-          const openFallbackMarkets = filterMarketsByStatus(translatedFallbackMarkets, status);
+          const openFallbackAll = filterMarketsByStatus(translatedFallbackMarkets, status);
+          const openFallbackPage = applyFallbackReadOptions(openFallbackAll, readOptions);
+          const openFallbackMarkets = openFallbackPage.markets;
           if (hasFreshOpenMarket(openFallbackMarkets)) {
             return NextResponse.json(marketsEnvelope({
               source: "polymarket_gamma_fallback",
@@ -250,6 +359,7 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
               stale: false,
               lastUpdatedAt: openFallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
               markets: openFallbackMarkets,
+              pagination: fallbackPagination(openFallbackMarkets.length, readOptions, openFallbackPage.totalCount),
               diagnostics: {
                 ...cached.diagnostics,
                 fallbackUsedLastRequest: true,
@@ -271,27 +381,56 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
         fallbackUsed: false,
         stale: cached.stale,
         lastUpdatedAt: cached.lastUpdatedAt,
-        markets: filterMarketsByStatus(markets, status),
+        markets,
+        pagination: cached.pagination,
         diagnostics: cached.diagnostics,
       }), {
         headers: { "x-market-source": "supabase_cache" },
       });
     }
 
-    if (status === "open") {
+    if (view === "smart" && status === "open") {
       const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
       const translatedFallbackMarkets = await applyMarketTranslations(supabase, fallbackMarkets, locale);
+      const openFallbackPage = applyFallbackReadOptions(filterMarketsByStatus(translatedFallbackMarkets, status), readOptions);
+      const openFallbackMarkets = openFallbackPage.markets;
       return NextResponse.json(marketsEnvelope({
         source: "polymarket_gamma_fallback",
         fallbackUsed: true,
-        stale: !hasFreshOpenMarket(translatedFallbackMarkets),
-        lastUpdatedAt: translatedFallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
-        markets: filterMarketsByStatus(translatedFallbackMarkets, status),
+        stale: !hasFreshOpenMarket(openFallbackMarkets),
+        lastUpdatedAt: openFallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+        markets: openFallbackMarkets,
+        pagination: fallbackPagination(openFallbackMarkets.length, readOptions, openFallbackPage.totalCount),
         diagnostics: fallbackDiagnostics({
           supabaseCacheReachable: true,
           marketCacheRowCount: 0,
           staleMarketCount: 0,
           fallbackUsedLastRequest: true,
+        }),
+      }), {
+        headers: {
+          "x-market-source": "polymarket_gamma_fallback",
+        },
+      });
+    }
+
+    if (view === "all") {
+      const fallbackMarkets = filterMarketsByStatus(await readPolymarketGammaFallbackMarkets(), status);
+      const translatedFallbackMarkets = await applyMarketTranslations(supabase, fallbackMarkets, locale);
+      const fallbackPage = applyFallbackReadOptions(translatedFallbackMarkets, readOptions);
+      return NextResponse.json(marketsEnvelope({
+        source: "polymarket_gamma_fallback",
+        fallbackUsed: true,
+        stale: !hasFreshOpenMarket(fallbackPage.markets),
+        lastUpdatedAt: fallbackPage.markets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+        markets: fallbackPage.markets,
+        pagination: fallbackPagination(fallbackPage.markets.length, readOptions, null),
+        diagnostics: fallbackDiagnostics({
+          supabaseCacheReachable: true,
+          marketCacheRowCount: 0,
+          staleMarketCount: 0,
+          fallbackUsedLastRequest: true,
+          errorCode: "CACHE_EMPTY_FALLBACK_LIMITED",
         }),
       }), {
         headers: {
@@ -306,6 +445,7 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
       stale: true,
       lastUpdatedAt: null,
       markets: [],
+      pagination: fallbackPagination(0, readOptions, 0),
       diagnostics: fallbackDiagnostics({
         supabaseCacheReachable: true,
         marketCacheRowCount: 0,
@@ -322,15 +462,18 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
       source: "supabase_cache",
       message: safeMessage(error),
     });
-    if (resolveStatusFilter(request) === "open") {
+    if ((readOptions.view ?? "smart") === "smart" && (readOptions.status ?? "open") === "open") {
       try {
         const fallbackMarkets = await readPolymarketGammaFallbackMarkets();
+        const openFallbackPage = applyFallbackReadOptions(filterMarketsByStatus(fallbackMarkets, "open"), readOptions);
+        const openFallbackMarkets = openFallbackPage.markets;
         return NextResponse.json(marketsEnvelope({
           source: "polymarket_gamma_fallback",
           fallbackUsed: true,
-          stale: !hasFreshOpenMarket(fallbackMarkets),
-          lastUpdatedAt: fallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
-          markets: filterMarketsByStatus(fallbackMarkets, "open"),
+          stale: !hasFreshOpenMarket(openFallbackMarkets),
+          lastUpdatedAt: openFallbackMarkets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+          markets: openFallbackMarkets,
+          pagination: fallbackPagination(openFallbackMarkets.length, readOptions, openFallbackPage.totalCount),
           diagnostics: fallbackDiagnostics({
             supabaseCacheReachable: false,
             fallbackUsedLastRequest: true,
@@ -346,6 +489,32 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
         });
       }
     }
+    if ((readOptions.view ?? "smart") === "all") {
+      try {
+        const fallbackMarkets = filterMarketsByStatus(await readPolymarketGammaFallbackMarkets(), readOptions.status ?? "open");
+        const fallbackPage = applyFallbackReadOptions(fallbackMarkets, readOptions);
+        return NextResponse.json(marketsEnvelope({
+          source: "polymarket_gamma_fallback",
+          fallbackUsed: true,
+          stale: !hasFreshOpenMarket(fallbackPage.markets),
+          lastUpdatedAt: fallbackPage.markets.map((market) => market.lastUpdatedAt ?? market.lastSyncedAt).filter(Boolean).sort().at(-1) ?? new Date().toISOString(),
+          markets: fallbackPage.markets,
+          pagination: fallbackPagination(fallbackPage.markets.length, readOptions, null),
+          diagnostics: fallbackDiagnostics({
+            supabaseCacheReachable: false,
+            fallbackUsedLastRequest: true,
+            errorCode: "CACHE_UNAVAILABLE_FALLBACK_LIMITED",
+          }),
+        }), {
+          headers: { "x-market-source": "polymarket_gamma_fallback" },
+        });
+      } catch (fallbackError) {
+        console.warn("public external markets limited all-view fallback failed after cache source failure", {
+          source: "polymarket_gamma_fallback",
+          message: safeMessage(fallbackError),
+        });
+      }
+    }
     return NextResponse.json(
       {
         ...unavailablePayload("supabase_cache"),
@@ -353,6 +522,7 @@ export async function externalMarketsResponse(request?: Request, adminSupabase: 
         stale: true,
         lastUpdatedAt: null,
         markets: [],
+        pagination: fallbackPagination(0, readOptions, 0),
         diagnostics: fallbackDiagnostics({
           fallbackUsedLastRequest: false,
           errorCode: "MARKET_SOURCE_UNAVAILABLE",

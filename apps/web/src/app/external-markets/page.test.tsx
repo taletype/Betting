@@ -417,6 +417,118 @@ test("Polymarket default feed hides cancelled and zero-liquidity markets", async
   assert.doesNotMatch(markup, /Cancelled zero volume market/);
 });
 
+test("Polymarket page renders Smart Feed and All Markets view controls", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify([makePolymarketRecord()]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const smartMarkup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(smartMarkup, /熱門市場/);
+  assert.match(smartMarkup, /全部市場/);
+  assert.match(smartMarkup, /正在查看：熱門市場/);
+
+  const allMarkup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ view: "all" }) }));
+  assert.match(allMarkup, /正在查看：全部市場/);
+});
+
+test("Polymarket all-market view renders low-quality stale browse-only markets", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify([
+        makePolymarketRecord({ id: "active", title: "Active all-view market" }),
+        makePolymarketRecord({
+          id: "no-price",
+          externalId: "POLY-NO-PRICE",
+          slug: "poly-no-price",
+          title: "No price all-view market",
+          bestBid: null,
+          bestAsk: null,
+          lastTradePrice: null,
+          volume24h: 0,
+          volumeTotal: 0,
+          liquidity: 0,
+          outcomes: [],
+        }),
+        makePolymarketRecord({
+          id: "stale",
+          externalId: "POLY-STALE-ALL",
+          slug: "poly-stale-all",
+          title: "Stale all-view market",
+          sourceProvenance: { stale: true, staleAfter: "2000-01-01T00:00:00.000Z" },
+          lastUpdatedAt: "2000-01-01T00:00:00.000Z",
+          updatedAt: "2000-01-01T00:00:00.000Z",
+        }),
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const smartMarkup = renderToStaticMarkup(await PolymarketPage());
+  assert.match(smartMarkup, /Active all-view market/);
+  assert.doesNotMatch(smartMarkup, /No price all-view market/);
+  assert.doesNotMatch(smartMarkup, /Stale all-view market/);
+
+  const allMarkup = renderToStaticMarkup(await PolymarketPage({ searchParams: Promise.resolve({ view: "all" }) }));
+  assert.match(allMarkup, /No price all-view market/);
+  assert.match(allMarkup, /Stale all-view market/);
+  assert.match(allMarkup, /市場只供瀏覽/);
+  assert.match(allMarkup, /暫無價格/);
+  assert.match(allMarkup, /資料可能過期/);
+  assert.match(allMarkup, /低成交量/);
+});
+
+test("Polymarket all-market pagination and filter links preserve referral code", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        ok: true,
+        source: "supabase_cache",
+        fallbackUsed: false,
+        stale: false,
+        lastUpdatedAt: "2099-05-01T01:00:00.000Z",
+        markets: [makePolymarketRecord({ id: "page", title: "CPI paginated market" })],
+        pagination: {
+          limit: 10,
+          offset: 0,
+          nextOffset: 10,
+          returnedCount: 1,
+          totalCount: 25,
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const markup = renderToStaticMarkup(await PolymarketPage({
+    searchParams: Promise.resolve({ view: "all", status: "all", q: "cpi", sort: "volume", ref: "hkref001", limit: "10" }),
+  }));
+
+  assert.match(markup, /CPI paginated market/);
+  assert.match(markup, /共 25 個已同步市場/);
+  assert.match(markup, /載入更多/);
+  assert.match(markup, /ref=HKREF001/);
+  assert.match(markup, /href="\/polymarket\?q=cpi&amp;status=all&amp;view=all&amp;sort=volume&amp;ref=HKREF001&amp;limit=10&amp;offset=10"/);
+  assert.match(markup, /href="\/polymarket\?q=cpi&amp;status=open&amp;view=all&amp;sort=volume&amp;ref=HKREF001&amp;limit=10"/);
+});
+
 test("market feed renders image when image_url is present", async (t) => {
   const originalFetch = globalThis.fetch;
 
@@ -545,7 +657,9 @@ test("Polymarket page browsing works without builder code and shows disabled tra
           lastTradePrice: 0.51,
           volume24h: 10,
           volumeTotal: 100,
+          sourceProvenance: { stale: false, staleAfter: "2099-05-01T01:00:00.000Z" },
           lastSyncedAt: "2026-05-01T01:00:00.000Z",
+          lastUpdatedAt: "2099-05-01T01:00:00.000Z",
           createdAt: "2026-05-01T01:00:00.000Z",
           updatedAt: "2026-05-01T01:00:00.000Z",
           outcomes: [],

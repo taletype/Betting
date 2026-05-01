@@ -43,6 +43,40 @@ export interface WalletLinkChallengeStore {
   }): Promise<WalletLinkChallengeRecord | null>;
 }
 
+export type WalletLinkVerificationErrorCode =
+  | "invalid_wallet_address"
+  | "signature_mismatch"
+  | "wallet_challenge_expired"
+  | "wallet_challenge_used";
+
+const walletLinkVerificationErrorMessages: Record<WalletLinkVerificationErrorCode, string> = {
+  invalid_wallet_address: "錢包地址格式無效。",
+  signature_mismatch: "簽署錢包與驗證錢包不一致。請使用目前連接的錢包重新簽署。",
+  wallet_challenge_expired: "驗證請求已過期，請重新驗證。",
+  wallet_challenge_used: "驗證請求已使用，請重新驗證。",
+};
+
+export class WalletLinkVerificationError extends Error {
+  readonly code: WalletLinkVerificationErrorCode;
+  readonly status: number;
+
+  constructor(code: WalletLinkVerificationErrorCode, status = 400) {
+    super(walletLinkVerificationErrorMessages[code]);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export const isWalletLinkVerificationError = (error: unknown): error is WalletLinkVerificationError =>
+  error instanceof WalletLinkVerificationError;
+
+export const walletLinkVerificationErrorPayload = (error: WalletLinkVerificationError) => ({
+  ok: false,
+  error: "wallet verification failed",
+  code: error.code,
+  message: error.message,
+});
+
 export const normalizeWalletAddress = (address: string): string => address.trim().toLowerCase();
 
 export const normalizeDomain = (domain: string): string => domain.trim().toLowerCase();
@@ -175,38 +209,53 @@ export const verifyAndConsumeWalletLinkChallenge = async (input: {
   store: WalletLinkChallengeStore;
   now?: Date;
 }): Promise<WalletLinkChallenge> => {
-  const expectedWalletAddress = assertValidWalletAddress(input.walletAddress);
+  let expectedWalletAddress: string;
+  try {
+    expectedWalletAddress = assertValidWalletAddress(input.walletAddress);
+  } catch {
+    throw new WalletLinkVerificationError("invalid_wallet_address");
+  }
   const expectedDomain = normalizeDomain(input.domain);
   const expectedChain = input.chain ?? WALLET_LINK_CHAIN;
   if (expectedChain !== WALLET_LINK_CHAIN) {
-    throw new Error("wallet link chain mismatch");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
 
-  const challenge = parseWalletLinkMessage(input.signedMessage);
+  let challenge: WalletLinkChallenge;
+  try {
+    challenge = parseWalletLinkMessage(input.signedMessage);
+  } catch {
+    throw new WalletLinkVerificationError("signature_mismatch");
+  }
   if (createWalletLinkMessage(challenge) !== input.signedMessage) {
-    throw new Error("wallet link challenge must be signed exactly");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
   if (challenge.userId !== input.userId) {
-    throw new Error("wallet link challenge user mismatch");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
   if (challenge.walletAddress !== expectedWalletAddress) {
-    throw new Error("wallet link challenge wallet mismatch");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
   if (challenge.chain !== expectedChain) {
-    throw new Error("wallet link challenge chain mismatch");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
   if (challenge.domain !== expectedDomain) {
-    throw new Error("wallet link challenge domain mismatch");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
 
   const now = input.now ?? new Date();
   if (Date.parse(challenge.expiresAt) <= now.getTime()) {
-    throw new Error("wallet link challenge expired");
+    throw new WalletLinkVerificationError("wallet_challenge_expired");
   }
 
-  const recoveredAddress = normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature));
+  let recoveredAddress: string;
+  try {
+    recoveredAddress = normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature));
+  } catch {
+    throw new WalletLinkVerificationError("signature_mismatch");
+  }
   if (recoveredAddress !== expectedWalletAddress) {
-    throw new Error("signature does not match wallet address");
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
 
   const consumed = await input.store.consumeChallenge({
@@ -219,7 +268,7 @@ export const verifyAndConsumeWalletLinkChallenge = async (input: {
     now: now.toISOString(),
   });
   if (!consumed) {
-    throw new Error("wallet link challenge not found or already consumed");
+    throw new WalletLinkVerificationError("wallet_challenge_used", 409);
   }
 
   return challenge;

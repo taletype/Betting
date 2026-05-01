@@ -512,6 +512,15 @@ select:focus,
   gap: 12px;
   border-top: 1px solid var(--border);
   padding-top: 10px;
+  flex-wrap: wrap;
+}
+
+.market-feed-summary-row,
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .panel {
@@ -1354,14 +1363,22 @@ select:focus,
   padding: 4px;
 }
 
-.segmented-control button {
+.segmented-control button,
+.segmented-control a {
   min-height: 38px;
   border-color: transparent;
   background: transparent;
   color: var(--text2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-decoration: none;
 }
 
-.segmented-control button.active {
+.segmented-control button.active,
+.segmented-control a.active {
   border-color: rgba(245, 158, 11, 0.34);
   background: var(--amber-dim);
   color: var(--amber);

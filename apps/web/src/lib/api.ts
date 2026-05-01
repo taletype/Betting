@@ -702,6 +702,13 @@ export interface ExternalMarketsApiEnvelope {
   stale: boolean;
   lastUpdatedAt: string | null;
   markets: ExternalMarketApiRecord[];
+  pagination?: {
+    limit: number;
+    offset: number;
+    nextOffset: number | null;
+    returnedCount: number;
+    totalCount: number | null;
+  };
   diagnostics?: {
     supabaseCacheReachable?: boolean;
     marketCacheRowCount?: number | null;
@@ -721,6 +728,7 @@ export interface ExternalMarketsListResult {
   source: string | null;
   stale: boolean | null;
   lastUpdatedAt: string | null;
+  pagination?: ExternalMarketsApiEnvelope["pagination"];
   diagnostics?: ExternalMarketsApiEnvelope["diagnostics"];
 }
 
@@ -755,18 +763,52 @@ export const getPublicExternalMarketsReadiness = () => {
 };
 
 export type ExternalMarketStatusQuery = "open" | "closed" | "resolved" | "cancelled" | "all";
+export type ExternalMarketViewQuery = "smart" | "all";
+export type ExternalMarketSortQuery = "trending" | "volume" | "liquidity" | "latest" | "close" | "quality";
+
+export interface ListExternalMarketsOptions {
+  locale?: string;
+  status?: ExternalMarketStatusQuery;
+  view?: ExternalMarketViewQuery;
+  q?: string;
+  sort?: ExternalMarketSortQuery;
+  limit?: number;
+  offset?: number;
+}
+
+const normalizeListExternalMarketsOptions = (
+  localeOrOptions?: string | ListExternalMarketsOptions,
+  status: ExternalMarketStatusQuery = "open",
+): ListExternalMarketsOptions => {
+  if (localeOrOptions && typeof localeOrOptions === "object") {
+    return {
+      ...localeOrOptions,
+      status: localeOrOptions.status ?? "open",
+      view: localeOrOptions.view ?? "smart",
+      sort: localeOrOptions.sort ?? "trending",
+    };
+  }
+
+  return {
+    locale: localeOrOptions,
+    status,
+    view: "smart",
+    sort: "trending",
+  };
+};
 
 export const listExternalMarkets = async (
-  locale?: string,
+  locale?: string | ListExternalMarketsOptions,
   status: ExternalMarketStatusQuery = "open",
 ): Promise<ExternalMarketApiRecord[]> => {
   return (await listExternalMarketsWithMetadata(locale, status)).markets;
 };
 
 export const listExternalMarketsWithMetadata = async (
-  locale?: string,
+  localeOrOptions?: string | ListExternalMarketsOptions,
   status: ExternalMarketStatusQuery = "open",
 ): Promise<ExternalMarketsListResult> => {
+  const options = normalizeListExternalMarketsOptions(localeOrOptions, status);
   const diagnostics: ExternalMarketsLoadErrorCode[] = [];
   let failedSources: string[] = [];
   if (!getConfiguredPublicApiBaseUrl()) {
@@ -778,8 +820,13 @@ export const listExternalMarketsWithMetadata = async (
 
   try {
     const search = new URLSearchParams();
-    if (locale && locale !== "zh-HK") search.set("locale", locale);
-    if (status !== "open") search.set("status", status);
+    if (options.locale && options.locale !== "zh-HK") search.set("locale", options.locale);
+    if (options.status && options.status !== "open") search.set("status", options.status);
+    if (options.view && options.view !== "smart") search.set("view", options.view);
+    if (options.q?.trim()) search.set("q", options.q.trim());
+    if (options.sort && options.sort !== "trending") search.set("sort", options.sort);
+    if (typeof options.limit === "number" && Number.isFinite(options.limit)) search.set("limit", String(Math.trunc(options.limit)));
+    if (typeof options.offset === "number" && Number.isFinite(options.offset)) search.set("offset", String(Math.trunc(options.offset)));
     const query = search.toString();
     const path = `/external/markets${query ? `?${query}` : ""}`;
     const payload = await executeApiRequest<unknown>(getLocalApiUrl(path));
@@ -790,6 +837,7 @@ export const listExternalMarketsWithMetadata = async (
         source: null,
         stale: null,
         lastUpdatedAt: null,
+        pagination: undefined,
       };
     }
     if (payload && typeof payload === "object" && Array.isArray((payload as ExternalMarketsApiEnvelope).markets)) {
@@ -800,6 +848,7 @@ export const listExternalMarketsWithMetadata = async (
         source: envelope.source,
         stale: envelope.stale,
         lastUpdatedAt: envelope.lastUpdatedAt,
+        pagination: envelope.pagination,
         diagnostics: envelope.diagnostics,
       };
     }
@@ -809,6 +858,7 @@ export const listExternalMarketsWithMetadata = async (
       source: null,
       stale: null,
       lastUpdatedAt: null,
+      pagination: undefined,
     };
   } catch (error) {
     if (error instanceof ApiResponseError) {

@@ -9,6 +9,7 @@ import {
   normalizeVolumeHistory,
 } from "./chart-history";
 import type { PublicExternalMarketRecord } from "./polymarket-gamma-fallback";
+import { getMarketQualityScore } from "../../../lib/external-market-ranking";
 
 type SupabaseLike = {
   from: (table: string) => unknown;
@@ -16,7 +17,7 @@ type SupabaseLike = {
 
 type CacheSource = "polymarket";
 
-interface ExternalMarketCacheRow {
+export interface ExternalMarketCacheRow {
   id: string;
   source: CacheSource;
   external_id: string;
@@ -82,6 +83,22 @@ export interface ExternalMarketCacheReadResult {
   stale: boolean;
   lastUpdatedAt: string | null;
   diagnostics: ExternalMarketCacheDiagnostics;
+  pagination: {
+    limit: number;
+    offset: number;
+    nextOffset: number | null;
+    returnedCount: number;
+    totalCount: number | null;
+  };
+}
+
+export interface ExternalMarketCacheReadOptions {
+  view?: "smart" | "all";
+  status?: "open" | "closed" | "resolved" | "cancelled" | "all";
+  q?: string | null;
+  sort?: "trending" | "volume" | "liquidity" | "latest" | "close" | "quality";
+  limit?: number;
+  offset?: number;
 }
 
 export interface ExternalMarketCacheUpsertInput {
@@ -132,6 +149,49 @@ const toNumber = (value: string | number | null): number | null => {
 
 const readNumber = (value: unknown): number | null =>
   typeof value === "string" || typeof value === "number" ? toNumber(value) : null;
+
+const CACHE_READ_ROW_WINDOW = 10_000;
+const DEFAULT_CACHE_READ_LIMIT = 100;
+const MAX_CACHE_READ_LIMIT = 250;
+
+export const normalizeCacheReadLimit = (limit: number | null | undefined, _view: ExternalMarketCacheReadOptions["view"] = "smart"): number => {
+  const parsed = typeof limit === "number" ? limit : Number(limit ?? DEFAULT_CACHE_READ_LIMIT);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_CACHE_READ_LIMIT;
+  return Math.min(MAX_CACHE_READ_LIMIT, Math.max(1, Math.trunc(parsed)));
+};
+
+export const normalizeCacheReadOffset = (offset: number | null | undefined): number => {
+  const parsed = typeof offset === "number" ? offset : Number(offset ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+};
+
+const readJsonObject = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+export const hasCachedMarketActivity = (row: ExternalMarketCacheRow): boolean =>
+  (toNumber(row.volume) ?? 0) > 0 || (toNumber(row.liquidity) ?? 0) > 0;
+
+export const hasCachedMarketPriceData = (row: ExternalMarketCacheRow): boolean => {
+  const prices = readJsonObject(row.prices);
+  const directPrices = [row.best_bid, row.best_ask, prices.bestBid, prices.bestAsk, prices.lastTradePrice];
+  if (directPrices.some((value) => {
+    const parsed = readNumber(value);
+    return parsed !== null && parsed > 0;
+  })) {
+    return true;
+  }
+
+  return Array.isArray(row.outcomes) && row.outcomes.some((outcome) => {
+    const record = readJsonObject(outcome);
+    return [record.bestBid, record.bestAsk, record.lastPrice].some((value) => {
+      const parsed = readNumber(value);
+      return parsed !== null && parsed > 0;
+    });
+  });
+};
+
+export const isCachedMarketStale = (row: ExternalMarketCacheRow): boolean =>
+  !row.stale_after || new Date(row.stale_after).getTime() <= Date.now();
 
 const toStatus = (row: ExternalMarketCacheRow): PublicExternalMarketRecord["status"] => {
   return resolvePolymarketMarketStatus({
@@ -224,6 +284,9 @@ const mapCacheRow = (row: ExternalMarketCacheRow): PublicExternalMarketRecord =>
     latestOrderbook: [],
   };
 };
+
+export const getCachedMarketQualityScore = (row: ExternalMarketCacheRow): number =>
+  getMarketQualityScore(mapCacheRow(row));
 
 const baseDiagnostics = (): ExternalMarketCacheDiagnostics => ({
   supabaseCacheReachable: false,
@@ -340,9 +403,85 @@ const mergeCachedPriceHistory = (
   }
 };
 
-export async function readExternalMarketsFromCache(supabase: SupabaseLike): Promise<ExternalMarketCacheReadResult> {
+const normalizeCacheView = (view: ExternalMarketCacheReadOptions["view"]): "smart" | "all" =>
+  view === "all" ? "all" : "smart";
+
+const normalizeCacheStatus = (status: ExternalMarketCacheReadOptions["status"]): NonNullable<ExternalMarketCacheReadOptions["status"]> =>
+  status === "closed" || status === "resolved" || status === "cancelled" || status === "all" ? status : "open";
+
+const normalizeCacheSort = (sort: ExternalMarketCacheReadOptions["sort"]): NonNullable<ExternalMarketCacheReadOptions["sort"]> =>
+  sort === "volume" || sort === "liquidity" || sort === "latest" || sort === "close" || sort === "quality" ? sort : "trending";
+
+const searchText = (row: ExternalMarketCacheRow): string =>
+  [row.title, row.slug, row.external_id, row.description ?? ""].join(" ").toLowerCase();
+
+const matchesStatus = (row: ExternalMarketCacheRow, statusFilter: NonNullable<ExternalMarketCacheReadOptions["status"]>): boolean => {
+  const status = toStatus(row);
+  if (statusFilter === "all") return true;
+  if (statusFilter === "closed") return status === "closed" || status === "resolved" || status === "cancelled";
+  return status === statusFilter;
+};
+
+const isSmartEligibleCacheRow = (row: ExternalMarketCacheRow): boolean =>
+  toStatus(row) === "open" &&
+  hasCachedMarketActivity(row) &&
+  hasCachedMarketPriceData(row) &&
+  !isCachedMarketStale(row);
+
+const sortMappedMarkets = (
+  items: Array<{ row: ExternalMarketCacheRow; market: PublicExternalMarketRecord; index: number }>,
+  sort: NonNullable<ExternalMarketCacheReadOptions["sort"]>,
+): void => {
+  items.sort((a, b) => {
+    const openDelta = (b.market.status === "open" ? 1 : 0) - (a.market.status === "open" ? 1 : 0);
+    if (openDelta !== 0 && (sort === "trending" || sort === "quality")) return openDelta;
+
+    if (sort === "volume") {
+      const delta = (b.market.volume24h ?? b.market.volumeTotal ?? 0) - (a.market.volume24h ?? a.market.volumeTotal ?? 0);
+      if (delta !== 0) return delta;
+    }
+
+    if (sort === "liquidity") {
+      const delta = (b.market.liquidity ?? b.market.volumeTotal ?? 0) - (a.market.liquidity ?? a.market.volumeTotal ?? 0);
+      if (delta !== 0) return delta;
+    }
+
+    if (sort === "latest") {
+      const delta = (new Date(b.market.lastSyncedAt ?? b.market.updatedAt).getTime() || 0) - (new Date(a.market.lastSyncedAt ?? a.market.updatedAt).getTime() || 0);
+      if (delta !== 0) return delta;
+    }
+
+    if (sort === "close") {
+      const aTime = a.market.closeTime ? new Date(a.market.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.market.closeTime ? new Date(b.market.closeTime).getTime() : Number.MAX_SAFE_INTEGER;
+      if (aTime !== bTime) return aTime - bTime;
+    }
+
+    const qualityDelta = getMarketQualityScore(b.market) - getMarketQualityScore(a.market);
+    if (qualityDelta !== 0) return qualityDelta;
+
+    const volumeDelta = (b.market.volume24h ?? b.market.volumeTotal ?? 0) - (a.market.volume24h ?? a.market.volumeTotal ?? 0);
+    if (volumeDelta !== 0) return volumeDelta;
+
+    const liquidityDelta = (b.market.liquidity ?? b.market.volumeTotal ?? 0) - (a.market.liquidity ?? a.market.volumeTotal ?? 0);
+    if (liquidityDelta !== 0) return liquidityDelta;
+
+    return a.index - b.index;
+  });
+};
+
+export async function readExternalMarketsFromCache(
+  supabase: SupabaseLike,
+  options: ExternalMarketCacheReadOptions = {},
+): Promise<ExternalMarketCacheReadResult> {
   const diagnostics = baseDiagnostics();
-  const { data, error } = await (supabase.from("external_market_cache") as {
+  const view = normalizeCacheView(options.view);
+  const status = normalizeCacheStatus(options.status);
+  const sort = normalizeCacheSort(options.sort);
+  const limit = normalizeCacheReadLimit(options.limit, view);
+  const offset = normalizeCacheReadOffset(options.offset);
+  const q = options.q?.trim().toLowerCase() ?? "";
+  const { data, error, count } = await (supabase.from("external_market_cache") as {
     select: (columns: string, options?: Record<string, unknown>) => {
       eq: (column: string, value: boolean | string) => {
         order: (column: string, options?: Record<string, unknown>) => {
@@ -357,7 +496,7 @@ export async function readExternalMarketsFromCache(supabase: SupabaseLike): Prom
     .eq("source", "polymarket")
     .order("volume", { ascending: false, nullsFirst: false })
     .order("close_time", { ascending: true, nullsFirst: false })
-    .limit(500);
+    .limit(CACHE_READ_ROW_WINDOW);
 
   if (error) {
     diagnostics.errorCode = "SUPABASE_CACHE_READ_FAILED";
@@ -366,19 +505,36 @@ export async function readExternalMarketsFromCache(supabase: SupabaseLike): Prom
 
   const rows = data ?? [];
   const now = Date.now();
-  const markets = normalizeApiPayload(rows.map(mapCacheRow)) as PublicExternalMarketRecord[];
+  const filteredRows = rows.filter((row) => {
+    if (!matchesStatus(row, status)) return false;
+    if (q && !searchText(row).includes(q)) return false;
+    if (view === "smart" && !isSmartEligibleCacheRow(row)) return false;
+    return true;
+  });
+  const mapped = filteredRows.map((row, index) => ({ row, market: mapCacheRow(row), index }));
+  sortMappedMarkets(mapped, sort);
+  const page = mapped.slice(offset, offset + limit);
+  const markets = normalizeApiPayload(page.map((item) => item.market)) as PublicExternalMarketRecord[];
   mergeCachedPriceHistory(markets, await readCachedPriceRows(supabase, markets));
   diagnostics.supabaseCacheReachable = true;
-  diagnostics.marketCacheRowCount = rows.length;
+  diagnostics.marketCacheRowCount = count ?? rows.length;
   diagnostics.newestLastSyncedAt = rows.map((row) => row.last_synced_at).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
   diagnostics.staleMarketCount = rows.filter((row) => !row.stale_after || new Date(row.stale_after).getTime() <= now).length;
   diagnostics.lastSyncStatus = await readLastSyncStatus(supabase);
+  const totalCount = filteredRows.length;
 
   return {
     markets,
-    stale: rows.length > 0 && rows.some((row) => !row.stale_after || new Date(row.stale_after).getTime() <= now),
+    stale: page.length > 0 && page.some((item) => isCachedMarketStale(item.row)),
     lastUpdatedAt: diagnostics.newestLastSyncedAt,
     diagnostics,
+    pagination: {
+      limit,
+      offset,
+      nextOffset: offset + markets.length < totalCount ? offset + limit : null,
+      returnedCount: markets.length,
+      totalCount,
+    },
   };
 }
 

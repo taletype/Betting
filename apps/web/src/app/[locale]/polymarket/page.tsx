@@ -8,7 +8,7 @@ export default async function LocalePolymarketPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams?: Promise<{ q?: string; status?: string; sort?: string; ref?: string; market?: string }>;
+  searchParams?: Promise<{ q?: string; status?: string; sort?: string; ref?: string; market?: string; view?: string; offset?: string; limit?: string }>;
 }) {
   const locale = pathSegmentToLocale((await params).locale);
   if (!locale) notFound();

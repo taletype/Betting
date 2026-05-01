@@ -19,6 +19,37 @@ export interface WalletLinkChallenge {
   expiresAt: string;
 }
 
+export type WalletLinkVerificationErrorCode =
+  | "invalid_wallet_address"
+  | "signature_mismatch"
+  | "wallet_challenge_expired"
+  | "wallet_challenge_used";
+
+const walletLinkVerificationErrorMessages: Record<WalletLinkVerificationErrorCode, string> = {
+  invalid_wallet_address: "錢包地址格式無效。",
+  signature_mismatch: "簽署錢包與驗證錢包不一致。請使用目前連接的錢包重新簽署。",
+  wallet_challenge_expired: "驗證請求已過期，請重新驗證。",
+  wallet_challenge_used: "驗證請求已使用，請重新驗證。",
+};
+
+export class WalletLinkVerificationError extends Error {
+  readonly code: WalletLinkVerificationErrorCode;
+  readonly status: number;
+
+  constructor(code: WalletLinkVerificationErrorCode, status = 400) {
+    super(walletLinkVerificationErrorMessages[code]);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export const walletLinkVerificationErrorPayload = (error: WalletLinkVerificationError) => ({
+  ok: false,
+  error: "wallet verification failed",
+  code: error.code,
+  message: error.message,
+});
+
 export const normalizeWalletAddress = (value: string): string => value.trim().toLowerCase();
 export const normalizeDomain = (value: string): string => value.trim().toLowerCase();
 
@@ -111,16 +142,31 @@ export const assertWalletLinkSignature = (input: {
   signedMessage: string;
   signature: string;
 }) => {
-  if ((input.chain ?? walletLinkChain) !== walletLinkChain) throw new Error("wallet link challenge chain mismatch");
-  const expectedWallet = assertValidWalletAddress(input.walletAddress);
-  const challenge = parseWalletLinkMessage(input.signedMessage);
-  if (createWalletLinkMessage(challenge) !== input.signedMessage) throw new Error("wallet link challenge must be signed exactly");
-  if (challenge.userId !== input.userId) throw new Error("wallet link challenge user mismatch");
-  if (challenge.walletAddress !== expectedWallet) throw new Error("wallet link challenge wallet mismatch");
-  if (challenge.domain !== normalizeDomain(input.domain)) throw new Error("wallet link challenge domain mismatch");
-  if (Date.parse(challenge.expiresAt) <= Date.now()) throw new Error("wallet link challenge expired");
-  if (normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature)) !== expectedWallet) {
-    throw new Error("signature does not match wallet address");
+  if ((input.chain ?? walletLinkChain) !== walletLinkChain) throw new WalletLinkVerificationError("signature_mismatch");
+  let expectedWallet: string;
+  try {
+    expectedWallet = assertValidWalletAddress(input.walletAddress);
+  } catch {
+    throw new WalletLinkVerificationError("invalid_wallet_address");
+  }
+  let challenge: WalletLinkChallenge;
+  try {
+    challenge = parseWalletLinkMessage(input.signedMessage);
+  } catch {
+    throw new WalletLinkVerificationError("signature_mismatch");
+  }
+  if (createWalletLinkMessage(challenge) !== input.signedMessage) throw new WalletLinkVerificationError("signature_mismatch");
+  if (challenge.userId !== input.userId) throw new WalletLinkVerificationError("signature_mismatch");
+  if (challenge.walletAddress !== expectedWallet) throw new WalletLinkVerificationError("signature_mismatch");
+  if (challenge.domain !== normalizeDomain(input.domain)) throw new WalletLinkVerificationError("signature_mismatch");
+  if (Date.parse(challenge.expiresAt) <= Date.now()) throw new WalletLinkVerificationError("wallet_challenge_expired");
+  try {
+    if (normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature)) !== expectedWallet) {
+      throw new WalletLinkVerificationError("signature_mismatch");
+    }
+  } catch (error) {
+    if (error instanceof WalletLinkVerificationError) throw error;
+    throw new WalletLinkVerificationError("signature_mismatch");
   }
   return challenge;
 };

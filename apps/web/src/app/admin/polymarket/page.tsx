@@ -53,6 +53,20 @@ export default async function AdminPolymarketPage() {
         <h2 className="section-title">市場同步狀態</h2>
         <div className="kv"><span className="kv-key">Supabase market cache 可連線</span><span className="kv-value">{yesNo(marketDataHealth.backendReachable)}</span></div>
         <div className="kv"><span className="kv-key">快取市場數量</span><span className="kv-value">{count(marketDataHealth.backendMarketCount)}</span></div>
+        <div className="kv"><span className="kv-key">已同步市場總數</span><span className="kv-value">{count(statusPayload.marketCounts.total)}</span></div>
+        <div className="kv"><span className="kv-key">熱門市場候選</span><span className="kv-value">{count(statusPayload.marketCounts.smartEligible)}</span></div>
+        <div className="kv"><span className="kv-key">開放市場</span><span className="kv-value">{count(statusPayload.marketCounts.open)}</span></div>
+        <div className="kv"><span className="kv-key">已結束市場</span><span className="kv-value">{count(statusPayload.marketCounts.closed)}</span></div>
+        <div className="kv"><span className="kv-key">已解決市場</span><span className="kv-value">{count(statusPayload.marketCounts.resolved)}</span></div>
+        <div className="kv"><span className="kv-key">已取消市場</span><span className="kv-value">{count(statusPayload.marketCounts.cancelled)}</span></div>
+        <div className="kv"><span className="kv-key">資料可能過期</span><span className="kv-value">{count(statusPayload.marketCounts.stale)}</span></div>
+        <div className="kv"><span className="kv-key">暫無價格</span><span className="kv-value">{count(statusPayload.marketCounts.noPrice)}</span></div>
+        <div className="kv"><span className="kv-key">低成交量</span><span className="kv-value">{count(statusPayload.marketCounts.lowVolume)}</span></div>
+        <div className="kv"><span className="kv-key">上次熱門同步</span><span className="kv-value">{statusPayload.syncSummary.lastSmartSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastSmartSync) : "-"}</span></div>
+        <div className="kv"><span className="kv-key">上次完整同步</span><span className="kv-value">{statusPayload.syncSummary.lastFullOpenSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastFullOpenSync) : "-"}</span></div>
+        <div className="kv"><span className="kv-key">上次 archive 同步</span><span className="kv-value">{statusPayload.syncSummary.lastArchiveSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastArchiveSync) : "-"}</span></div>
+        <div className="kv"><span className="kv-key">分頁抓取數</span><span className="kv-value">{count(statusPayload.syncSummary.pagesFetchedLastFullSync)}</span></div>
+        <div className="kv"><span className="kv-key">已達同步上限</span><span className="kv-value">{statusPayload.syncSummary.maxPagesReachedLastFullSync || statusPayload.syncSummary.maxMarketsReachedLastFullSync ? "yes" : "no"}</span></div>
         <div className="kv"><span className="kv-key">Gamma fallback 可連線</span><span className="kv-value">{yesNo(marketDataHealth.gammaFallbackReachable)}</span></div>
         <div className="kv"><span className="kv-key">fallback 市場數量</span><span className="kv-value">{count(marketDataHealth.gammaFallbackMarketCount)}</span></div>
         <div className="kv"><span className="kv-key">最後檢查時間</span><span className="kv-value">{formatDateTime(defaultLocale, marketDataHealth.lastCheckedAt)}</span></div>

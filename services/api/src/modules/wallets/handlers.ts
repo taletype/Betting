@@ -7,6 +7,8 @@ import {
 } from "./repository";
 import {
   WALLET_LINK_CHAIN,
+  WalletLinkVerificationError,
+  assertValidWalletAddress,
   createWalletLinkChallenge,
   normalizeDomain,
   normalizeWalletAddress,
@@ -52,7 +54,15 @@ export const linkBaseWallet = async (input: LinkWalletInput) => {
   }
 
   const userId = input.userId;
-  parseWalletLinkMessage(input.signedMessage);
+  try {
+    assertValidWalletAddress(input.walletAddress);
+    parseWalletLinkMessage(input.signedMessage);
+  } catch (error) {
+    if (error instanceof Error && /valid 0x EVM address/i.test(error.message) && !/^0x[0-9a-f]{40}$/i.test(input.walletAddress.trim())) {
+      throw new WalletLinkVerificationError("invalid_wallet_address");
+    }
+    throw new WalletLinkVerificationError("signature_mismatch");
+  }
 
   const db = createDatabaseClient();
   return db.transaction(async (transaction) => {

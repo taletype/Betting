@@ -26,6 +26,8 @@ import {
   getWalletLinkDomain,
   hashWalletLinkNonce,
   normalizeWalletAddress,
+  WalletLinkVerificationError,
+  walletLinkVerificationErrorPayload,
   walletLinkChain,
 } from "../_shared/wallet-link-challenge";
 import {
@@ -836,12 +838,24 @@ async function handleRequest(
 
     if (apiPath === "wallets/link/challenge" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { walletAddress?: string; chain?: string };
-      const { challenge, signedMessage, nonceHash } = buildWalletLinkChallenge({
-        userId,
-        walletAddress: body.walletAddress ?? "",
-        chain: body.chain ?? walletLinkChain,
-        domain: getWalletLinkDomain(request.headers.get("host")),
-      });
+      let challengePayload: ReturnType<typeof buildWalletLinkChallenge>;
+      try {
+        challengePayload = buildWalletLinkChallenge({
+          userId,
+          walletAddress: body.walletAddress ?? "",
+          chain: body.chain ?? walletLinkChain,
+          domain: getWalletLinkDomain(request.headers.get("host")),
+        });
+      } catch (error) {
+        if (error instanceof Error && /valid 0x EVM address/i.test(error.message)) {
+          return NextResponse.json(
+            { ok: false, error: "wallet verification failed", code: "invalid_wallet_address", message: "錢包地址格式無效。" },
+            { status: 400, headers: privateNoStoreHeaders },
+          );
+        }
+        throw error;
+      }
+      const { challenge, signedMessage, nonceHash } = challengePayload;
       const [row] = await createDatabaseClient().query<{ id: string }>(
         `
           insert into public.wallet_link_challenges (
@@ -878,9 +892,10 @@ async function handleRequest(
           signature,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        const code = /expired/i.test(message) ? "challenge_expired" : "signature_mismatch";
-        return NextResponse.json({ error: "wallet verification failed", code }, { status: 400, headers: privateNoStoreHeaders });
+        if (error instanceof WalletLinkVerificationError) {
+          return NextResponse.json(walletLinkVerificationErrorPayload(error), { status: error.status, headers: privateNoStoreHeaders });
+        }
+        throw error;
       }
 
       const data = await createDatabaseClient().transaction(async (transaction) => {
@@ -908,7 +923,7 @@ async function handleRequest(
           ],
         );
         if (!consumed) {
-          throw new Error("challenge_reused");
+          throw new WalletLinkVerificationError("wallet_challenge_used", 409);
         }
         const [linked] = await transaction.query<{
           id: string;
@@ -942,11 +957,12 @@ async function handleRequest(
         );
         return linked;
       }).catch((error) => {
-        if (error instanceof Error && error.message === "challenge_reused") return null;
+        if (error instanceof WalletLinkVerificationError && error.code === "wallet_challenge_used") return null;
         throw error;
       });
       if (!data) {
-        return NextResponse.json({ error: "wallet verification failed", code: "challenge_reused" }, { status: 409, headers: privateNoStoreHeaders });
+        const error = new WalletLinkVerificationError("wallet_challenge_used", 409);
+        return NextResponse.json(walletLinkVerificationErrorPayload(error), { status: error.status, headers: privateNoStoreHeaders });
       }
 
       return NextResponse.json(

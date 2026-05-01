@@ -10,6 +10,7 @@ import {
   getExternalMarketStats,
   getExternalMarketTrades,
   listExternalMarkets,
+  listExternalMarketsWithMetadata,
 } from "./api";
 
 type FetchCall = [input: RequestInfo | URL, init?: RequestInit];
@@ -102,6 +103,106 @@ test("listExternalMarkets uses local Next API route when API base is not configu
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
+});
+
+test("listExternalMarketsWithMetadata supports new all-market query options and pagination", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const calls: FetchCall[] = [];
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = createFetchMock({
+    ok: true,
+    source: "supabase_cache",
+    fallbackUsed: false,
+    stale: false,
+    lastUpdatedAt: "2026-05-01T00:00:00.000Z",
+    markets: [],
+    pagination: {
+      limit: 10,
+      offset: 20,
+      nextOffset: 30,
+      returnedCount: 10,
+      totalCount: 123,
+    },
+  }, calls);
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  const result = await listExternalMarketsWithMetadata({
+    locale: "en",
+    view: "all",
+    status: "all",
+    q: "world cup",
+    sort: "volume",
+    limit: 10,
+    offset: 20,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0]?.[0],
+    "http://127.0.0.1:3000/api/external/markets?locale=en&status=all&view=all&q=world+cup&sort=volume&limit=10&offset=20",
+  );
+  assert.deepEqual(result.pagination, {
+    limit: 10,
+    offset: 20,
+    nextOffset: 30,
+    returnedCount: 10,
+    totalCount: 123,
+  });
+});
+
+test("listExternalMarketsWithMetadata tolerates missing pagination", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const calls: FetchCall[] = [];
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  globalThis.fetch = createFetchMock({
+    ok: true,
+    source: "supabase_cache",
+    fallbackUsed: false,
+    stale: false,
+    lastUpdatedAt: null,
+    markets: [],
+  }, calls);
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  const result = await listExternalMarketsWithMetadata("zh-HK", "open");
+
+  assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/external/markets");
+  assert.equal(result.pagination, undefined);
 });
 
 test("listExternalMarkets treats web-origin NEXT_PUBLIC_API_BASE_URL as same-origin mode", async (t) => {

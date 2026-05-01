@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getPolymarketOperationsDashboard } from "./dashboard";
+import { getAdminPolymarketStatusPayload } from "../../api/_shared/admin-polymarket-status";
 
 const withEnv = async (values: Record<string, string | undefined>, run: () => Promise<void>) => {
   const previous = new Map<string, string | undefined>();
@@ -120,4 +121,70 @@ test("Polymarket operations dashboard reports safe empty public market diagnosis
   assert.equal(dashboard.publicPages.externalMarketsStatus, 200);
   assert.equal(dashboard.publicPages.latestMarketCount, 0);
   assert.equal(dashboard.publicPages.diagnosis, "safe_empty");
+});
+
+test("admin Polymarket status computes smart/all market counts and sanitizes sync diagnostics", async () => {
+  const cacheRows = [
+    { is_active: true, stale_after: "2099-01-01T00:00:00.000Z", resolution_status: "open", best_bid: 0.4, best_ask: 0.42, volume: 100, liquidity: 100, outcomes: [{ lastPrice: 0.41 }], last_synced_at: "2026-05-01T00:00:00.000Z" },
+    { is_active: true, stale_after: "2099-01-01T00:00:00.000Z", resolution_status: "open", best_bid: null, best_ask: null, volume: 0, liquidity: 0, outcomes: [], last_synced_at: "2026-05-01T00:01:00.000Z" },
+    { is_active: true, stale_after: "2000-01-01T00:00:00.000Z", resolution_status: "open", best_bid: 0.5, best_ask: 0.52, volume: 5, liquidity: 5, outcomes: [{ lastPrice: 0.51 }], last_synced_at: "2026-05-01T00:02:00.000Z" },
+    { is_active: false, stale_after: "2099-01-01T00:00:00.000Z", resolution_status: "closed", best_bid: 0.1, best_ask: 0.2, volume: 1, liquidity: 1, outcomes: [{ lastPrice: 0.15 }], last_synced_at: "2026-05-01T00:03:00.000Z" },
+    { is_active: false, stale_after: "2099-01-01T00:00:00.000Z", resolution_status: "resolved", best_bid: 0.1, best_ask: 0.2, volume: 1, liquidity: 1, outcomes: [{ lastPrice: 0.15 }], last_synced_at: "2026-05-01T00:04:00.000Z" },
+    { is_active: false, stale_after: "2099-01-01T00:00:00.000Z", resolution_status: "cancelled", best_bid: 0.1, best_ask: 0.2, volume: 1, liquidity: 1, outcomes: [{ lastPrice: 0.15 }], last_synced_at: "2026-05-01T00:05:00.000Z" },
+  ];
+  const recentRuns = [{
+    sync_kind: "market_list_all_open",
+    status: "success",
+    started_at: "2026-05-01T00:10:00.000Z",
+    finished_at: "2026-05-01T00:11:00.000Z",
+    markets_seen: 5000,
+    markets_upserted: 5000,
+    error_message: null,
+    diagnostics: {
+      syncMode: "all_open",
+      pagesFetched: 50,
+      maxPagesReached: true,
+      maxMarketsReached: false,
+      privateTradingEndpointsUsed: false,
+      secret: "SERVICE_ROLE_SHOULD_NOT_LEAK",
+    },
+  }];
+
+  const supabase = {
+    from(table: string) {
+      if (table === "external_market_cache") {
+        return { select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: async () => ({ data: cacheRows, error: null }) }) }) }) }) };
+      }
+      if (table === "external_market_sync_runs") {
+        return { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: recentRuns, error: null }) }) }) }) };
+      }
+      if (table === "external_market_translations") {
+        return { select: () => ({ eq: async () => ({ data: [], error: null }) }) };
+      }
+      if (table === "polymarket_builder_fee_reconciliation_runs") {
+        return { select: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) };
+      }
+      if (table === "polymarket_builder_fee_imports") {
+        return { select: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+
+  const payload = await getAdminPolymarketStatusPayload((() => supabase) as never);
+  const serialized = JSON.stringify(payload);
+
+  assert.equal(payload.marketCounts.total, 6);
+  assert.equal(payload.marketCounts.smartEligible, 1);
+  assert.equal(payload.marketCounts.open, 3);
+  assert.equal(payload.marketCounts.closed, 1);
+  assert.equal(payload.marketCounts.resolved, 1);
+  assert.equal(payload.marketCounts.cancelled, 1);
+  assert.equal(payload.marketCounts.stale, 1);
+  assert.equal(payload.marketCounts.noPrice, 1);
+  assert.equal(payload.marketCounts.lowVolume, 1);
+  assert.equal(payload.syncSummary.pagesFetchedLastFullSync, 50);
+  assert.equal(payload.syncSummary.maxPagesReachedLastFullSync, true);
+  assert.doesNotMatch(serialized, /SERVICE_ROLE_SHOULD_NOT_LEAK|secret/i);
+  assert.equal(payload.recentRuns[0]?.diagnostics?.privateTradingEndpointsUsed, false);
 });

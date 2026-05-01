@@ -267,7 +267,7 @@ test("GET /api/external/markets serves synced external market data", async (t) =
     setSupabaseAdminClientFactoryForTests(null);
   });
 
-  const response = await GET(new NextRequest("http://localhost/api/external/markets"), {
+  const response = await GET(new NextRequest("http://localhost/api/external/markets?view=all&status=all"), {
     params: Promise.resolve({ path: ["external", "markets"] }),
   });
   const payload = (await response.json()) as {
@@ -308,7 +308,7 @@ test("GET /api/external/markets returns stale cache while refresh stays server-s
     setSupabaseAdminClientFactoryForTests(null);
   });
 
-  const response = await GET(new NextRequest("http://localhost/api/external/markets"), {
+  const response = await GET(new NextRequest("http://localhost/api/external/markets?view=all&status=all"), {
     params: Promise.resolve({ path: ["external", "markets"] }),
   });
   const payload = await response.json() as {
@@ -553,7 +553,13 @@ test("admin Polymarket status is protected and reports cache sync audit", async 
 
     const payload = await getAdminPolymarketStatusPayload(() => makeExternalMarketsSupabase() as never);
     assert.equal(payload.source, "polymarket");
-    assert.deepEqual(payload.marketCounts, { total: 1, open: 1, stale: 0, errored: 0 });
+    assert.equal(payload.marketCounts.total, 1);
+    assert.equal(payload.marketCounts.smartEligible, 1);
+    assert.equal(payload.marketCounts.open, 1);
+    assert.equal(payload.marketCounts.stale, 0);
+    assert.equal(payload.marketCounts.noPrice, 0);
+    assert.equal(payload.marketCounts.lowVolume, 0);
+    assert.equal(payload.marketCounts.errored, 0);
     assert.equal(payload.recentRuns[0]?.syncKind, "market_list");
     assert.equal(payload.recentRuns[0]?.status, "success");
     assert.equal(payload.recentRuns[0]?.startedAt, "2099-05-01T01:02:00.000Z");

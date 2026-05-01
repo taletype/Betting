@@ -8,9 +8,12 @@ export const maxDuration = 25;
 
 export async function GET() {
   const result = await syncPolymarketMarketCache(createSupabaseAdminClient(), {
-    limit: 100,
-    syncKind: "market_list",
-    staleMs: 60_000,
+    mode: "all_open",
+    syncKind: "market_list_all_open",
+    pageSize: 100,
+    maxPages: 50,
+    maxMarkets: 5_000,
+    staleMs: 5 * 60_000,
   });
 
   return NextResponse.json({
@@ -19,6 +22,12 @@ export async function GET() {
     marketsSeen: result.marketsSeen,
     marketsUpserted: result.marketsUpserted,
     runId: result.runId,
+    syncMode: result.syncMode,
+    pagesFetched: result.pagesFetched,
+    rawRecordsSeen: result.rawRecordsSeen,
+    uniqueMarkets: result.uniqueMarkets,
+    maxPagesReached: result.maxPagesReached,
+    maxMarketsReached: result.maxMarketsReached,
     error: result.error ? "SYNC_FAILED" : undefined,
   }, { status: result.ok ? 200 : 500 });
 }

@@ -80,6 +80,7 @@ import {
   requestWithdrawal,
 } from "./modules/withdrawals/handlers";
 import { createLinkWalletChallenge, getLinkedWallet, getWalletLinkDomain, linkBaseWallet, setLinkedWalletLookupForTests } from "./modules/wallets/handlers";
+import { isWalletLinkVerificationError, walletLinkVerificationErrorPayload } from "./modules/wallets/challenge";
 import { checkRateLimit } from "./modules/shared/rate-limit";
 import {
   isDepositVerificationDisabled,
@@ -1067,12 +1068,23 @@ const handleRequest = async (request: Request): Promise<Response> => {
       }
 
       const body = await parseBody(request);
-      const payload = await createLinkWalletChallenge({
-        userId: requestUserId,
-        walletAddress: String(body.walletAddress ?? ""),
-        chain: String(body.chain ?? "base"),
-        domain: getWalletLinkDomain(request.headers.get("host")),
-      });
+      let payload: Awaited<ReturnType<typeof createLinkWalletChallenge>>;
+      try {
+        payload = await createLinkWalletChallenge({
+          userId: requestUserId,
+          walletAddress: String(body.walletAddress ?? ""),
+          chain: String(body.chain ?? "base"),
+          domain: getWalletLinkDomain(request.headers.get("host")),
+        });
+      } catch (error) {
+        if (error instanceof Error && /valid 0x EVM address/i.test(error.message)) {
+          return Response.json(
+            { ok: false, error: "wallet verification failed", code: "invalid_wallet_address", message: "錢包地址格式無效。" },
+            { status: 400, headers: privateNoStoreHeaders },
+          );
+        }
+        throw error;
+      }
       return Response.json(payload, { status: 201 });
     }
 
@@ -1083,15 +1095,23 @@ const handleRequest = async (request: Request): Promise<Response> => {
       }
 
       const body = await parseBody(request);
-      const linkedWallet = await linkBaseWallet({
-        userId: requestUserId,
-        walletAddress: String(body.walletAddress ?? ""),
-        chain: String(body.chain ?? "base"),
-        challengeId: body.challengeId ? String(body.challengeId) : undefined,
-        signature: String(body.signature ?? ""),
-        signedMessage: String(body.signedMessage ?? ""),
-        domain: getWalletLinkDomain(request.headers.get("host")),
-      });
+      let linkedWallet: Awaited<ReturnType<typeof linkBaseWallet>>;
+      try {
+        linkedWallet = await linkBaseWallet({
+          userId: requestUserId,
+          walletAddress: String(body.walletAddress ?? ""),
+          chain: String(body.chain ?? "base"),
+          challengeId: body.challengeId ? String(body.challengeId) : undefined,
+          signature: String(body.signature ?? ""),
+          signedMessage: String(body.signedMessage ?? ""),
+          domain: getWalletLinkDomain(request.headers.get("host")),
+        });
+      } catch (error) {
+        if (isWalletLinkVerificationError(error)) {
+          return Response.json(walletLinkVerificationErrorPayload(error), { status: error.status, headers: privateNoStoreHeaders });
+        }
+        throw error;
+      }
 
       return new Response(toJson({ wallet: linkedWallet }), {
         headers: { "content-type": "application/json" },

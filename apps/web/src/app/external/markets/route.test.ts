@@ -12,15 +12,19 @@ const makeCacheRow = (overrides: Record<string, unknown> = {}) => ({
   title: overrides.title ?? "Open market",
   description: overrides.description ?? "",
   category: null,
-  outcomes: [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", outcomeIndex: 0, yesNo: "yes", lastPrice: 0.5 }],
-  prices: {},
-  best_bid: 0.49,
-  best_ask: 0.51,
-  volume: 100,
-  liquidity: 100,
+  outcomes: overrides.outcomes ?? [{ externalOutcomeId: "yes", title: "Yes", slug: "yes", outcomeIndex: 0, yesNo: "yes", lastPrice: 0.5 }],
+  prices: overrides.prices ?? {},
+  best_bid: overrides.best_bid === undefined ? 0.49 : overrides.best_bid,
+  best_ask: overrides.best_ask === undefined ? 0.51 : overrides.best_ask,
+  volume: overrides.volume === undefined ? 100 : overrides.volume,
+  liquidity: overrides.liquidity === undefined ? 100 : overrides.liquidity,
   close_time: overrides.close_time ?? "2099-01-01T00:00:00.000Z",
   resolution_status: overrides.resolution_status ?? "open",
   polymarket_url: "https://polymarket.com/event/open-1",
+  image_url: overrides.image_url ?? null,
+  icon_url: overrides.icon_url ?? null,
+  image_source_url: overrides.image_source_url ?? null,
+  image_updated_at: overrides.image_updated_at ?? null,
   raw_json: {},
   source_provenance: {},
   first_seen_at: "2026-04-30T00:00:00.000Z",
@@ -55,6 +59,28 @@ const makeFakeSupabaseFactory = (rows: ReturnType<typeof makeCacheRow>[]) => () 
           eq: () => ({
             order: () => ({
               limit: async () => ({ data: [{ status: "success" }], error: null }),
+            }),
+          }),
+        }),
+      };
+    }
+
+    if (table === "external_markets") {
+      return {
+        select: () => ({
+          eq: () => ({
+            in: async () => ({ data: [], error: null }),
+          }),
+        }),
+      };
+    }
+
+    if (table === "external_market_prices") {
+      return {
+        select: () => ({
+          in: () => ({
+            order: () => ({
+              limit: async () => ({ data: [], error: null }),
             }),
           }),
         }),
@@ -164,14 +190,105 @@ test("GET /external/markets defaults to open rows and supports explicit status f
     makeFakeSupabaseFactory(rows) as never,
   );
   const closedPayload = await closedResponse.json() as { markets: Array<{ title: string; status: string }> };
-  assert.deepEqual(closedPayload.markets.map((market) => `${market.title}:${market.status}`), ["Past close market:closed"]);
+  assert.deepEqual(new Set(closedPayload.markets.map((market) => `${market.title}:${market.status}`)), new Set(["Past close market:closed", "Resolved market:resolved"]));
 
   const allResponse = await externalMarketsResponse(
     new Request("http://127.0.0.1/api/external/markets?locale=en&status=all"),
     makeFakeSupabaseFactory(rows) as never,
   );
   const allPayload = await allResponse.json() as { markets: Array<{ title: string; status: string }> };
-  assert.deepEqual(allPayload.markets.map((market) => market.status), ["open", "closed", "resolved"]);
+  assert.deepEqual(new Set(allPayload.markets.map((market) => market.status)), new Set(["open", "closed", "resolved"]));
+});
+
+test("GET /external/markets view=all includes no-price and stale cached rows", async () => {
+  const rows = [
+    makeCacheRow({ id: "open", external_id: "OPEN-1", slug: "open-1", title: "Open market" }),
+    makeCacheRow({
+      id: "no-price",
+      external_id: "NO-PRICE-1",
+      slug: "no-price-1",
+      title: "No price browse market",
+      outcomes: [],
+      best_bid: null,
+      best_ask: null,
+      volume: 0,
+      liquidity: 0,
+    }),
+    makeCacheRow({
+      id: "stale",
+      external_id: "STALE-1",
+      slug: "stale-1",
+      title: "Stale browse market",
+      stale_after: "2000-01-01T00:00:00.000Z",
+    }),
+  ];
+
+  const response = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?view=all&status=all&locale=en"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const payload = await response.json() as {
+    markets: Array<{ externalId: string }>;
+    pagination: { returnedCount: number; totalCount: number | null };
+  };
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(new Set(payload.markets.map((market) => market.externalId)), new Set(["OPEN-1", "NO-PRICE-1", "STALE-1"]));
+  assert.equal(payload.pagination.returnedCount, 3);
+  assert.equal(payload.pagination.totalCount, 3);
+});
+
+test("GET /external/markets supports q, limit, offset, and pagination metadata", async () => {
+  const rows = Array.from({ length: 12 }, (_, index) =>
+    makeCacheRow({
+      id: `row-${index}`,
+      external_id: `WORLD-${index}`,
+      slug: `world-market-${index}`,
+      title: `World market ${index}`,
+      volume: 100 - index,
+      liquidity: 100 - index,
+    }));
+
+  const first = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?view=all&status=all&q=world&limit=10&sort=volume"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const firstPayload = await first.json() as {
+    markets: Array<{ externalId: string }>;
+    pagination: { limit: number; offset: number; nextOffset: number | null; returnedCount: number; totalCount: number | null };
+  };
+  assert.equal(firstPayload.markets.length, 10);
+  assert.equal(firstPayload.pagination.limit, 10);
+  assert.equal(firstPayload.pagination.offset, 0);
+  assert.equal(firstPayload.pagination.nextOffset, 10);
+  assert.equal(firstPayload.pagination.totalCount, 12);
+
+  const second = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?view=all&status=all&q=world&limit=10&offset=10&sort=volume"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const secondPayload = await second.json() as {
+    markets: Array<{ externalId: string }>;
+    pagination: { nextOffset: number | null; returnedCount: number };
+  };
+  assert.deepEqual(secondPayload.markets.map((market) => market.externalId), ["WORLD-10", "WORLD-11"]);
+  assert.equal(secondPayload.pagination.returnedCount, 2);
+  assert.equal(secondPayload.pagination.nextOffset, null);
+});
+
+test("GET /external/markets view=smart preserves quality filtering", async () => {
+  const rows = [
+    makeCacheRow({ id: "open", external_id: "OPEN-1", slug: "open-1", title: "Open market" }),
+    makeCacheRow({ id: "no-price", external_id: "NO-PRICE-1", slug: "no-price-1", title: "No price market", outcomes: [], best_bid: null, best_ask: null, volume: 0, liquidity: 0 }),
+  ];
+
+  const response = await externalMarketsResponse(
+    new Request("http://127.0.0.1/api/external/markets?view=smart&status=open&locale=en"),
+    makeFakeSupabaseFactory(rows) as never,
+  );
+  const payload = await response.json() as { markets: Array<{ externalId: string }> };
+
+  assert.deepEqual(payload.markets.map((market) => market.externalId), ["OPEN-1"]);
 });
 
 test("GET /external/markets uses Gamma fallback when cache has only stale closed markets", async (t) => {

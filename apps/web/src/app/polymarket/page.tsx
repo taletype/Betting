@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function PolymarketPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string; status?: string; sort?: string; ref?: string; market?: string }>;
+  searchParams?: Promise<{ q?: string; status?: string; sort?: string; ref?: string; market?: string; view?: string; offset?: string; limit?: string }>;
 } = {}) {
   return renderExternalMarketsPage(defaultLocale, await searchParams);
 }
 
-export async function renderPolymarketPageForLocale(locale: AppLocale, searchParams?: Promise<{ q?: string; status?: string; sort?: string; ref?: string; market?: string }>) {
+export async function renderPolymarketPageForLocale(locale: AppLocale, searchParams?: Promise<{ q?: string; status?: string; sort?: string; ref?: string; market?: string; view?: string; offset?: string; limit?: string }>) {
   return renderExternalMarketsPage(locale, await searchParams);
 }
