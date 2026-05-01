@@ -7,8 +7,10 @@ import { GET, setAuthCallbackDependenciesForTests } from "./auth/callback/route"
 
 const mockSupabaseFactory = (options: {
   exchanged?: string[];
+  verified?: Array<{ token_hash: string; type: string }>;
   userId?: string | null;
   exchangeError?: Error | null;
+  verifyError?: Error | null;
   userError?: Error | null;
 }) => () => ({
   auth: {
@@ -16,11 +18,32 @@ const mockSupabaseFactory = (options: {
       options.exchanged?.push(code);
       return { error: options.exchangeError ?? null };
     },
+    verifyOtp: async (params: { token_hash: string; type: string }) => {
+      options.verified?.push(params);
+      return { error: options.verifyError ?? null };
+    },
     getUser: async () => ({
       data: { user: options.userId ? { id: options.userId } : null },
       error: options.userError ?? null,
     }),
   },
+});
+
+test("auth callback verifies magic link token when code is absent", async () => {
+  const verified: Array<{ token_hash: string; type: string }> = [];
+  setAuthCallbackDependenciesForTests({
+    supabaseServerClientFactory: mockSupabaseFactory({ verified, userId: "user-1" }) as never,
+    referralApplier: (async () => null) as never,
+  });
+  try {
+    const response = await GET(new NextRequest("https://bet.example/auth/callback?token_hash=hash123&type=magiclink&next=/account"));
+
+    assert.equal(response.status, 307);
+    assert.equal(response.headers.get("location"), "https://bet.example/account");
+    assert.deepEqual(verified, [{ token_hash: "hash123", type: "magiclink" }]);
+  } finally {
+    setAuthCallbackDependenciesForTests({});
+  }
 });
 
 test("auth callback exchanges code for session and redirects to safe next", async () => {

@@ -72,10 +72,12 @@ const applyPendingReferral = async (
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const tokenHash = requestUrl.searchParams.get("token_hash");
+  const tokenType = requestUrl.searchParams.get("type");
   const requestedNext = requestUrl.searchParams.get("next") ?? "/account";
   const next = normalizeAuthNextPath(requestedNext);
 
-  if (!code) {
+  if (!code && !tokenHash) {
     return callbackFailureRedirect(requestUrl, next);
   }
 
@@ -87,9 +89,21 @@ export async function GET(request: NextRequest) {
       set: (name, value, options) => response.cookies.set(name, value, options),
       remove: (name, options) => response.cookies.delete({ name, ...options }),
     });
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-    if (exchangeError) {
-      throw exchangeError;
+    if (code) {
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) {
+        throw exchangeError;
+      }
+    } else if (tokenHash && tokenType) {
+      const { error: otpError } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: tokenType,
+      });
+      if (otpError) {
+        throw otpError;
+      }
+    } else {
+      throw new Error("auth callback missing token type");
     }
     const { data, error: userError } = await supabase.auth.getUser();
     if (userError || !data.user) {
