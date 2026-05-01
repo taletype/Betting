@@ -6,6 +6,7 @@ import { ReferralCapture } from "./referral-capture";
 import { OptionalThirdwebProvider } from "./thirdweb-provider";
 import { defaultLocale, localeHeaderName, localeToHtmlLang, normalizeLocale } from "../lib/locale";
 import "./globals.css";
+import "./support-page-polish.css";
 
 export const metadata: Metadata = {
   title: {
