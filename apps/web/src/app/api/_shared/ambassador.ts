@@ -938,21 +938,6 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
     }
     if (input.status === "confirmed") {
       await createRewardLedgerEntriesForTrade(transaction, row.id);
-      await transaction.query(
-        `update public.ambassador_reward_ledger
-            set status = 'payable',
-                payable_at = coalesce(payable_at, now())
-          where source_trade_attribution_id = $1::uuid
-            and status = 'pending'`,
-        [row.id],
-      );
-      const recipients = await transaction.query<{ recipient_user_id: string }>(
-        `select distinct recipient_user_id from public.ambassador_reward_ledger where source_trade_attribution_id = $1::uuid and recipient_user_id is not null`,
-        [row.id],
-      );
-      for (const recipient of recipients) {
-        await maybeCreateAutoPayoutRequest(transaction, recipient.recipient_user_id);
-      }
     }
     return { tradeAttributionId: row.id, idempotent: false };
   });
