@@ -8,8 +8,10 @@ import { defaultLocale, formatDateTime, getLocaleCopy } from "../../../lib/local
 import {
   approveRewardPayoutAction,
   cancelRewardPayoutAction,
+  dismissRiskFlagAction,
   failRewardPayoutAction,
   markRewardPayoutPaidAction,
+  reviewRiskFlagAction,
 } from "../actions";
 import { EmptyState, MetricCard, StatusChip } from "../../product-ui";
 
@@ -188,8 +190,24 @@ export default async function AdminPayoutsPage({
                       ) : (
                         <div className="stack">
                           {riskFlags.map((flag) => (
-                            <div key={flag.id} className={flag.severity === "high" && flag.status === "open" ? "status-bad" : "muted"}>
-                              {flag.severity} / {flag.status} / {flag.reasonCode}
+                            <div key={flag.id} className="stack">
+                              <div className={flag.severity === "high" && flag.status === "open" ? "status-bad" : "muted"}>
+                                {flag.severity} / {flag.status} / {flag.reasonCode}
+                              </div>
+                              {flag.status === "open" ? (
+                                <>
+                                  <form action={reviewRiskFlagAction} className="stack">
+                                    <input type="hidden" name="riskFlagId" value={flag.id} />
+                                    <input name="reviewNotes" placeholder="review note" required />
+                                    <button type="submit">標記已覆核</button>
+                                  </form>
+                                  <form action={dismissRiskFlagAction} className="stack">
+                                    <input type="hidden" name="riskFlagId" value={flag.id} />
+                                    <input name="reviewNotes" placeholder="dismiss reason" required />
+                                    <button type="submit">解除阻擋</button>
+                                  </form>
+                                </>
+                              ) : null}
                             </div>
                           ))}
                         </div>
