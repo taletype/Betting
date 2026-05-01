@@ -522,50 +522,80 @@ export const captureAmbassadorReferralDb = async (userId: string, code: string, 
 };
 
 export const requestAmbassadorPayoutDb = async (userId: string, input: { destinationType: "wallet" | "manual"; destinationValue: string }) => {
-  const db = getDb();
-  const dashboard = await readAmbassadorDashboardDb(userId);
-  if (dashboard.rewards.payableRewards < parseMinPayout()) {
-    throw new Error("payable rewards are below the minimum payout threshold");
-  }
-  const [openPayout] = await db.query<{ id: string }>(
-    `select id from public.ambassador_reward_payouts where recipient_user_id = $1::uuid and status in ('requested', 'approved') limit 1`,
-    [userId],
-  );
-  if (openPayout) throw new Error("recipient already has an open reward payout request");
   if (input.destinationType === "manual") throw new Error("manual payout destination is admin-only");
   const config = getRewardConfig();
   const destinationValue = normalizePayoutWalletAddress(input.destinationValue);
-  const [row] = await db.query<{ id: string }>(
-    `
-      insert into public.ambassador_reward_payouts (
-        recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
-        payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address, created_at
-      ) values ($1::uuid, $2, 'requested', 'wallet', $3, $4, $5, $6, $7, $8, now())
-      returning id
-    `,
-    [
-      userId,
-      dashboard.rewards.payableRewards,
-      destinationValue,
-      config.payoutChain,
-      config.payoutChainId,
-      config.payoutAsset,
-      config.payoutAssetDecimals,
-      config.polygonPusdAddress,
-    ],
-  );
-  if (!row) throw new Error("failed to request reward payout");
-  await db.query(
-    `update public.ambassador_reward_ledger
-        set status = 'approved',
-            approved_at = coalesce(approved_at, now()),
-            reserved_by_payout_id = $2::uuid,
-            reserved_at = coalesce(reserved_at, now())
-      where recipient_user_id = $1::uuid
-        and status = 'payable'`,
-    [userId, row.id],
-  );
-  return { id: row?.id ?? "" };
+  const db = getDb();
+  return db.transaction(async (transaction) => {
+    const payableRows = await transaction.query<{ id: string; amount_usdc_atoms: bigint }>(
+      `
+        select id, amount_usdc_atoms
+          from public.ambassador_reward_ledger
+         where recipient_user_id = $1::uuid
+           and status = 'payable'
+         for update
+      `,
+      [userId],
+    );
+    const payableRewards = payableRows.reduce((sum, row) => sum + row.amount_usdc_atoms, 0n);
+    if (payableRewards < parseMinPayout()) {
+      throw new Error("payable rewards are below the minimum payout threshold");
+    }
+
+    const [openPayout] = await transaction.query<{ id: string }>(
+      `select id from public.ambassador_reward_payouts where recipient_user_id = $1::uuid and status in ('requested', 'approved') limit 1`,
+      [userId],
+    );
+    if (openPayout) throw new Error("recipient already has an open reward payout request");
+
+    const [row] = await transaction.query<{ id: string }>(
+      `
+        insert into public.ambassador_reward_payouts (
+          recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
+          payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address, created_at
+        ) values ($1::uuid, $2, 'requested', 'wallet', $3, $4, $5, $6, $7, $8, now())
+        returning id
+      `,
+      [
+        userId,
+        payableRewards,
+        destinationValue,
+        config.payoutChain,
+        config.payoutChainId,
+        config.payoutAsset,
+        config.payoutAssetDecimals,
+        config.polygonPusdAddress,
+      ],
+    );
+    if (!row) throw new Error("failed to request reward payout");
+
+    await transaction.query(
+      `update public.ambassador_reward_ledger
+          set status = 'approved',
+              approved_at = coalesce(approved_at, now()),
+              reserved_by_payout_id = $2::uuid,
+              reserved_at = coalesce(reserved_at, now())
+        where recipient_user_id = $1::uuid
+          and status = 'payable'`,
+      [userId, row.id],
+    );
+
+    const [reserved] = await transaction.query<{ amount: bigint }>(
+      `
+        select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount
+          from public.ambassador_reward_ledger
+         where recipient_user_id = $1::uuid
+           and status = 'approved'
+           and reserved_by_payout_id = $2::uuid
+      `,
+      [userId, row.id],
+    );
+    if ((reserved?.amount ?? 0n) !== payableRewards) {
+      throw new Error("payout request must reserve the exact payable reward amount");
+    }
+
+    return { id: row.id };
+  });
 };
 
 export const readAdminAmbassadorOverviewDb = async () => {
