@@ -232,7 +232,7 @@ test("reward ledger entries are created as pending records", () => {
   assert.match(source, /builder trade attribution must be confirmed before rewards become payable/);
   assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
   assert.match(handlers, /accountConfirmedBuilderTradeRewards/);
-  assert.match(handlers, /markRewardsPayable/);
+  assert.doesNotMatch(handlers, /ledger = await markRewardsPayable\(transaction, tradeAttribution\.id\)/);
 });
 
 test("unconfirmed Builder attribution does not create payable rewards", () => {
