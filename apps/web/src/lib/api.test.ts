@@ -569,3 +569,104 @@ test("getAmbassadorDashboard uses local Next API route when API base is not conf
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.[0], "http://127.0.0.1:3000/api/ambassador/dashboard");
 });
+
+test("getAmbassadorDashboard uses same-site Next API route when API base is configured", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
+  const calls: FetchCall[] = [];
+
+  process.env.API_BASE_URL = "https://api.example.com";
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  process.env.VERCEL_URL = "bet.example.vercel.app";
+
+  globalThis.fetch = createFetchMock(
+    {
+      ambassadorCode: {
+        id: "11111111-1111-4111-8111-111111111111",
+        code: "DEMO1001",
+        ownerUserId: "22222222-2222-4222-8222-222222222222",
+        status: "active",
+        inviteUrl: "https://bet.example.vercel.app/ambassador?ref=DEMO1001",
+        createdAt: "2026-04-22T00:00:00.000Z",
+        disabledAt: null,
+      },
+      attribution: null,
+      directReferrals: [],
+      rewards: {
+        pendingRewards: "0",
+        payableRewards: "0",
+        approvedRewards: "0",
+        paidRewards: "0",
+        voidRewards: "0",
+        directReferralCount: 0,
+        directTradingVolumeUsdcAtoms: "0",
+      },
+      rewardLedger: [],
+      payouts: [],
+    },
+    calls,
+  );
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+    if (originalVercelUrl === undefined) {
+      delete process.env.VERCEL_URL;
+    } else {
+      process.env.VERCEL_URL = originalVercelUrl;
+    }
+  });
+
+  await getAmbassadorDashboard();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.[0], "https://bet.example.vercel.app/api/ambassador/dashboard");
+});
+
+test("getAmbassadorDashboard preserves classified auth error codes", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalApiBaseUrl = process.env.API_BASE_URL;
+  const originalPublicApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  delete process.env.API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalApiBaseUrl === undefined) {
+      delete process.env.API_BASE_URL;
+    } else {
+      process.env.API_BASE_URL = originalApiBaseUrl;
+    }
+    if (originalPublicApiBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_BASE_URL = originalPublicApiBaseUrl;
+    }
+  });
+
+  await assert.rejects(
+    () => getAmbassadorDashboard(),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "dashboard_auth_missing",
+  );
+});

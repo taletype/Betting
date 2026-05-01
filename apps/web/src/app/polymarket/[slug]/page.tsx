@@ -379,11 +379,11 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
   const tradeActionLabel = (reason: PolymarketRoutingReadiness | null): string => {
     if (reason === "wallet_not_connected") return "連接錢包";
     if (reason === "wallet_funds_insufficient") return "增值錢包";
-    if (reason === "credentials_missing") return "設定 Polymarket 憑證";
-    if (reason === "market_not_tradable" || reason === "invalid_order") return "市場只供瀏覽";
-    if (reason === "submit_mode_disabled" || reason === "submitter_unavailable") return "實盤提交已停用";
+    if (reason === "credentials_missing") return "設定 Polymarket 交易權限";
+    if (reason === "submit_mode_disabled" || reason === "submitter_unavailable" || reason === "feature_disabled") return "實盤提交已停用";
+    if (reason === "market_not_tradable") return "市場已關閉";
+    if (reason === "invalid_order") return "請輸入有效價格及數量";
     if (reason === "signature_required" || reason === "ready_to_submit") return "準備自行簽署訂單";
-    if (reason === "feature_disabled") return "交易功能尚未啟用";
     return copy.tradeViaPolymarket;
   };
   const publicSubmitEnabled = globallyRoutedTradingEnabled &&
@@ -491,8 +491,8 @@ export async function renderPolymarketSlugPage(locale: AppLocale, { params, sear
 
           {!marketTradable ? (
             <section className="panel disclosure-card stack">
-              <strong>{restricted ? "只供瀏覽 / 市場受限制" : "市場暫時不可交易"}</strong>
-              <p className="muted">此市場目前只供瀏覽。實際交易是否可提交，將由 Polymarket 的市場、錢包、憑證及合規檢查判斷。</p>
+              <strong>市場已關閉</strong>
+              <p className="muted">此市場已關閉或已結算。</p>
             </section>
           ) : null}
           {externalDataUnavailable ? (

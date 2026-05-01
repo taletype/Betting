@@ -27,9 +27,19 @@ export interface LinkWalletInput {
 export const getWalletLinkDomain = (requestHost?: string | null): string =>
   normalizeDomain(process.env.NEXT_PUBLIC_SITE_DOMAIN ?? process.env.SITE_DOMAIN ?? requestHost ?? "localhost");
 
+let linkedWalletLookupForTests: ((userId: string) => ReturnType<typeof getLinkedWalletForUser>) | null = null;
+
+export const setLinkedWalletLookupForTests = (lookup: typeof linkedWalletLookupForTests): void => {
+  linkedWalletLookupForTests = lookup;
+};
+
 export const getLinkedWallet = async (userId?: string) => {
   if (!userId) {
     throw new Error("authentication required");
+  }
+
+  if (linkedWalletLookupForTests) {
+    return linkedWalletLookupForTests(userId);
   }
 
   const db = createDatabaseClient();

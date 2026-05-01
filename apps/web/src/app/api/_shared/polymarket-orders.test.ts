@@ -127,9 +127,9 @@ test("preview returns exact disabled reasons for missing wallet, credentials, an
 
     assert.deepEqual(
       preview.disabledReasons.filter((reason) =>
-        ["尚未連接錢包", "設定 Polymarket 憑證", "Builder Code 未設定", "交易功能尚未啟用"].includes(reason),
+        ["連接錢包", "設定 Polymarket 交易權限", "Builder Code 未設定", "實盤提交已停用"].includes(reason),
       ),
-      ["交易功能尚未啟用", "尚未連接錢包", "設定 Polymarket 憑證", "Builder Code 未設定"],
+      ["實盤提交已停用", "連接錢包", "設定 Polymarket 交易權限", "Builder Code 未設定"],
     );
     assert.doesNotMatch(preview.disabledReasonCodes.join(" "), /geo|region/);
   });
@@ -152,6 +152,6 @@ test("preview cannot become live-submittable by default", async (t) => {
     assert.equal(preview.ok, false);
     assert.equal(preview.routedTradingEnabled, false);
     assert.equal(preview.disabledReasonCodes[0], "feature_disabled");
-    assert.match(preview.disabledReasons[0] ?? "", /交易功能尚未啟用/);
+    assert.match(preview.disabledReasons[0] ?? "", /實盤提交已停用/);
   });
 });

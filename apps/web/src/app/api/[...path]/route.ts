@@ -19,7 +19,9 @@ import {
 import { previewPolymarketOrder } from "../_shared/polymarket-orders";
 import type { ExternalMarketApiRecord } from "../../../lib/api";
 import {
+  assertPolymarketL2CredentialSignature,
   assertWalletLinkSignature,
+  buildPolymarketL2CredentialChallenge,
   buildWalletLinkChallenge,
   getWalletLinkDomain,
   hashWalletLinkNonce,
@@ -653,7 +655,65 @@ async function handleRequest(
       return NextResponse.json({ status: "revoked", walletAddress: null, updatedAt: new Date().toISOString() }, { headers: privateNoStoreHeaders });
     }
 
+    if (apiPath === "polymarket/l2-credentials/challenge" && request.method === "POST") {
+      const forwarded = await forwardServiceApiRequest(request, "polymarket/l2-credentials/challenge");
+      if (forwarded) return forwarded;
+      const { data: wallet, error } = await adminSupabase()
+        .from("linked_wallets")
+        .select("wallet_address, verified_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!wallet?.wallet_address || !wallet.verified_at) {
+        return NextResponse.json({ error: "verified linked wallet is required", code: "POLYMARKET_WALLET_NOT_VERIFIED" }, { status: 403, headers: privateNoStoreHeaders });
+      }
+      return NextResponse.json(
+        buildPolymarketL2CredentialChallenge({
+          userId,
+          walletAddress: wallet.wallet_address,
+          domain: getWalletLinkDomain(request.headers.get("host")),
+        }),
+        { status: 201, headers: privateNoStoreHeaders },
+      );
+    }
+
+    if (apiPath === "polymarket/l2-credentials/derive" && request.method === "POST") {
+      const forwarded = await forwardServiceApiRequest(request, "polymarket/l2-credentials/derive");
+      if (forwarded) return forwarded;
+      const { data: wallet, error } = await adminSupabase()
+        .from("linked_wallets")
+        .select("wallet_address, verified_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!wallet?.wallet_address || !wallet.verified_at) {
+        return NextResponse.json({ error: "verified linked wallet is required", code: "POLYMARKET_WALLET_NOT_VERIFIED" }, { status: 403, headers: privateNoStoreHeaders });
+      }
+      const body = (await request.json().catch(() => ({}))) as { signedMessage?: string; signature?: string };
+      try {
+        assertPolymarketL2CredentialSignature({
+          userId,
+          walletAddress: wallet.wallet_address,
+          domain: getWalletLinkDomain(request.headers.get("host")),
+          signedMessage: String(body.signedMessage ?? ""),
+          signature: String(body.signature ?? ""),
+        });
+      } catch {
+        return NextResponse.json({ error: "signature does not match verified wallet", code: "POLYMARKET_WALLET_SIGNATURE_MISMATCH" }, { status: 400, headers: privateNoStoreHeaders });
+      }
+      return NextResponse.json(
+        { error: "Polymarket L2 credential derivation is not enabled", code: "POLYMARKET_L2_SETUP_UNAVAILABLE" },
+        { status: 503, headers: privateNoStoreHeaders },
+      );
+    }
+
     if (apiPath === "polymarket/l2-credentials" && request.method === "POST") {
+      if (process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG !== "true" && process.env.POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG !== "true") {
+        return NextResponse.json(
+          { error: "manual Polymarket L2 credential input is disabled", code: "POLYMARKET_MANUAL_L2_CREDENTIALS_DISABLED" },
+          { status: 404, headers: privateNoStoreHeaders },
+        );
+      }
       const forwarded = await forwardServiceApiRequest(request, "polymarket/l2-credentials");
       if (forwarded) return forwarded;
       return NextResponse.json(

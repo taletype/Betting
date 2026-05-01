@@ -389,7 +389,7 @@ const zhReasonByCheck: Record<PolymarketTradingReadinessCheck, string> = {
   betaUserAllowlisted: "測試交易功能只限指定用戶",
   builderCodeConfigured: "Builder Code 未設定",
   walletConnected: "尚未連接錢包",
-  polymarketCredentialsReady: "設定 Polymarket 憑證",
+  polymarketCredentialsReady: "設定 Polymarket 交易權限",
   userCanSignOrder: "需要用戶自行簽署訂單",
   marketTradable: "市場暫時不可交易",
   balanceAllowanceReady: "餘額或授權不足",
@@ -916,10 +916,10 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
 
   const l2Lookup = await (dependencies.l2CredentialLookup ?? defaultL2CredentialLookup)(userId, linkedWalletAddress);
   if (l2Lookup.status === "revoked") {
-    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_CREDENTIALS_REVOKED", "設定 Polymarket 憑證");
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_CREDENTIALS_REVOKED", "設定 Polymarket 交易權限");
   }
   if (l2Lookup.status !== "present" || !l2Lookup.credentials) {
-    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 憑證");
+    throw new ExternalPolymarketRoutingError(409, "POLYMARKET_CREDENTIALS_MISSING", "設定 Polymarket 交易權限");
   }
 
   const market = await getExternalMarketRecord(marketSource, marketExternalId);

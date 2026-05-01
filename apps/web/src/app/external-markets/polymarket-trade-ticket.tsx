@@ -5,7 +5,6 @@ import { polygon } from "thirdweb/chains";
 import { ConnectButton } from "thirdweb/react";
 
 import {
-  getPolymarketGeoblockStatusLabel,
   getPolymarketReadinessChecklist,
   getPolymarketRoutingReadiness,
   getPolymarketTopBlockingReason,
@@ -32,6 +31,7 @@ interface Props {
   betaUserAllowlisted?: boolean;
   submitModeEnabled?: boolean;
   walletConnected: boolean;
+  walletVerified?: boolean;
   walletFundsSufficient?: boolean;
   geoblockAllowed?: boolean;
   hasCredentials: boolean;
@@ -57,8 +57,8 @@ const statusTone = (status: PolymarketReadinessChecklistStatus): "success" | "wa
 
 const statusLabel = (status: PolymarketReadinessChecklistStatus): string => {
   if (status === "complete") return "完成";
-  if (status === "unavailable") return "只供瀏覽";
-  if (status === "disabled") return "已停用";
+  if (status === "unavailable") return "已關閉";
+  if (status === "disabled") return "實盤提交已停用";
   if (status === "checking") return "檢查中";
   return "待處理";
 };
@@ -69,10 +69,9 @@ const getTradeTicketActionLabel = (
 ): string => {
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
-  if (!input.hasCredentials) return "設定 Polymarket 憑證";
-  if (!input.marketTradable) return "市場只供瀏覽";
-  if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false) return "實盤提交已停用";
-  if (!input.featureEnabled) return "交易功能尚未啟用";
+  if (!input.hasCredentials) return "設定 Polymarket 交易權限";
+  if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false || !input.featureEnabled) return "實盤提交已停用";
+  if (!input.marketTradable) return "市場已關閉";
   if (input.orderValid === false) return "請輸入有效價格及數量";
   if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
   if (input.submitted) return "訂單已提交";
@@ -95,6 +94,14 @@ interface L2CredentialStatusResponse {
   updatedAt: string | null;
 }
 
+interface L2CredentialChallengeResponse {
+  challenge: {
+    walletAddress: string;
+    expiresAt: string;
+  };
+  signedMessage: string;
+}
+
 const isL2CredentialStatusResponse = (value: unknown): value is L2CredentialStatusResponse => {
   if (!value || typeof value !== "object") return false;
   const payload = value as Partial<L2CredentialStatusResponse>;
@@ -114,10 +121,44 @@ const redactWalletAddress = (value: string | null): string => {
 const readErrorMessage = async (response: Response, fallback: string): Promise<string> => {
   const payload = await response.json().catch(() => null) as { error?: unknown; code?: unknown } | null;
   const code = typeof payload?.code === "string" ? payload.code : null;
-  if (code === "POLYMARKET_WALLET_NOT_VERIFIED") return "請先在帳戶頁完成已連結錢包驗證，之後再設定 Polymarket 憑證。";
-  if (code === "POLYMARKET_WALLET_MISMATCH") return "提交的 Polymarket 憑證與已驗證錢包不一致。";
-  if (code === "POLYMARKET_L2_SETUP_UNAVAILABLE") return "目前未啟用 Polymarket 憑證設定服務。";
+  if (code === "POLYMARKET_WALLET_NOT_VERIFIED") return "請先在帳戶頁完成已連結錢包驗證，之後再設定 Polymarket 交易權限。";
+  if (code === "POLYMARKET_WALLET_MISMATCH") return "簽署錢包與已驗證錢包不一致。";
+  if (code === "POLYMARKET_L2_SETUP_UNAVAILABLE") return "Polymarket 權限設定暫未啟用。";
   return typeof payload?.error === "string" && payload.error.trim() ? payload.error : fallback;
+};
+
+export const isPolymarketManualL2CredentialsDebugEnabled = (): boolean =>
+  process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG === "true";
+
+const isPolymarketL2SignatureSetupEnabled = (): boolean =>
+  process.env.NEXT_PUBLIC_POLYMARKET_L2_SIGNATURE_SETUP_ENABLED === "true";
+
+const isL2CredentialChallengeResponse = (value: unknown): value is L2CredentialChallengeResponse => {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<L2CredentialChallengeResponse>;
+  return (
+    Boolean(payload.challenge) &&
+    typeof payload.challenge?.walletAddress === "string" &&
+    typeof payload.challenge?.expiresAt === "string" &&
+    typeof payload.signedMessage === "string"
+  );
+};
+
+const requestWalletSignature = async (message: string, walletAddress: string): Promise<string> => {
+  const ethereum = typeof window === "undefined"
+    ? null
+    : (window as Window & { ethereum?: { request?: (input: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
+  if (!ethereum?.request) {
+    throw new Error("請先連接支援簽署訊息的錢包。");
+  }
+  const signature = await ethereum.request({
+    method: "personal_sign",
+    params: [message, walletAddress],
+  });
+  if (typeof signature !== "string" || !signature.trim()) {
+    throw new Error("錢包未能完成簽署。");
+  }
+  return signature;
 };
 
 export function PolymarketTradeTicket(props: Props) {
@@ -131,7 +172,6 @@ export function PolymarketTradeTicket(props: Props) {
   const [credentialStatusLoading, setCredentialStatusLoading] = useState(Boolean(props.loggedIn));
   const [credentialStatusCheckedAt, setCredentialStatusCheckedAt] = useState<string | null>(null);
   const [l2CredentialReady, setL2CredentialReady] = useState(props.hasCredentials);
-  const [credentialFormVisible, setCredentialFormVisible] = useState(false);
   const [credentialKey, setCredentialKey] = useState("");
   const [credentialSecret, setCredentialSecret] = useState("");
   const [credentialPassphrase, setCredentialPassphrase] = useState("");
@@ -196,8 +236,7 @@ export function PolymarketTradeTicket(props: Props) {
   const tradeButtonLabel = getTradeTicketActionLabel(readinessInput, readiness);
   const disabled =
     tradeButtonLabel === "請輸入有效價格及數量" ||
-    tradeButtonLabel === "市場只供瀏覽" ||
-    tradeButtonLabel === "交易功能尚未啟用" ||
+    tradeButtonLabel === "市場已關閉" ||
     tradeButtonLabel === "實盤提交已停用";
   const publicTradingReady = Boolean(
     props.featureEnabled &&
@@ -215,10 +254,13 @@ export function PolymarketTradeTicket(props: Props) {
       ? "交易介面預覽；實盤提交已停用"
       : props.marketTradable
         ? "交易介面預覽"
-        : "市場只供瀏覽";
+        : "市場已關閉";
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
+  const manualCredentialDebugEnabled = isPolymarketManualL2CredentialsDebugEnabled();
+  const l2SignatureSetupEnabled = isPolymarketL2SignatureSetupEnabled();
+  const walletVerified = props.walletConnected && props.loggedIn ? props.walletVerified !== false : false;
   const credentialBadgeTone = l2CredentialReady ? "success" : credentialStatusLoading || credentialStatus?.status === "revoked" ? "warning" : "neutral";
   const credentialBadgeLabel = l2CredentialReady
     ? "已就緒"
@@ -228,10 +270,25 @@ export function PolymarketTradeTicket(props: Props) {
         ? "已撤銷"
         : "未設定";
   const credentialDescription = l2CredentialReady
-    ? `已為 ${redactWalletAddress(credentialStatus?.walletAddress ?? null)} 準備好用戶自己的 Polymarket L2 憑證。`
+    ? `已為 ${redactWalletAddress(credentialStatus?.walletAddress ?? null)} 準備好 Polymarket 交易權限。`
     : credentialStatus?.status === "revoked"
-      ? "目前儲存的 Polymarket L2 憑證已撤銷；如要交易，需要重新設定用戶自己的 key、secret 與 passphrase。"
-      : "需要用戶自己的 Polymarket L2 key、secret 與 passphrase；平台不會替用戶建立或代管交易身份。";
+      ? "目前的 Polymarket 交易權限已撤銷；如要交易，需要重新用你的錢包設定。"
+      : "需要先用你的錢包設定 Polymarket 交易權限。平台不會取得你的私鑰，亦不會代你下注或交易。";
+  const credentialSetupButtonLabel = !props.loggedIn
+    ? "登入以保存交易設定"
+    : !walletConnected
+      ? "連接錢包"
+      : !walletVerified
+        ? "驗證錢包"
+        : credentialStatusLoading
+          ? "檢查中"
+          : l2CredentialReady
+            ? "Polymarket 權限已就緒"
+            : credentialStatus?.status === "revoked"
+              ? "重新設定 Polymarket 權限"
+              : !l2SignatureSetupEnabled
+                ? "Polymarket 權限設定暫未啟用"
+                : "用錢包設定 Polymarket 權限";
   const refreshCredentialStatus = async () => {
     setFlowError(null);
     if (!props.loggedIn) {
@@ -272,12 +329,65 @@ export function PolymarketTradeTicket(props: Props) {
   const setupCredentials = async () => {
     setFlowError(null);
     if (!props.loggedIn) {
-      setFlowStatus("請先登入，再儲存你自己的 Polymarket L2 憑證。");
+      setFlowStatus("請先登入，以保存你的 Polymarket 交易設定。");
       return;
     }
-    setCredentialFormVisible(true);
-    setFlowStatus("請輸入你自己的 Polymarket L2 key、secret 與 passphrase。平台只會在伺服器端加密保存。");
+    if (!walletConnected) {
+      setFlowStatus("請先連接你自己的錢包。");
+      return;
+    }
+    if (!walletVerified) {
+      setFlowStatus("請先驗證已連接的錢包。");
+      return;
+    }
+    if (!l2SignatureSetupEnabled) {
+      setFlowError("Polymarket 權限設定暫未啟用。");
+      return;
+    }
+    setCredentialSubmitting(true);
+    setFlowStatus("請在錢包簽署一次，以建立或驗證 Polymarket 交易權限。");
     trackFunnelEvent("l2_credentials_missing", { market: props.marketTitle, action: "setup_requested" });
+
+    try {
+      const challengeResponse = await fetch("/api/polymarket/l2-credentials/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+      });
+      if (!challengeResponse.ok) {
+        throw new Error(await readErrorMessage(challengeResponse, "未能建立 Polymarket 權限設定挑戰。"));
+      }
+      const challengePayload = await challengeResponse.json();
+      if (!isL2CredentialChallengeResponse(challengePayload)) {
+        throw new Error("Polymarket 權限設定挑戰回應格式不正確。");
+      }
+      const signature = await requestWalletSignature(challengePayload.signedMessage, challengePayload.challenge.walletAddress);
+      const deriveResponse = await fetch("/api/polymarket/l2-credentials/derive", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          signedMessage: challengePayload.signedMessage,
+          signature,
+        }),
+      });
+      if (!deriveResponse.ok) {
+        throw new Error(await readErrorMessage(deriveResponse, "未能設定 Polymarket 交易權限。"));
+      }
+      const payload = await deriveResponse.json();
+      if (!isL2CredentialStatusResponse(payload)) {
+        throw new Error("Polymarket 權限狀態回應格式不正確。");
+      }
+      setCredentialStatus(payload);
+      setL2CredentialReady(payload.status === "present");
+      setCredentialStatusCheckedAt(new Date().toISOString());
+      setFlowStatus(payload.status === "present" ? "Polymarket 交易權限已就緒。" : "Polymarket 權限設定暫未啟用。");
+      trackFunnelEvent("l2_credentials_missing", { market: props.marketTitle, action: "setup_completed" });
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : "未能設定 Polymarket 交易權限。");
+    } finally {
+      setCredentialSubmitting(false);
+    }
   };
 
   const submitCredentials = async () => {
@@ -305,16 +415,15 @@ export function PolymarketTradeTicket(props: Props) {
 
       const payload = await response.json();
       if (!isL2CredentialStatusResponse(payload)) {
-        throw new Error("Polymarket 憑證狀態回應格式不正確。");
+        throw new Error("Polymarket 權限狀態回應格式不正確。");
       }
       setCredentialStatus(payload);
       setL2CredentialReady(payload.status === "present");
       setCredentialStatusCheckedAt(new Date().toISOString());
-      setCredentialFormVisible(false);
       setCredentialKey("");
       setCredentialSecret("");
       setCredentialPassphrase("");
-      setFlowStatus("Polymarket 憑證已安全儲存，現在可以繼續後續簽署流程。");
+      setFlowStatus("Polymarket 交易權限已安全儲存，現在可以繼續後續簽署流程。");
       trackFunnelEvent("l2_credentials_missing", { market: props.marketTitle, action: "setup_completed" });
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : "未能儲存 Polymarket 憑證。");
@@ -338,13 +447,12 @@ export function PolymarketTradeTicket(props: Props) {
       }
       const payload = await response.json();
       if (!isL2CredentialStatusResponse(payload)) {
-        throw new Error("Polymarket 憑證狀態回應格式不正確。");
+        throw new Error("Polymarket 權限狀態回應格式不正確。");
       }
       setCredentialStatus(payload);
       setL2CredentialReady(false);
       setCredentialStatusCheckedAt(new Date().toISOString());
-      setCredentialFormVisible(false);
-      setFlowStatus("已撤銷目前儲存的 Polymarket 憑證。");
+      setFlowStatus("已撤銷目前儲存的 Polymarket 交易權限。");
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : "未能撤銷 Polymarket 憑證。");
     } finally {
@@ -361,7 +469,7 @@ export function PolymarketTradeTicket(props: Props) {
   const handlePrimaryAction = async () => {
     try {
       trackFunnelEvent("trade_cta_clicked", { market: props.marketTitle, readiness });
-      if (tradeButtonLabel === "設定 Polymarket 憑證") {
+      if (tradeButtonLabel === "設定 Polymarket 交易權限") {
         await setupCredentials();
       } else if (tradeButtonLabel === "連接錢包") {
         setFlowStatus("請使用錢包連接元件連接你的錢包；不需要登入帳戶。");
@@ -438,12 +546,11 @@ export function PolymarketTradeTicket(props: Props) {
         <span className="badge badge-neutral">非託管</span>
       </div>
       <div className="badge badge-warning">
-        {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : props.submitModeEnabled ? "交易提交器未準備好" : "實盤提交已停用"}
+        {props.submitModeEnabled && props.submitterAvailable ? "提交器已就緒" : "實盤提交已停用"}
       </div>
       <div className="warning-card">{copy.finalSignatureWarning}</div>
       <div className="muted">本平台不會代用戶下注或交易；訂單必須由你自己的錢包簽署。</div>
       <div className="muted">{copy.routedExecutionNotice}</div>
-      <div className="muted">Polymarket 可能因市場、錢包、流動性、所在地區或合規檢查而拒絕訂單。</div>
       <ThirdwebWalletFundingCard compact surface="trade_ticket" walletConnected={walletConnected} />
       <BuilderFeeDisclosureCard
         locale={props.locale}
@@ -479,9 +586,10 @@ export function PolymarketTradeTicket(props: Props) {
 
       <section className="stack" aria-label="Polymarket credential setup">
         <div className="section-heading-row">
-          <strong>Polymarket 憑證設定</strong>
+          <strong>設定 Polymarket 交易權限</strong>
           <span className={`badge badge-${credentialBadgeTone}`}>{credentialBadgeLabel}</span>
         </div>
+        <div className="muted">請用你已連接的錢包簽署一次，以建立或驗證你的 Polymarket 交易憑證。本平台不會取得你的私鑰，亦不會代你下注或交易。</div>
         <div className="muted">{credentialDescription}</div>
         {credentialStatus?.updatedAt ? (
           <div className="muted">最後更新：{formatDateTime(props.locale, credentialStatus.updatedAt)}</div>
@@ -491,20 +599,33 @@ export function PolymarketTradeTicket(props: Props) {
         ) : null}
         <div className="button-row">
           {!l2CredentialReady ? (
-            <button type="button" className="secondary-cta" onClick={() => void setupCredentials()} disabled={credentialSubmitting}>
-              設定 Polymarket 憑證
+            <button
+              type="button"
+              className="secondary-cta"
+              onClick={() => void setupCredentials()}
+              disabled={credentialSubmitting || credentialStatusLoading || (props.loggedIn === true && walletConnected && walletVerified && !l2SignatureSetupEnabled)}
+            >
+              {credentialSubmitting ? "檢查中" : credentialSetupButtonLabel}
             </button>
           ) : (
-            <button type="button" className="secondary-cta" onClick={() => void revokeCredentials()} disabled={credentialSubmitting}>
-              撤銷已儲存憑證
-            </button>
+            <>
+              <button type="button" className="secondary-cta" disabled>
+                Polymarket 權限已就緒
+              </button>
+              <button type="button" className="secondary-cta" onClick={() => void revokeCredentials()} disabled={credentialSubmitting}>
+                撤銷已儲存權限
+              </button>
+            </>
           )}
           <button type="button" className="secondary-cta" onClick={() => void refreshCredentialStatus()} disabled={credentialSubmitting || credentialStatusLoading}>
             {credentialStatusLoading ? "檢查中" : "重新整理狀態"}
           </button>
         </div>
-        {credentialFormVisible ? (
-          <div className="ticket-form-grid">
+        {manualCredentialDebugEnabled ? (
+          <details>
+            <summary>開發者測試：手動輸入 L2 憑證</summary>
+            <div className="warning-card">只供測試。正式用戶不應手動貼上 API secret 或 passphrase。</div>
+            <div className="ticket-form-grid">
             <label className="stack">
               API key
               <input className="control-lg" value={credentialKey} onChange={(event) => setCredentialKey(event.target.value)} autoComplete="off" />
@@ -524,14 +645,12 @@ export function PolymarketTradeTicket(props: Props) {
                 disabled={credentialSubmitting || !credentialKey.trim() || !credentialSecret.trim() || !credentialPassphrase.trim()}
                 onClick={() => void submitCredentials()}
               >
-                {credentialSubmitting ? "儲存中" : "儲存用戶自己的 Polymarket 憑證"}
-              </button>
-              <button type="button" className="secondary-cta" disabled={credentialSubmitting} onClick={() => setCredentialFormVisible(false)}>
-                取消
+                {credentialSubmitting ? "儲存中" : "開發者測試儲存 L2 憑證"}
               </button>
             </div>
             <div className="muted">提交前請先在帳戶頁完成已連結錢包驗證，系統只接受與已驗證錢包一致的使用者憑證。</div>
-          </div>
+            </div>
+          </details>
         ) : null}
       </section>
 
@@ -542,10 +661,9 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="kv"><span className="kv-key">錢包</span><span className="kv-value">{walletConnected ? "已連接" : "待處理"}</span></div>
         <div className="kv"><span className="kv-key">錢包地址</span><span className="kv-value">{walletAddressKnown ? "已確認" : "未知"}</span></div>
         <div className="kv"><span className="kv-key">錢包資金</span><span className="kv-value">{walletConnected && thirdweb.configured ? "檢查中" : "待處理"}</span></div>
-        <div className="kv"><span className="kv-key">Polymarket 憑證</span><span className="kv-value">{effectiveHasCredentials ? "已就緒" : "需要"}</span></div>
-        <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "暫時不可交易"}</span></div>
+        <div className="kv"><span className="kv-key">Polymarket 交易權限</span><span className="kv-value">{effectiveHasCredentials ? "已就緒" : "需要"}</span></div>
+        <div className="kv"><span className="kv-key">市場狀態</span><span className="kv-value">{props.marketTradable ? "可交易" : "已關閉"}</span></div>
         <div className="kv"><span className="kv-key">提交器</span><span className="kv-value">{props.submitModeEnabled && props.submitterAvailable ? "已就緒" : "已停用"}</span></div>
-        <div className="kv"><span className="kv-key">{getPolymarketGeoblockStatusLabel("unknown")}</span><span className="kv-value">實際交易是否可提交，將由 Polymarket 的錢包、憑證、市場及合規檢查判斷。</span></div>
         <div className="kv">
           <span className="kv-key">非託管交易</span>
           <span className="kv-value">本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。</span>

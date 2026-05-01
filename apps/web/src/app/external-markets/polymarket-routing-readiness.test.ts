@@ -87,13 +87,13 @@ test("wallet trade intent is the top public launch blocker while other checklist
   assert.deepEqual(checklist.map((item) => item.label), [
     "錢包",
     "錢包資金",
-    "Polymarket 憑證",
+    "Polymarket 交易權限",
     "用戶自行簽署",
     "Builder Code",
     "交易介面",
-    "市場狀態",
+    "交易狀態",
     "價格及數量",
-    "提交器",
+    "實盤提交器",
   ]);
   assert.equal(checklist.find((item) => item.id === "wallet")?.status, "missing");
   assert.equal(checklist.find((item) => item.id === "funding")?.status, "missing");

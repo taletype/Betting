@@ -17,16 +17,16 @@ export type PolymarketPreviewDisabledCode =
   | "submitter_unavailable";
 
 export const polymarketDisabledReasonZh: Record<PolymarketPreviewDisabledCode, string> = {
-  wallet_not_connected: "尚未連接錢包",
+  wallet_not_connected: "連接錢包",
   canary_not_allowed: "測試交易功能只限指定用戶",
   beta_user_not_allowlisted: "測試交易功能只限指定用戶",
-  credentials_missing: "設定 Polymarket 憑證",
+  credentials_missing: "設定 Polymarket 交易權限",
   signature_required: "需要用戶自行簽署訂單",
   builder_code_missing: "Builder Code 未設定",
-  feature_disabled: "交易功能尚未啟用",
-  market_not_tradable: "市場暫時不可交易",
+  feature_disabled: "實盤提交已停用",
+  market_not_tradable: "市場已關閉",
   invalid_order: "價格或數量無效",
-  submitter_unavailable: "交易提交器未準備好",
+  submitter_unavailable: "實盤提交已停用",
 };
 
 export interface PolymarketOrderPreviewInput {

@@ -24,9 +24,13 @@ import {
   type ExternalPolymarketServerRegionCheck,
 } from "./modules/external-polymarket-routing/handlers";
 import {
+  createPolymarketL2CredentialChallenge,
   getUserPolymarketL2CredentialStatus,
+  isManualPolymarketL2CredentialInputEnabled,
+  isPolymarketL2CredentialDerivationEnabled,
   revokeUserPolymarketL2Credentials,
   storeUserPolymarketL2Credentials,
+  verifyPolymarketL2CredentialChallengeSignature,
 } from "./modules/external-polymarket-routing/l2-credentials";
 import { evaluatePolymarketPreflight } from "./modules/external-polymarket-routing/preflight";
 import { runPolymarketBuilderAttributionSyncWithDependencies } from "./modules/external-polymarket-routing/builder-attribution-sync";
@@ -75,7 +79,7 @@ import {
   getWithdrawalHistory,
   requestWithdrawal,
 } from "./modules/withdrawals/handlers";
-import { createLinkWalletChallenge, getLinkedWallet, getWalletLinkDomain, linkBaseWallet } from "./modules/wallets/handlers";
+import { createLinkWalletChallenge, getLinkedWallet, getWalletLinkDomain, linkBaseWallet, setLinkedWalletLookupForTests } from "./modules/wallets/handlers";
 import { checkRateLimit } from "./modules/shared/rate-limit";
 import {
   isDepositVerificationDisabled,
@@ -965,9 +969,56 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return Response.json(status, { headers: privateNoStoreHeaders });
     }
 
+    if (request.method === "POST" && url.pathname === "/polymarket/l2-credentials/challenge") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const userId = requestUserId!;
+
+      const linkedWallet = await getLinkedWallet(userId);
+      if (!linkedWallet?.walletAddress || !linkedWallet.verifiedAt) {
+        return Response.json({ error: "verified linked wallet is required", code: "POLYMARKET_WALLET_NOT_VERIFIED" }, { status: 403, headers: privateNoStoreHeaders });
+      }
+      const challenge = createPolymarketL2CredentialChallenge({
+        userId,
+        walletAddress: linkedWallet.walletAddress,
+        domain: getWalletLinkDomain(request.headers.get("host")),
+      });
+      return Response.json(challenge, { status: 201, headers: privateNoStoreHeaders });
+    }
+
+    if (request.method === "POST" && url.pathname === "/polymarket/l2-credentials/derive") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const userId = requestUserId!;
+
+      const linkedWallet = await getLinkedWallet(userId);
+      if (!linkedWallet?.walletAddress || !linkedWallet.verifiedAt) {
+        return Response.json({ error: "verified linked wallet is required", code: "POLYMARKET_WALLET_NOT_VERIFIED" }, { status: 403, headers: privateNoStoreHeaders });
+      }
+      const body = await parseBody(request);
+      try {
+        verifyPolymarketL2CredentialChallengeSignature({
+          userId,
+          walletAddress: linkedWallet.walletAddress,
+          domain: getWalletLinkDomain(request.headers.get("host")),
+          signedMessage: String(body.signedMessage ?? ""),
+          signature: String(body.signature ?? ""),
+        });
+      } catch {
+        return Response.json({ error: "signature does not match verified wallet", code: "POLYMARKET_WALLET_SIGNATURE_MISMATCH" }, { status: 400, headers: privateNoStoreHeaders });
+      }
+      if (!isPolymarketL2CredentialDerivationEnabled()) {
+        return Response.json({ error: "Polymarket L2 credential derivation is not enabled", code: "POLYMARKET_L2_SETUP_UNAVAILABLE" }, { status: 503, headers: privateNoStoreHeaders });
+      }
+      return Response.json({ error: "Polymarket L2 credential derivation is not implemented", code: "POLYMARKET_L2_SETUP_UNAVAILABLE" }, { status: 503, headers: privateNoStoreHeaders });
+    }
+
     if (request.method === "POST" && url.pathname === "/polymarket/l2-credentials") {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) return unauthorized;
+      if (!isManualPolymarketL2CredentialInputEnabled()) {
+        return Response.json({ error: "manual Polymarket L2 credential input is disabled", code: "POLYMARKET_MANUAL_L2_CREDENTIALS_DISABLED" }, { status: 404, headers: privateNoStoreHeaders });
+      }
       const userId = requestUserId!;
 
       const linkedWallet = await getLinkedWallet(userId);
@@ -1733,4 +1784,4 @@ if (process.env.NODE_ENV !== "test") {
   });
 }
 
-export { handleRequest, setAmbassadorCaptureHandlerForTests, setApiAuthVerifierForTests };
+export { handleRequest, setAmbassadorCaptureHandlerForTests, setApiAuthVerifierForTests, setLinkedWalletLookupForTests };

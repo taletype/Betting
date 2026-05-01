@@ -1,11 +1,15 @@
 import crypto from "node:crypto";
 
 import { createDatabaseClient, type DatabaseExecutor } from "@bet/db";
+import { verifyMessage } from "ethers";
 
 import type { PolymarketL2Credentials } from "./submitter";
+import { assertValidWalletAddress, normalizeDomain, normalizeWalletAddress } from "../wallets/challenge";
 
 const ALGORITHM = "aes-256-gcm";
 const API_KEY_PATTERN = /^[A-Za-z0-9_-]{8,}$/;
+const POLYMARKET_L2_SETUP_TTL_MS = 5 * 60 * 1000;
+const POLYMARKET_L2_SETUP_ACTION = "polymarket_l2_credentials";
 
 export type PolymarketL2CredentialPublicStatus = "present" | "missing" | "revoked";
 
@@ -14,6 +18,115 @@ export interface PolymarketL2CredentialStatusResult {
   walletAddress: string | null;
   updatedAt: string | null;
 }
+
+export interface PolymarketL2CredentialChallenge {
+  action: typeof POLYMARKET_L2_SETUP_ACTION;
+  domain: string;
+  userId: string;
+  walletAddress: string;
+  nonce: string;
+  issuedAt: string;
+  expiresAt: string;
+}
+
+export const isManualPolymarketL2CredentialInputEnabled = (): boolean =>
+  process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG === "true" ||
+  process.env.POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG === "true";
+
+export const isPolymarketL2CredentialDerivationEnabled = (): boolean =>
+  process.env.POLYMARKET_L2_CREDENTIAL_DERIVATION_ENABLED === "true";
+
+export const createPolymarketL2CredentialMessage = (challenge: PolymarketL2CredentialChallenge): string =>
+  [
+    "Bet Polymarket trading permissions",
+    "",
+    `Action: ${challenge.action}`,
+    `Domain: ${challenge.domain}`,
+    `User ID: ${challenge.userId}`,
+    `Wallet: ${challenge.walletAddress}`,
+    `Nonce: ${challenge.nonce}`,
+    `Issued At: ${challenge.issuedAt}`,
+    `Expires At: ${challenge.expiresAt}`,
+  ].join("\n");
+
+export const createPolymarketL2CredentialChallenge = (input: {
+  userId: string;
+  walletAddress: string;
+  domain: string;
+  now?: Date;
+  nonceFactory?: () => string;
+}): { challenge: PolymarketL2CredentialChallenge; signedMessage: string } => {
+  const now = input.now ?? new Date();
+  const challenge: PolymarketL2CredentialChallenge = {
+    action: POLYMARKET_L2_SETUP_ACTION,
+    domain: normalizeDomain(input.domain),
+    userId: input.userId,
+    walletAddress: assertValidWalletAddress(input.walletAddress),
+    nonce: input.nonceFactory?.() ?? crypto.randomBytes(32).toString("base64url"),
+    issuedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + POLYMARKET_L2_SETUP_TTL_MS).toISOString(),
+  };
+  return { challenge, signedMessage: createPolymarketL2CredentialMessage(challenge) };
+};
+
+const parsePolymarketL2CredentialMessage = (message: string): PolymarketL2CredentialChallenge => {
+  const lines = message.split("\n");
+  if (lines[0] !== "Bet Polymarket trading permissions") {
+    throw new Error("invalid Polymarket credential challenge prefix");
+  }
+  const values = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    if (!line) continue;
+    const separator = line.indexOf(":");
+    if (separator <= 0) throw new Error("invalid Polymarket credential challenge format");
+    values.set(line.slice(0, separator), line.slice(separator + 1).trim());
+  }
+
+  const action = values.get("Action");
+  const domain = values.get("Domain");
+  const userId = values.get("User ID");
+  const walletAddress = values.get("Wallet");
+  const nonce = values.get("Nonce");
+  const issuedAt = values.get("Issued At");
+  const expiresAt = values.get("Expires At");
+  if (action !== POLYMARKET_L2_SETUP_ACTION || !domain || !userId || !walletAddress || !nonce || !issuedAt || !expiresAt) {
+    throw new Error("invalid Polymarket credential challenge fields");
+  }
+  return {
+    action: POLYMARKET_L2_SETUP_ACTION,
+    domain: normalizeDomain(domain),
+    userId,
+    walletAddress: assertValidWalletAddress(walletAddress),
+    nonce,
+    issuedAt,
+    expiresAt,
+  };
+};
+
+export const verifyPolymarketL2CredentialChallengeSignature = (input: {
+  userId: string;
+  walletAddress: string;
+  domain: string;
+  signedMessage: string;
+  signature: string;
+  now?: Date;
+}): PolymarketL2CredentialChallenge => {
+  const expectedWalletAddress = assertValidWalletAddress(input.walletAddress);
+  const challenge = parsePolymarketL2CredentialMessage(input.signedMessage);
+  if (createPolymarketL2CredentialMessage(challenge) !== input.signedMessage) {
+    throw new Error("Polymarket credential challenge must be signed exactly");
+  }
+  if (challenge.userId !== input.userId) throw new Error("Polymarket credential challenge user mismatch");
+  if (challenge.walletAddress !== expectedWalletAddress) throw new Error("Polymarket credential challenge wallet mismatch");
+  if (challenge.domain !== normalizeDomain(input.domain)) throw new Error("Polymarket credential challenge domain mismatch");
+  if (Date.parse(challenge.expiresAt) <= (input.now ?? new Date()).getTime()) {
+    throw new Error("Polymarket credential challenge expired");
+  }
+  if (normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature)) !== expectedWalletAddress) {
+    throw new Error("signature does not match wallet address");
+  }
+  return challenge;
+};
 
 const getEncryptionKey = (): Buffer => {
   const raw = process.env.POLYMARKET_L2_CREDENTIAL_ENCRYPTION_KEY;

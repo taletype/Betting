@@ -5,6 +5,7 @@ import { verifyMessage } from "ethers";
 export const walletLinkChain = "base";
 const walletLinkAction = "link_wallet";
 const walletLinkTtlMs = 5 * 60 * 1000;
+const polymarketL2Action = "polymarket_l2_credentials";
 
 export interface WalletLinkChallenge {
   id?: string;
@@ -118,6 +119,99 @@ export const assertWalletLinkSignature = (input: {
   if (challenge.walletAddress !== expectedWallet) throw new Error("wallet link challenge wallet mismatch");
   if (challenge.domain !== normalizeDomain(input.domain)) throw new Error("wallet link challenge domain mismatch");
   if (Date.parse(challenge.expiresAt) <= Date.now()) throw new Error("wallet link challenge expired");
+  if (normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature)) !== expectedWallet) {
+    throw new Error("signature does not match wallet address");
+  }
+  return challenge;
+};
+
+export interface PolymarketL2CredentialChallenge {
+  action: typeof polymarketL2Action;
+  domain: string;
+  userId: string;
+  walletAddress: string;
+  nonce: string;
+  issuedAt: string;
+  expiresAt: string;
+}
+
+export const createPolymarketL2CredentialMessage = (challenge: PolymarketL2CredentialChallenge): string =>
+  [
+    "Bet Polymarket trading permissions",
+    "",
+    `Action: ${challenge.action}`,
+    `Domain: ${challenge.domain}`,
+    `User ID: ${challenge.userId}`,
+    `Wallet: ${challenge.walletAddress}`,
+    `Nonce: ${challenge.nonce}`,
+    `Issued At: ${challenge.issuedAt}`,
+    `Expires At: ${challenge.expiresAt}`,
+  ].join("\n");
+
+export const buildPolymarketL2CredentialChallenge = (input: {
+  userId: string;
+  walletAddress: string;
+  domain: string;
+  now?: Date;
+}) => {
+  const now = input.now ?? new Date();
+  const challenge: PolymarketL2CredentialChallenge = {
+    action: polymarketL2Action,
+    domain: normalizeDomain(input.domain),
+    userId: input.userId,
+    walletAddress: assertValidWalletAddress(input.walletAddress),
+    nonce: randomBytes(32).toString("base64url"),
+    issuedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + walletLinkTtlMs).toISOString(),
+  };
+  return { challenge, signedMessage: createPolymarketL2CredentialMessage(challenge) };
+};
+
+const parsePolymarketL2CredentialMessage = (message: string): PolymarketL2CredentialChallenge => {
+  const lines = message.split("\n");
+  if (lines[0] !== "Bet Polymarket trading permissions") throw new Error("invalid Polymarket credential challenge prefix");
+  const values = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    if (!line) continue;
+    const separator = line.indexOf(":");
+    if (separator <= 0) throw new Error("invalid Polymarket credential challenge format");
+    values.set(line.slice(0, separator), line.slice(separator + 1).trim());
+  }
+  const action = values.get("Action");
+  const domain = values.get("Domain");
+  const userId = values.get("User ID");
+  const walletAddress = values.get("Wallet");
+  const nonce = values.get("Nonce");
+  const issuedAt = values.get("Issued At");
+  const expiresAt = values.get("Expires At");
+  if (action !== polymarketL2Action || !domain || !userId || !walletAddress || !nonce || !issuedAt || !expiresAt) {
+    throw new Error("invalid Polymarket credential challenge fields");
+  }
+  return {
+    action: polymarketL2Action,
+    domain: normalizeDomain(domain),
+    userId,
+    walletAddress: assertValidWalletAddress(walletAddress),
+    nonce,
+    issuedAt,
+    expiresAt,
+  };
+};
+
+export const assertPolymarketL2CredentialSignature = (input: {
+  userId: string;
+  walletAddress: string;
+  domain: string;
+  signedMessage: string;
+  signature: string;
+}) => {
+  const expectedWallet = assertValidWalletAddress(input.walletAddress);
+  const challenge = parsePolymarketL2CredentialMessage(input.signedMessage);
+  if (createPolymarketL2CredentialMessage(challenge) !== input.signedMessage) throw new Error("Polymarket credential challenge must be signed exactly");
+  if (challenge.userId !== input.userId) throw new Error("Polymarket credential challenge user mismatch");
+  if (challenge.walletAddress !== expectedWallet) throw new Error("Polymarket credential challenge wallet mismatch");
+  if (challenge.domain !== normalizeDomain(input.domain)) throw new Error("Polymarket credential challenge domain mismatch");
+  if (Date.parse(challenge.expiresAt) <= Date.now()) throw new Error("Polymarket credential challenge expired");
   if (normalizeWalletAddress(verifyMessage(input.signedMessage, input.signature)) !== expectedWallet) {
     throw new Error("signature does not match wallet address");
   }

@@ -306,22 +306,23 @@ const executeApiRequest = async <T>(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { code?: string; error?: string; message?: string; source?: string };
+    let dashboardErrorCode: string | null = null;
     if (url.includes("/ambassador/dashboard")) {
       const source = payload.source ?? getApiSourceForUrl(url);
-      const code = payload.code ?? (source === "service API" && response.status === 401
+      dashboardErrorCode = payload.code ?? (source === "service API" && response.status === 401
         ? "service_api_401"
         : source === "service API" && response.status >= 500
           ? "service_api_500"
           : response.status === 401
             ? "dashboard_auth_missing"
             : "dashboard_db_unavailable");
-      logDevelopmentDiagnostic(code, { status: response.status, source });
+      logDevelopmentDiagnostic(dashboardErrorCode, { status: response.status, source });
     }
     throw new ApiResponseError({
       message: payload.message ?? payload.error ?? `API request failed for ${url}: ${response.status}`,
       status: response.status,
       url,
-      code: payload.code ?? payload.error ?? null,
+      code: dashboardErrorCode ?? payload.code ?? payload.error ?? null,
       source: payload.source ?? getApiSourceForUrl(url),
     });
   }
@@ -412,6 +413,22 @@ const readApiJson = async (
     requireConfiguredBaseUrl: options?.requireConfiguredBaseUrl,
   });
 
+const readSameSiteApiJson = async (
+  path: string,
+  options?: {
+    allowNotFound?: boolean;
+    method?: string;
+    body?: unknown;
+    headers?: HeadersInit;
+  },
+) =>
+  executeApiRequest(getLocalApiUrl(path), {
+    method: options?.method ?? "GET",
+    headers: options?.headers,
+    body: options?.body ? JSON.stringify(options.body) : undefined,
+    allowNotFound: options?.allowNotFound,
+  });
+
 export const toBigInt = (value: string | number | bigint | null | undefined): bigint => {
   if (typeof value === "bigint") {
     return value;
@@ -429,11 +446,11 @@ export const toBigInt = (value: string | number | bigint | null | undefined): bi
 };
 
 export const getAmbassadorDashboard = async () =>
-  GetAmbassadorDashboardResponseSchema.parse(await readApiJson("/ambassador/dashboard"));
+  GetAmbassadorDashboardResponseSchema.parse(await readSameSiteApiJson("/ambassador/dashboard"));
 
 export const captureAmbassadorReferral = async (code: string) =>
   GetAmbassadorDashboardResponseSchema.parse(
-    await readApiJson("/ambassador/capture", {
+    await readSameSiteApiJson("/ambassador/capture", {
       method: "POST",
       body: { code },
     }),

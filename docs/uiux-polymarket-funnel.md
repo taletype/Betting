@@ -10,7 +10,7 @@ Canonical public flow:
 4. User browses public Polymarket market data on `/polymarket`.
 5. User opens `/polymarket/[slug]`.
 6. User clicks the internal `透過 Polymarket 交易` CTA.
-7. The trade ticket resolves in this order: `連接錢包`, `增值錢包`, `設定 Polymarket 憑證`, `市場只供瀏覽`, `實盤提交已停用`, `準備自行簽署訂單`.
+7. The trade ticket resolves in this order: `連接錢包`, `增值錢包`, `設定 Polymarket 交易權限`, `市場只供瀏覽`, `實盤提交已停用`, `準備自行簽署訂單`.
 8. Login remains secondary and is used only to save referral/reward state.
 9. Routed trading remains disabled until user-owned signing, L2 credential handling, submitter health, and operations review are production-safe.
 10. When enabled, the user signs their own order and the app attaches `POLY_BUILDER_CODE`.

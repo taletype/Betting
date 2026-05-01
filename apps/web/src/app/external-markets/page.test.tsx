@@ -667,7 +667,7 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /上次同步/);
   assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
   assert.match(markup, /mobile-trade-sheet/);
-  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>尚未連接錢包<\/small><\/summary>/);
+  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>連接錢包<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
   assert.match(markup, /<button[^>]*>連接錢包<\/button>/);
   assert.match(markup, /複製市場推薦連結/);
@@ -955,7 +955,8 @@ test("restricted Polymarket detail renders data but disables trading", async (t)
   }));
 
   assert.match(markup, /Restricted market still renders/);
-  assert.match(markup, /只供瀏覽/);
+  assert.match(markup, /市場已關閉/);
+  assert.match(markup, /此市場已關閉或已結算/);
   assert.match(markup, /市場受限制/);
   assert.doesNotMatch(markup, /active \/ closed \/ archived \/ restricted<\/span><span class="kv-value">是 \/ 否 \/ 否 \/ 是/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
@@ -1103,7 +1104,7 @@ test("cancelled Polymarket detail page renders safely with disabled trade CTA", 
 
   assert.match(markup, /Cancelled market detail remains browsable/);
   assert.match(markup, /已取消/);
-  assert.match(markup, /市場暫時不可交易/);
+  assert.match(markup, /市場已關閉/);
   assert.match(markup, /透過 Polymarket 交易/);
   assert.match(markup, /disabled=""/);
 });
@@ -1939,14 +1940,16 @@ test("Polymarket trade ticket renders action-first non-login states", () => {
   assert.doesNotMatch(noWallet, /前往 Polymarket|受阻/);
 
   const missingCredentials = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials={false} />);
-  assert.match(missingCredentials, /設定 Polymarket 憑證/);
+  assert.match(missingCredentials, /設定 Polymarket 交易權限/);
 
   const restrictedMarket = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials marketTradable={false} />);
-  assert.match(restrictedMarket, /市場只供瀏覽/);
-  assert.match(restrictedMarket, /此市場目前只供瀏覽。實際交易是否可提交/);
+  assert.match(restrictedMarket, /市場已關閉/);
+  assert.match(restrictedMarket, /此市場已關閉或已結算/);
+  assert.doesNotMatch(restrictedMarket, /實際交易是否可提交|合規檢查判斷/);
 
   const disabledSubmitter = renderToStaticMarkup(<PolymarketTradeTicket {...baseProps} walletConnected hasCredentials submitModeEnabled={false} />);
   assert.match(disabledSubmitter, /實盤提交已停用/);
+  assert.match(disabledSubmitter, /目前只提供市場瀏覽及訂單預覽/);
   assert.match(disabledSubmitter, /Builder Code[\s\S]*完成/);
 });
 

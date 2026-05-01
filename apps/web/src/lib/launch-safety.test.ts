@@ -6,7 +6,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import PolymarketPage from "../app/polymarket/page";
-import { PolymarketTradeTicket } from "../app/external-markets/polymarket-trade-ticket";
+import { PolymarketTradeTicket, isPolymarketManualL2CredentialsDebugEnabled } from "../app/external-markets/polymarket-trade-ticket";
 import { ThirdwebWalletFundingCard, thirdwebDisclosure } from "../app/thirdweb-wallet-funding-card";
 import RewardsPage from "../app/rewards/page";
 import TermsPage from "../app/terms/page";
@@ -308,8 +308,10 @@ test("Trade via Polymarket ticket is disabled by default", () => {
     assert.match(markup, /本平台不會代用戶下注或交易/);
     assert.match(markup, /不託管用戶在 Polymarket 的資金/);
     assert.match(markup, /data-testid="readiness-checklist"/);
-    assert.match(markup, /所在地區由 Polymarket 判斷/);
-    assert.match(markup, /實際交易是否可提交，將由 Polymarket 的錢包、憑證、市場及合規檢查判斷。/);
+    assert.doesNotMatch(markup, /實際交易是否可提交/);
+    assert.doesNotMatch(markup, /合規檢查判斷/);
+    assert.match(markup, /實盤提交已停用/);
+    assert.match(markup, /目前只提供市場瀏覽及訂單預覽/);
     assert.doesNotMatch(markup, /所在地區支援：檢查中|所在地區支援：受阻|正在檢查所在地區支援狀態/);
     assert.doesNotMatch(markup, /你目前所在地區暫不支援 Polymarket 下單/);
     assert.match(markup, /待生效 Maker 費率：0.5%/);
@@ -346,15 +348,15 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
   };
 
   const walletMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, walletConnected: false }));
-  assert.match(walletMarkup, /data-testid="top-blocking-reason">尚未連接錢包/);
+  assert.match(walletMarkup, /data-testid="top-blocking-reason">連接錢包/);
   assert.match(walletMarkup, /連接錢包/);
 
   const credentialMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasCredentials: false }));
-  assert.match(credentialMarkup, /data-testid="top-blocking-reason">設定 Polymarket 憑證/);
-  assert.match(credentialMarkup, /設定 Polymarket 憑證/);
+  assert.match(credentialMarkup, /data-testid="top-blocking-reason">設定 Polymarket 交易權限/);
+  assert.match(credentialMarkup, /設定 Polymarket 交易權限/);
 
   const featureMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, featureEnabled: false }));
-  assert.match(featureMarkup, /data-testid="top-blocking-reason">交易介面預覽/);
+  assert.match(featureMarkup, /data-testid="top-blocking-reason">實盤提交已停用/);
 
   const builderMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasBuilderCode: false }));
   assert.match(builderMarkup, /data-testid="top-blocking-reason">Builder Code 未設定/);
@@ -362,14 +364,91 @@ test("Trade ticket shows one top readiness reason for specific missing gates", (
 
   const blockedMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, geoblockAllowed: false }));
   assert.doesNotMatch(blockedMarkup, /你目前所在地區暫不支援 Polymarket 下單|所在地區支援.*受阻/);
-  assert.match(blockedMarkup, /所在地區由 Polymarket 判斷/);
+  assert.doesNotMatch(blockedMarkup, /合規檢查判斷|實際交易是否可提交/);
 
   const submitterMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitterAvailable: false }));
-  assert.match(submitterMarkup, /data-testid="top-blocking-reason">交易提交器未準備好/);
+  assert.match(submitterMarkup, /data-testid="top-blocking-reason">實盤提交已停用/);
 
   const submitDisabledMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, submitModeEnabled: false }));
   assert.match(submitDisabledMarkup, /data-testid="top-blocking-reason">實盤提交已停用/);
   assert.doesNotMatch(submitDisabledMarkup, /交易功能完成/);
+});
+
+test("Polymarket trade ticket hides manual L2 credentials unless debug flag is enabled", () => {
+  const previous = process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG;
+  const baseProps = {
+    locale: "zh-HK" as const,
+    hasBuilderCode: true,
+    featureEnabled: true,
+    walletConnected: true,
+    walletVerified: true,
+    walletFundsSufficient: true,
+    geoblockAllowed: true,
+    hasCredentials: false,
+    userSigningAvailable: false,
+    marketTradable: true,
+    orderValid: true,
+    submitterAvailable: true,
+    submitModeEnabled: true,
+    loggedIn: true,
+    marketTitle: "Credential UX market",
+    outcome: "Yes",
+    tokenId: "yes",
+    side: "buy" as const,
+    price: 0.5,
+    size: 10,
+  };
+
+  try {
+    delete process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG;
+    assert.equal(isPolymarketManualL2CredentialsDebugEnabled(), false);
+    const productionMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, baseProps));
+    assert.match(productionMarkup, /設定 Polymarket 交易權限/);
+    assert.doesNotMatch(productionMarkup, /API key|API secret|Passphrase|開發者測試：手動輸入 L2 憑證|user-owned-secret|user-owned-passphrase/);
+
+    process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG = "true";
+    assert.equal(isPolymarketManualL2CredentialsDebugEnabled(), true);
+    const debugMarkup = renderToStaticMarkup(React.createElement(PolymarketTradeTicket, baseProps));
+    assert.match(debugMarkup, /<details/);
+    assert.match(debugMarkup, /開發者測試：手動輸入 L2 憑證/);
+    assert.match(debugMarkup, /只供測試。正式用戶不應手動貼上 API secret 或 passphrase。/);
+    assert.match(debugMarkup, /API key/);
+    assert.match(debugMarkup, /API secret/);
+    assert.match(debugMarkup, /Passphrase/);
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG;
+    else process.env.NEXT_PUBLIC_POLYMARKET_MANUAL_L2_CREDENTIALS_DEBUG = previous;
+  }
+});
+
+test("Polymarket permission setup card renders wallet and credential states", () => {
+  const baseProps = {
+    locale: "zh-HK" as const,
+    hasBuilderCode: true,
+    featureEnabled: true,
+    walletConnected: true,
+    walletVerified: true,
+    walletFundsSufficient: true,
+    geoblockAllowed: true,
+    hasCredentials: false,
+    userSigningAvailable: false,
+    marketTradable: true,
+    orderValid: true,
+    submitterAvailable: true,
+    submitModeEnabled: true,
+    loggedIn: true,
+    marketTitle: "Permission state market",
+    outcome: "Yes",
+    tokenId: "yes",
+    side: "buy" as const,
+    price: 0.5,
+    size: 10,
+  };
+
+  assert.match(renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, loggedIn: false })), /登入以保存交易設定/);
+  assert.match(renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, walletConnected: false })), /連接錢包/);
+  assert.match(renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, walletVerified: false })), /驗證錢包/);
+  assert.match(renderToStaticMarkup(React.createElement(PolymarketTradeTicket, { ...baseProps, hasCredentials: true })), /Polymarket 交易權限已準備好/);
 });
 
 test("Polymarket ticket and preview do not spoof or override geo restrictions", () => {

@@ -541,7 +541,7 @@ test("missing L2 credentials block submission", async () => {
     await withMarket(baseMarket(), async () => {
       await assert.rejects(
         () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), l2CredentialLookup: async () => ({ status: "missing" }) }),
-        /設定 Polymarket 憑證/,
+        /設定 Polymarket 交易權限/,
       );
     });
   });
@@ -552,10 +552,80 @@ test("revoked L2 credentials block submission", async () => {
     await withMarket(baseMarket(), async () => {
       await assert.rejects(
         () => routeExternalPolymarketOrder(baseInput(), { ...liveDeps(mockSubmitter()), l2CredentialLookup: async () => ({ status: "revoked" }) }),
-        /設定 Polymarket 憑證/,
+        /設定 Polymarket 交易權限/,
       );
     });
   });
+});
+
+test("L2 setup challenge requires authenticated user", async () => {
+  const handleRequest = await getHandleRequest();
+  const response = await handleRequest(new Request("http://localhost/polymarket/l2-credentials/challenge", { method: "POST" }));
+  assert.equal(response.status, 401);
+});
+
+test("L2 setup challenge requires verified wallet", async () => {
+  const server = await getServer();
+  server.setApiAuthVerifierForTests(async () => ({
+    id: USER_ID,
+    email: "user@example.test",
+    role: "user",
+    claims: {},
+  }));
+  server.setLinkedWalletLookupForTests(async () => ({
+    id: "wallet-1",
+    userId: USER_ID,
+    chain: "base",
+    walletAddress: USER_WALLET,
+    signature: "",
+    signedMessage: "",
+    verifiedAt: "",
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+  }));
+  try {
+    const response = await server.handleRequest(new Request("http://localhost/polymarket/l2-credentials/challenge", { method: "POST" }));
+    const payload = await response.json() as { code?: string };
+    assert.equal(response.status, 403);
+    assert.equal(payload.code, "POLYMARKET_WALLET_NOT_VERIFIED");
+  } finally {
+    server.setLinkedWalletLookupForTests(null);
+    server.setApiAuthVerifierForTests(null);
+  }
+});
+
+test("L2 derive endpoint rejects signature mismatch", async () => {
+  const server = await getServer();
+  server.setApiAuthVerifierForTests(async () => ({
+    id: USER_ID,
+    email: "user@example.test",
+    role: "user",
+    claims: {},
+  }));
+  server.setLinkedWalletLookupForTests(async () => ({
+    id: "wallet-1",
+    userId: USER_ID,
+    chain: "base",
+    walletAddress: USER_WALLET,
+    signature: "redacted",
+    signedMessage: "redacted",
+    verifiedAt: NOW.toISOString(),
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+  }));
+  try {
+    const response = await server.handleRequest(new Request("http://localhost/polymarket/l2-credentials/derive", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signedMessage: "not a valid challenge", signature: "0xdeadbeef" }),
+    }));
+    const payload = await response.json() as { code?: string };
+    assert.equal(response.status, 400);
+    assert.equal(payload.code, "POLYMARKET_WALLET_SIGNATURE_MISMATCH");
+  } finally {
+    server.setLinkedWalletLookupForTests(null);
+    server.setApiAuthVerifierForTests(null);
+  }
 });
 
 test("missing builder code in signed order blocks submission", async () => {
