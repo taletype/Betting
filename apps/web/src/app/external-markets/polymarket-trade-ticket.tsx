@@ -95,6 +95,16 @@ interface L2CredentialStatusResponse {
   updatedAt: string | null;
 }
 
+const isL2CredentialStatusResponse = (value: unknown): value is L2CredentialStatusResponse => {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<L2CredentialStatusResponse>;
+  return (
+    (payload.status === "present" || payload.status === "missing" || payload.status === "revoked") &&
+    (payload.walletAddress === null || typeof payload.walletAddress === "string") &&
+    (payload.updatedAt === null || typeof payload.updatedAt === "string")
+  );
+};
+
 const redactWalletAddress = (value: string | null): string => {
   if (!value) return "未連結";
   if (value.length <= 10) return value;
@@ -115,9 +125,12 @@ export function PolymarketTradeTicket(props: Props) {
   const thirdweb = useThirdwebWalletStatus();
   const walletConnected = thirdweb.configured ? thirdweb.connected : props.walletConnected;
   const walletAddressKnown = thirdweb.configured ? Boolean(thirdweb.address) : props.walletConnected;
-  const [credentialStatus, setCredentialStatus] = useState<L2CredentialStatusResponse | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState<L2CredentialStatusResponse | null>(() =>
+    props.hasCredentials ? { status: "present", walletAddress: null, updatedAt: null } : null,
+  );
   const [credentialStatusLoading, setCredentialStatusLoading] = useState(Boolean(props.loggedIn));
-  const [l2CredentialReady, setL2CredentialReady] = useState(false);
+  const [credentialStatusCheckedAt, setCredentialStatusCheckedAt] = useState<string | null>(null);
+  const [l2CredentialReady, setL2CredentialReady] = useState(props.hasCredentials);
   const [credentialFormVisible, setCredentialFormVisible] = useState(false);
   const [credentialKey, setCredentialKey] = useState("");
   const [credentialSecret, setCredentialSecret] = useState("");
@@ -206,11 +219,26 @@ export function PolymarketTradeTicket(props: Props) {
   const estimated = !Number.isFinite(parsedPrice) || !Number.isFinite(parsedSize) ? null : parsedPrice * parsedSize;
   const estimatedMaxFees = estimated === null ? null : estimated * 0.015;
   const readinessLabel = copy.readinessCopy[topBlockingReason ?? readiness] ?? topBlockingReason ?? readiness;
+  const credentialBadgeTone = l2CredentialReady ? "success" : credentialStatusLoading || credentialStatus?.status === "revoked" ? "warning" : "neutral";
+  const credentialBadgeLabel = l2CredentialReady
+    ? "已就緒"
+    : credentialStatusLoading
+      ? "檢查中"
+      : credentialStatus?.status === "revoked"
+        ? "已撤銷"
+        : "未設定";
+  const credentialDescription = l2CredentialReady
+    ? `已為 ${redactWalletAddress(credentialStatus?.walletAddress ?? null)} 準備好用戶自己的 Polymarket L2 憑證。`
+    : credentialStatus?.status === "revoked"
+      ? "目前儲存的 Polymarket L2 憑證已撤銷；如要交易，需要重新設定用戶自己的 key、secret 與 passphrase。"
+      : "需要用戶自己的 Polymarket L2 key、secret 與 passphrase；平台不會替用戶建立或代管交易身份。";
   const refreshCredentialStatus = async () => {
+    setFlowError(null);
     if (!props.loggedIn) {
       setCredentialStatus(null);
       setCredentialStatusLoading(false);
       setL2CredentialReady(false);
+      setCredentialStatusCheckedAt(new Date().toISOString());
       return;
     }
 
@@ -224,12 +252,17 @@ export function PolymarketTradeTicket(props: Props) {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, "未能取得 Polymarket 憑證狀態。"));
       }
-      const payload = await response.json() as L2CredentialStatusResponse;
+      const payload = await response.json();
+      if (!isL2CredentialStatusResponse(payload)) {
+        throw new Error("Polymarket 憑證狀態回應格式不正確。");
+      }
       setCredentialStatus(payload);
       setL2CredentialReady(payload.status === "present");
+      setCredentialStatusCheckedAt(new Date().toISOString());
     } catch (error) {
       setCredentialStatus(null);
       setL2CredentialReady(false);
+      setCredentialStatusCheckedAt(new Date().toISOString());
       setFlowError(error instanceof Error ? error.message : "未能取得 Polymarket 憑證狀態。");
     } finally {
       setCredentialStatusLoading(false);
@@ -270,9 +303,13 @@ export function PolymarketTradeTicket(props: Props) {
         throw new Error(await readErrorMessage(response, "未能儲存 Polymarket 憑證。"));
       }
 
-      const payload = await response.json() as L2CredentialStatusResponse;
+      const payload = await response.json();
+      if (!isL2CredentialStatusResponse(payload)) {
+        throw new Error("Polymarket 憑證狀態回應格式不正確。");
+      }
       setCredentialStatus(payload);
       setL2CredentialReady(payload.status === "present");
+      setCredentialStatusCheckedAt(new Date().toISOString());
       setCredentialFormVisible(false);
       setCredentialKey("");
       setCredentialSecret("");
@@ -299,9 +336,13 @@ export function PolymarketTradeTicket(props: Props) {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, "未能撤銷 Polymarket 憑證。"));
       }
-      const payload = await response.json() as L2CredentialStatusResponse;
+      const payload = await response.json();
+      if (!isL2CredentialStatusResponse(payload)) {
+        throw new Error("Polymarket 憑證狀態回應格式不正確。");
+      }
       setCredentialStatus(payload);
       setL2CredentialReady(false);
+      setCredentialStatusCheckedAt(new Date().toISOString());
       setCredentialFormVisible(false);
       setFlowStatus("已撤銷目前儲存的 Polymarket 憑證。");
     } catch (error) {
@@ -439,17 +480,14 @@ export function PolymarketTradeTicket(props: Props) {
       <section className="stack" aria-label="Polymarket credential setup">
         <div className="section-heading-row">
           <strong>Polymarket 憑證設定</strong>
-          <span className={`badge badge-${l2CredentialReady ? "success" : credentialStatusLoading ? "warning" : "neutral"}`}>
-            {l2CredentialReady ? "已就緒" : credentialStatusLoading ? "檢查中" : "未設定"}
-          </span>
+          <span className={`badge badge-${credentialBadgeTone}`}>{credentialBadgeLabel}</span>
         </div>
-        <div className="muted">
-          {l2CredentialReady
-            ? `已為 ${redactWalletAddress(credentialStatus?.walletAddress ?? null)} 準備好用戶自己的 Polymarket L2 憑證。`
-            : "需要用戶自己的 Polymarket L2 key、secret 與 passphrase；平台不會替用戶建立或代管交易身份。"}
-        </div>
+        <div className="muted">{credentialDescription}</div>
         {credentialStatus?.updatedAt ? (
           <div className="muted">最後更新：{formatDateTime(props.locale, credentialStatus.updatedAt)}</div>
+        ) : null}
+        {credentialStatusCheckedAt ? (
+          <div className="muted">最後檢查：{formatDateTime(props.locale, credentialStatusCheckedAt)}</div>
         ) : null}
         <div className="button-row">
           {!l2CredentialReady ? (
@@ -462,7 +500,7 @@ export function PolymarketTradeTicket(props: Props) {
             </button>
           )}
           <button type="button" className="secondary-cta" onClick={() => void refreshCredentialStatus()} disabled={credentialSubmitting || credentialStatusLoading}>
-            重新整理狀態
+            {credentialStatusLoading ? "檢查中" : "重新整理狀態"}
           </button>
         </div>
         {credentialFormVisible ? (

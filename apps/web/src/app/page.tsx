@@ -39,15 +39,24 @@ const sparklinePoints = (market: ExternalMarketApiRecord) =>
     ? market.priceHistory.slice(-50).map((point) => ({ timestamp: point.timestamp, value: point.price }))
     : market.recentTrades.filter((trade) => trade.price !== null).slice(0, 12).reverse().map((trade) => ({ timestamp: trade.tradedAt, value: trade.price }));
 
+const isExplicitlyStaleMarket = (market: ExternalMarketApiRecord): boolean => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  return Boolean(provenance && typeof provenance === "object" && (provenance as Record<string, unknown>).stale === true);
+};
+
 const getTrendingMarkets = async (locale: AppLocale): Promise<ExternalMarketApiRecord[]> => {
   try {
-    return [...(await listExternalMarkets(locale, "open")).filter((market) =>
+    const markets = await listExternalMarkets(locale, "open");
+    const matches = (market: ExternalMarketApiRecord, allowStale = false) =>
       market.source === "polymarket" &&
       isExternalMarketOpenNow(market) &&
-      !isExternalMarketStale(market) &&
+      ((allowStale && !isExplicitlyStaleMarket(market)) || !isExternalMarketStale(market)) &&
       hasExternalMarketActivity(market) &&
-      hasExternalMarketPriceData(market)
-    )]
+      hasExternalMarketPriceData(market);
+    const freshMarkets = markets.filter((market) => matches(market));
+    const displayMarkets = freshMarkets.length > 0 ? freshMarkets : markets.filter((market) => matches(market, true));
+
+    return [...displayMarkets]
       .sort((a: ExternalMarketApiRecord, b: ExternalMarketApiRecord) =>
         (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0)
       )

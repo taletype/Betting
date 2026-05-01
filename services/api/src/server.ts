@@ -29,6 +29,7 @@ import {
   storeUserPolymarketL2Credentials,
 } from "./modules/external-polymarket-routing/l2-credentials";
 import { evaluatePolymarketPreflight } from "./modules/external-polymarket-routing/preflight";
+import { runPolymarketBuilderAttributionSyncWithDependencies } from "./modules/external-polymarket-routing/builder-attribution-sync";
 import { getHealth } from "./modules/health/handlers";
 import {
   getMarketById,
@@ -165,6 +166,7 @@ const requireAdminResponse = (user: AuthenticatedApiUser | null): Response | nul
 
 const isProductionRuntime = (): boolean => process.env.NODE_ENV === "production";
 const isInternalExchangeEnabled = (): boolean => process.env.INTERNAL_EXCHANGE_ENABLED === "true";
+const privateNoStoreHeaders = { "cache-control": "private, no-store" };
 
 const isInternalExchangePublicPath = (segments: string[]): boolean => {
   const [resource, , action] = segments;
@@ -212,7 +214,7 @@ const safeErrorPayload = (error: unknown): ApiErrorResponse & { code?: string; m
 
 const getAdminPolymarketStatus = async () => {
   const db = createDatabaseClient();
-  const [marketCounts, staleCounts, lastRun] = await Promise.all([
+  const [marketCounts, staleCounts, lastRun, builderRuns, builderCounts, unmatchedFees, unmatchedAttempts, payoutExposure] = await Promise.all([
     db.query<{ total: string; open: string }>(
       `
         select
@@ -251,6 +253,89 @@ const getAdminPolymarketStatus = async () => {
         limit 10
       `,
     ),
+    db.query<{
+      id: string;
+      source: string;
+      started_at: Date | string;
+      finished_at: Date | string | null;
+      status: string;
+      imported_count: number;
+      matched_count: number;
+      confirmed_count: number;
+      disputed_count: number;
+      voided_count: number;
+      error_message: string | null;
+      metadata_json: unknown;
+    }>(
+      `
+        select id, source, started_at, finished_at, status, imported_count, matched_count,
+               confirmed_count, disputed_count, voided_count, error_message, metadata_json
+        from public.polymarket_builder_fee_reconciliation_runs
+        order by started_at desc
+        limit 10
+      `,
+    ),
+    db.query<{
+      imported: string;
+      matched: string;
+      confirmed: string;
+      disputed: string;
+      voided: string;
+      rewards_from_confirmed: string;
+    }>(
+      `
+        select
+          count(*)::text as imported,
+          count(*) filter (where fee.status = 'matched')::text as matched,
+          count(*) filter (where fee.status = 'confirmed')::text as confirmed,
+          count(*) filter (where fee.status = 'disputed')::text as disputed,
+          count(*) filter (where fee.status = 'void')::text as voided,
+          (
+            select count(*)::text
+            from public.ambassador_reward_ledger reward
+            join public.builder_trade_attributions attribution
+              on attribution.id = reward.source_trade_attribution_id
+            where attribution.source_builder_fee_import_id is not null
+              and attribution.status = 'confirmed'
+          ) as rewards_from_confirmed
+        from public.polymarket_builder_fee_imports fee
+      `,
+    ),
+    db.query<{ id: string; external_order_id: string | null; external_trade_id: string | null; token_id: string | null; imported_at: Date | string }>(
+      `
+        select id, external_order_id, external_trade_id, token_id, imported_at
+        from public.polymarket_builder_fee_imports
+        where status = 'imported'
+        order by imported_at desc
+        limit 25
+      `,
+    ),
+    db.query<{ id: string; polymarket_order_id: string | null; token_id: string; created_at: Date | string }>(
+      `
+        select audit.id, audit.polymarket_order_id, audit.token_id, audit.created_at
+        from public.polymarket_routed_order_audits audit
+        left join public.builder_trade_attributions attribution
+          on attribution.polymarket_order_id = audit.polymarket_order_id
+          or (
+            audit.external_trade_id is not null
+            and attribution.polymarket_trade_id = audit.external_trade_id
+          )
+        where audit.builder_code_attached = true
+          and attribution.id is null
+        order by audit.created_at desc
+        limit 25
+      `,
+    ),
+    db.query<{ approved_reserved: string; payable: string; requested_payouts: string; approved_payouts: string }>(
+      `
+        select
+          coalesce(sum(amount_usdc_atoms) filter (where status = 'approved' and reserved_by_payout_id is not null), 0)::text as approved_reserved,
+          coalesce(sum(amount_usdc_atoms) filter (where status = 'payable'), 0)::text as payable,
+          (select count(*)::text from public.ambassador_reward_payouts where status = 'requested') as requested_payouts,
+          (select count(*)::text from public.ambassador_reward_payouts where status = 'approved') as approved_payouts
+        from public.ambassador_reward_ledger
+      `,
+    ),
   ]);
 
   return {
@@ -279,6 +364,53 @@ const getAdminPolymarketStatus = async () => {
       errorMessage: run.error_message,
       diagnostics: run.diagnostics,
     })),
+    builderFeeReconciliation: {
+      builderCodeConfigured: evaluatePolymarketPreflight().builderCodeConfigured,
+      evidenceSourceConfigured: Boolean(process.env.POLYMARKET_BUILDER_FEE_EVIDENCE_URL?.trim()),
+      latestRunStatus: builderRuns[0]?.status ?? null,
+      lastError: builderRuns[0]?.error_message ?? null,
+      counts: {
+        imported: Number(builderCounts[0]?.imported ?? 0),
+        matched: Number(builderCounts[0]?.matched ?? 0),
+        confirmed: Number(builderCounts[0]?.confirmed ?? 0),
+        disputed: Number(builderCounts[0]?.disputed ?? 0),
+        voided: Number(builderCounts[0]?.voided ?? 0),
+        rewardRowsFromConfirmedEvidence: Number(builderCounts[0]?.rewards_from_confirmed ?? 0),
+      },
+      recentRuns: builderRuns.map((run) => ({
+        id: run.id,
+        source: run.source,
+        status: run.status,
+        startedAt: run.started_at instanceof Date ? run.started_at.toISOString() : new Date(run.started_at).toISOString(),
+        finishedAt: run.finished_at ? (run.finished_at instanceof Date ? run.finished_at.toISOString() : new Date(run.finished_at).toISOString()) : null,
+        importedCount: run.imported_count,
+        matchedCount: run.matched_count,
+        confirmedCount: run.confirmed_count,
+        disputedCount: run.disputed_count,
+        voidedCount: run.voided_count,
+        errorMessage: run.error_message,
+        metadata: run.metadata_json,
+      })),
+      unmatchedFeeEvidence: unmatchedFees.map((fee) => ({
+        id: fee.id,
+        externalOrderId: fee.external_order_id,
+        externalTradeId: fee.external_trade_id,
+        tokenId: fee.token_id,
+        importedAt: fee.imported_at instanceof Date ? fee.imported_at.toISOString() : new Date(fee.imported_at).toISOString(),
+      })),
+      unmatchedRoutedAttempts: unmatchedAttempts.map((attempt) => ({
+        id: attempt.id,
+        polymarketOrderId: attempt.polymarket_order_id,
+        tokenId: attempt.token_id,
+        createdAt: attempt.created_at instanceof Date ? attempt.created_at.toISOString() : new Date(attempt.created_at).toISOString(),
+      })),
+      payoutExposure: {
+        approvedReservedUsdcAtoms: payoutExposure[0]?.approved_reserved ?? "0",
+        payableUsdcAtoms: payoutExposure[0]?.payable ?? "0",
+        requestedPayouts: Number(payoutExposure[0]?.requested_payouts ?? 0),
+        approvedPayouts: Number(payoutExposure[0]?.approved_payouts ?? 0),
+      },
+    },
   };
 };
 
@@ -325,6 +457,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const unauthorizedAdmin = requireAdminResponse(requestUser);
       if (unauthorizedAdmin) return unauthorizedAdmin;
       return Response.json(await getAdminPolymarketStatus());
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/polymarket/builder-fees/reconcile") {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      return Response.json(await runPolymarketBuilderAttributionSyncWithDependencies({ createdBy: requestUser!.id }), { status: 202 });
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/orders/preflight") {
@@ -712,7 +850,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       if (unauthorized) return unauthorized;
       const userId = requestUserId!;
 
-      return Response.json(await getUserPolymarketL2CredentialStatus(userId));
+      return Response.json(await getUserPolymarketL2CredentialStatus(userId), { headers: privateNoStoreHeaders });
     }
 
     if (request.method === "DELETE" && url.pathname === "/polymarket/l2-credentials") {
@@ -722,7 +860,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
       await revokeUserPolymarketL2Credentials(userId);
       const status = await getUserPolymarketL2CredentialStatus(userId);
-      return Response.json(status);
+      return Response.json(status, { headers: privateNoStoreHeaders });
     }
 
     if (request.method === "POST" && url.pathname === "/polymarket/l2-credentials") {
@@ -751,7 +889,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
           passphrase: String(credentials.passphrase ?? ""),
         },
       });
-      return Response.json(await getUserPolymarketL2CredentialStatus(userId), { status: 201 });
+      return Response.json(await getUserPolymarketL2CredentialStatus(userId), { status: 201, headers: privateNoStoreHeaders });
     }
 
     if (request.method === "POST" && url.pathname === "/wallets/link/challenge") {

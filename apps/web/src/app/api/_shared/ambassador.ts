@@ -470,10 +470,44 @@ export const captureAmbassadorReferralDb = async (userId: string, code: string, 
     }
 
     const [inserted] = await transaction.query<{ id: string }>(
-      `insert into public.referral_attributions (referred_user_id, referrer_user_id, ambassador_code, attributed_at, qualification_status, rejection_reason)
-       values ($1::uuid, $2::uuid, $3, now(), 'pending', null)
+      `insert into public.referral_attributions (
+         referred_user_id,
+         referrer_user_id,
+         ambassador_code,
+         attributed_at,
+         qualification_status,
+         rejection_reason,
+         landing_session_hash,
+         ip_hash,
+         user_agent_hash,
+         idempotency_key,
+         first_seen_at,
+         attribution_policy
+       )
+       values (
+         $1::uuid,
+         $2::uuid,
+         $3,
+         now(),
+         'pending',
+         null,
+         $4,
+         $5,
+         $6,
+         $7,
+         now(),
+         'first_valid_code_wins'
+       )
        returning id`,
-      [userId, codeRecord.owner_user_id, codeRecord.code],
+      [
+        userId,
+        codeRecord.owner_user_id,
+        codeRecord.code,
+        hashNullable(context.sessionId),
+        hashNullable(context.ipAddress),
+        hashNullable(context.userAgent),
+        context.idempotencyKey?.trim() || null,
+      ],
     );
     await insertReferralAuditEvent(transaction, {
       actorUserId: userId,
@@ -520,13 +554,16 @@ export const requestAmbassadorPayoutDb = async (userId: string, input: { destina
       config.polygonPusdAddress,
     ],
   );
+  if (!row) throw new Error("failed to request reward payout");
   await db.query(
     `update public.ambassador_reward_ledger
         set status = 'approved',
-            approved_at = coalesce(approved_at, now())
+            approved_at = coalesce(approved_at, now()),
+            reserved_by_payout_id = $2::uuid,
+            reserved_at = coalesce(reserved_at, now())
       where recipient_user_id = $1::uuid
         and status = 'payable'`,
-    [userId],
+    [userId, row.id],
   );
   return { id: row?.id ?? "" };
 };
@@ -837,13 +874,16 @@ const maybeCreateAutoPayoutRequest = async (transaction: DatabaseTransaction, re
       config.polygonPusdAddress,
     ],
   );
+  if (!row) return null;
   await transaction.query(
     `update public.ambassador_reward_ledger
         set status = 'approved',
-            approved_at = coalesce(approved_at, now())
+            approved_at = coalesce(approved_at, now()),
+            reserved_by_payout_id = $2::uuid,
+            reserved_at = coalesce(reserved_at, now())
       where recipient_user_id = $1::uuid
         and status = 'payable'`,
-    [recipientUserId],
+    [recipientUserId, row.id],
   );
   return row ?? null;
 };
@@ -887,6 +927,7 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
 }) => {
   if (input.notionalUsdcAtoms <= 0n) throw new Error("notional must be positive");
   if (input.builderFeeUsdcAtoms <= 0n) throw new Error("builder fee must be positive");
+  const safeStatus: TradeStatus = input.status === "void" ? "void" : "pending";
 
   const db = getDb();
   return db.transaction(async (transaction) => {
@@ -910,7 +951,7 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
          notional_usdc_atoms, builder_fee_usdc_atoms, status, raw_json, observed_at, confirmed_at
        ) values (
          $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, now(),
-         case when $9 = 'confirmed' then now() else null end
+         null
        )
        returning id`,
       [
@@ -922,8 +963,8 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
         input.marketSlug ?? null,
         input.notionalUsdcAtoms,
         input.builderFeeUsdcAtoms,
-        input.status,
-        JSON.stringify({ source: "admin_mock" }),
+        safeStatus,
+        JSON.stringify({ source: "admin_placeholder_unconfirmed", requestedStatus: input.status }),
       ],
     );
     if (!row) throw new Error("failed to record builder trade attribution");
@@ -936,7 +977,7 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
         details: { builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString() },
       });
     }
-    if (input.status === "confirmed") {
+if (input.status === "confirmed") {
       await createRewardLedgerEntriesForTrade(transaction, row.id);
     }
     return { tradeAttributionId: row.id, idempotent: false };
@@ -1037,8 +1078,8 @@ const updatePayoutStatusDb = async (input: {
     const [hasBlockingRisk, [payable]] = await Promise.all([
       hasOpenHighSeverityRiskForPayoutApprovalDb(db, input.payoutId),
       db.query<{ amount: bigint }>(
-        `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'approved'`,
-        [row.recipient_user_id],
+        `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'approved' and reserved_by_payout_id = $2::uuid`,
+        [row.recipient_user_id, input.payoutId],
       ).then((rows) => [rows[0]]),
     ]);
     if (hasBlockingRisk) throw new AmbassadorPayoutRiskReviewRequiredError();
@@ -1078,9 +1119,9 @@ const updatePayoutStatusDb = async (input: {
       `update public.ambassador_reward_ledger
           set status = 'paid',
               paid_at = coalesce(paid_at, now())
-        where recipient_user_id = $1::uuid
+        where reserved_by_payout_id = $1::uuid
           and status = 'approved'`,
-      [row.recipient_user_id],
+      [input.payoutId],
     );
     return { ok: true };
   }
@@ -1102,10 +1143,12 @@ const updatePayoutStatusDb = async (input: {
     await db.query(
       `update public.ambassador_reward_ledger
           set status = 'payable',
-              approved_at = null
-        where recipient_user_id = $1::uuid
+              approved_at = null,
+              reserved_by_payout_id = null,
+              reserved_at = null
+        where reserved_by_payout_id = $1::uuid
           and status = 'approved'`,
-      [row.recipient_user_id],
+      [input.payoutId],
     );
     return { ok: true };
   }

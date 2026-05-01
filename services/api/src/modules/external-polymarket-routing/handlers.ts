@@ -656,8 +656,9 @@ const recordRoutedOrderAudit = async (
   await db.query(
     `insert into public.polymarket_routed_order_audits (
        user_id, market_external_id, market_slug, token_id, side, price, size, notional_usdc_atoms,
-       builder_code_attached, polymarket_order_id, referral_attribution_id, raw_response, created_at
-     ) values ($1::uuid, $2, $3, $4, $5, $6, $7, $8::bigint, $9, $10, $11::uuid, $12::jsonb, now())`,
+       builder_code_attached, builder_code, polymarket_order_id, clob_order_id, external_trade_id,
+       trader_wallet, condition_id, referral_attribution_id, raw_response, created_at
+     ) values ($1::uuid, $2, $3, $4, $5, $6, $7, $8::bigint, $9, $10, $11, $12, $13, $14, $15, $16::uuid, $17::jsonb, now())`,
     [
       payload.userId,
       payload.market.externalId,
@@ -668,7 +669,12 @@ const recordRoutedOrderAudit = async (
       payload.userConfirmation.size ?? payload.userConfirmation.amount ?? 0,
       String(notional),
       payload.orderInput.builderCode === payload.signedOrder.builder,
+      payload.orderInput.builderCode,
       upstream.orderId,
+      upstream.orderId,
+      null,
+      payload.linkedWalletAddress,
+      payload.constraints.conditionId,
       referral?.id ?? null,
       JSON.stringify({
         status: upstream.status,

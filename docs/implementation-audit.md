@@ -47,4 +47,4 @@ Last updated: 2026-04-30
 
 - Internal `/api/orders`, `/api/withdrawals`, `/api/deposits/verify`, and old portfolio/balance routes still exist for legacy app surfaces. They must not be linked from public Polymarket pages or used to represent Polymarket activity.
 - Generic betting exchange, Sepolia, custodial-balance, and automatic payout language should stay out of public Polymarket pages.
-- Admin/mock builder attribution tools are operator-only and should remain behind real Supabase admin authorization.
+- Admin Builder attribution placeholders are operator-only, remain unconfirmed, and should stay behind real Supabase admin authorization.

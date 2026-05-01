@@ -150,6 +150,33 @@ export default async function AdminPolymarketPage() {
       </section>
 
       <section className="panel stack">
+        <h2 className="section-title">Builder fee 對帳</h2>
+        <div className="kv"><span className="kv-key">官方費用證據來源</span><span className="kv-value">{statusPayload.builderFeeReconciliation.evidenceSourceConfigured ? "已設定" : "未設定"}</span></div>
+        <div className="kv"><span className="kv-key">最新 run 狀態</span><span className="kv-value">{statusPayload.builderFeeReconciliation.latestRunStatus ?? "-"}</span></div>
+        <div className="kv"><span className="kv-key">last error</span><span className="kv-value">{statusPayload.builderFeeReconciliation.lastError ?? "none"}</span></div>
+        <div className="kv"><span className="kv-key">imported / matched / confirmed</span><span className="kv-value">{statusPayload.builderFeeReconciliation.counts.imported} / {statusPayload.builderFeeReconciliation.counts.matched} / {statusPayload.builderFeeReconciliation.counts.confirmed}</span></div>
+        <div className="kv"><span className="kv-key">disputed / void</span><span className="kv-value">{statusPayload.builderFeeReconciliation.counts.disputed} / {statusPayload.builderFeeReconciliation.counts.voided}</span></div>
+        <table className="table compact-table">
+          <thead><tr><th>run</th><th>source</th><th>status</th><th>confirmed</th><th>error</th></tr></thead>
+          <tbody>
+            {statusPayload.builderFeeReconciliation.recentRuns.map((run) => (
+              <tr key={run.id}>
+                <td className="mono">{run.startedAt ? formatDateTime(defaultLocale, run.startedAt) : "-"}</td>
+                <td>{run.source}</td>
+                <td>{run.status}</td>
+                <td>{run.confirmedCount}</td>
+                <td>{run.errorMessage ?? "none"}</td>
+              </tr>
+            ))}
+            {statusPayload.builderFeeReconciliation.recentRuns.length === 0 ? (
+              <tr><td colSpan={5}>未有 Builder fee 對帳 run</td></tr>
+            ) : null}
+          </tbody>
+        </table>
+        <p className="muted">獎勵只可由已確認的官方 Builder fee 證據建立；本頁不會顯示 Builder Code secret、API key、錢包私鑰或 service-role key。</p>
+      </section>
+
+      <section className="panel stack">
         <h2 className="section-title">安全營運操作</h2>
         <form action="/admin/polymarket" method="get">
           <button type="submit">重新檢查市場資料狀態</button>

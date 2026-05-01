@@ -513,6 +513,21 @@ test("admin Polymarket status is protected and reports cache sync audit", async 
   }
 });
 
+test("Polymarket submit route enforces local routed trading readiness before forwarding", () => {
+  const route = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
+
+  assert.match(route, /POLYMARKET_ROUTED_TRADING_ENABLED/);
+  assert.match(route, /POLYMARKET_ROUTED_TRADING_BETA_ENABLED/);
+  assert.match(route, /isPolymarketRoutedTradingAllowlisted/);
+  assert.match(route, /getPolymarketBuilderCode/);
+  assert.match(route, /POLYMARKET_BUILDER_CODE_MISSING/);
+  assert.match(route, /POLYMARKET_SUBMITTER_UNAVAILABLE/);
+  assert.match(route, /linked_wallets/);
+  assert.match(route, /polymarket_l2_credentials/);
+  assert.match(route, /wallet_not_connected/);
+  assert.match(route, /credentials_missing/);
+});
+
 test("public API routes do not import command modules that mutate balances or ledger", () => {
   const publicFiles = [
     "src/app/api/external/markets/route.ts",
@@ -584,6 +599,26 @@ test("admin payout approval exposes safe risk review error and UI risk summary",
   assert.match(payoutPage, /safeAuditMetadata/);
   assert.doesNotMatch(payoutPage, /flag\.details/);
   assert.doesNotMatch(payoutPage, /JSON\.stringify\(entry\.metadata\)/);
+});
+
+test("admin routes use granular RBAC and payout dual control", () => {
+  const auth = readFileSync(resolve(process.cwd(), "src/app/api/auth.ts"), "utf8");
+  const route = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
+
+  assert.match(auth, /finance_reviewer/);
+  assert.match(auth, /finance_approver/);
+  assert.match(auth, /trading_config_admin/);
+  assert.match(auth, /evaluateAdminPermission/);
+  assert.match(route, /evaluateAdminPermission/);
+  assert.match(route, /ADMIN_PERMISSION_REQUIRED/);
+  assert.match(route, /ambassador_code:manage/);
+  assert.match(route, /referral_attribution:override/);
+  assert.match(route, /builder_trade_attribution:record/);
+  assert.match(route, /reward_ledger:review/);
+  assert.match(route, /payout:approve/);
+  assert.match(route, /payout:mark_paid/);
+  assert.match(route, /AMBASSADOR_PAYOUT_DUAL_CONTROL_THRESHOLD_USDC_ATOMS/);
+  assert.match(route, /payout requires a different admin to mark paid after approval/);
 });
 
 test("admin pages surface referral reward payout and Polymarket operator fields", () => {

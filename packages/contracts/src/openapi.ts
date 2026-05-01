@@ -151,7 +151,7 @@ export const apiOpenApiSource = {
     },
     "/admin/ambassador/trade-attributions/mock": {
       post: {
-        summary: "Record a mocked Builder-fee trade attribution",
+        summary: "Record an unconfirmed Builder-fee attribution placeholder",
         responses: { "201": { description: "Created" }, "401": { description: "Admin authorization required" } },
       },
     },

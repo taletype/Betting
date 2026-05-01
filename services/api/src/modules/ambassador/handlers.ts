@@ -219,6 +219,7 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
   const db = createDatabaseClient();
 
   return db.transaction(async (transaction) => {
+    const safeStatus = input.status === "void" ? "void" : "pending";
     const tradeAttribution = await recordBuilderTradeAttribution(transaction, {
       userId: input.userId,
       polymarketOrderId: input.polymarketOrderId,
@@ -227,14 +228,15 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
       conditionId: input.conditionId,
       notionalUsdcAtoms: input.notionalUsdcAtoms,
       builderFeeUsdcAtoms: input.builderFeeUsdcAtoms,
-      status: input.status,
+      status: safeStatus,
       rawJson: {
-        source: "admin_mock",
+        source: "admin_placeholder_unconfirmed",
+        requestedStatus: input.status,
         ...(input.rawJson ?? {}),
       },
     });
 
-    const ledger = tradeAttribution.status === "confirmed"
+const ledger = tradeAttribution.status === "confirmed"
       ? await accountConfirmedBuilderTradeRewards(transaction, {
           tradeAttributionId: tradeAttribution.id,
           config: getAmbassadorRewardsConfig(),
@@ -243,23 +245,25 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
 
     await insertAuditRecord(transaction, {
       actorUserId: adminUserId,
-      action: "ambassador.mock_builder_trade_recorded",
+      action: "ambassador.unconfirmed_builder_trade_placeholder_recorded",
       entityType: "builder_trade_attribution",
       entityId: tradeAttribution.id,
       metadata: {
         userId: input.userId,
-        status: input.status,
+        requestedStatus: input.status,
+        storedStatus: safeStatus,
         builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString(),
       },
     });
     await insertAdminAuditRecord(transaction, {
       actorUserId: adminUserId,
-      action: "ambassador.mock_builder_trade_recorded",
+      action: "ambassador.unconfirmed_builder_trade_placeholder_recorded",
       entityType: "builder_trade_attribution",
       entityId: tradeAttribution.id,
       metadata: {
         userId: input.userId,
-        status: input.status,
+        requestedStatus: input.status,
+        storedStatus: safeStatus,
         builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString(),
       },
     });

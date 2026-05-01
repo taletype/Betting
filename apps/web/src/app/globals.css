@@ -192,6 +192,11 @@ select:focus,
   max-width: 920px;
 }
 
+.shell > main.polymarket-feed-page {
+  max-width: 1360px;
+  gap: 16px;
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -325,6 +330,39 @@ select:focus,
   padding: 18px 0 22px;
 }
 
+.polymarket-hero {
+  position: relative;
+  overflow: hidden;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  align-items: stretch;
+  gap: 18px;
+  min-height: 318px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 84% 16%, rgba(245, 158, 11, 0.1), transparent 30%),
+    linear-gradient(135deg, rgba(20, 21, 24, 0.98), rgba(12, 13, 15, 0.98));
+  padding: 26px;
+}
+
+.polymarket-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.24;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(232, 234, 237, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 234, 237, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(90deg, #000, transparent 76%);
+}
+
+.polymarket-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
 .landing-hero {
   min-height: min(68vh, 620px);
   align-items: center;
@@ -334,6 +372,13 @@ select:focus,
 
 .hero-copy {
   max-width: 780px;
+}
+
+.polymarket-hero .hero-copy {
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  max-width: 860px;
 }
 
 .hero h1,
@@ -353,6 +398,120 @@ select:focus,
   max-width: 74ch;
   color: var(--text2);
   overflow-wrap: anywhere;
+}
+
+.market-hero-metrics {
+  display: grid;
+  max-width: 860px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(12, 13, 15, 0.58);
+}
+
+.market-hero-metrics > div {
+  display: grid;
+  min-height: 78px;
+  align-content: center;
+  gap: 5px;
+  border-left: 1px solid var(--border);
+  padding: 14px 16px;
+}
+
+.market-hero-metrics > div:first-child {
+  border-left: 0;
+}
+
+.market-hero-metrics strong {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: clamp(18px, 2vw, 26px);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.hero-status-panel {
+  align-content: start;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 8px;
+  background: rgba(20, 21, 24, 0.84);
+  padding: 16px;
+  box-shadow: var(--shadow-lg);
+}
+
+.hero-status-panel .banner,
+.hero-status-panel .pending-referral-notice {
+  border-radius: 7px;
+}
+
+.share-inline {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg2);
+  padding: 12px;
+}
+
+.share-inline button {
+  width: 100%;
+}
+
+.hero-status-list {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.hero-status-list .kv {
+  min-height: 54px;
+  border-top: 1px solid var(--border);
+  background: rgba(12, 13, 15, 0.28);
+  padding: 10px 12px;
+}
+
+.hero-status-list .kv:first-child {
+  border-top: 0;
+}
+
+.disclosure-rail {
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr 0.9fr;
+  gap: 12px;
+}
+
+.disclosure-rail .disclosure-card {
+  min-height: 100%;
+}
+
+.market-command-center {
+  position: sticky;
+  top: 60px;
+  z-index: 30;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(20, 21, 24, 0.94);
+  padding: 12px;
+  backdrop-filter: blur(18px);
+}
+
+.market-command-center .filters {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.market-feed-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .panel {
@@ -619,6 +778,11 @@ select:focus,
   padding: 7px 11px;
 }
 
+.market-feed-table-wrap {
+  overflow: auto;
+  padding: 0;
+}
+
 .chip:hover,
 .tab-link:hover,
 .chip.active,
@@ -629,11 +793,55 @@ select:focus,
 }
 
 .market-feed-table-wrap {
-  display: none;
+  display: block;
+  border-radius: 8px;
+  background: var(--bg1);
+}
+
+.market-feed-table {
+  min-width: 1180px;
+}
+
+.market-feed-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg1);
+}
+
+.market-feed-table td,
+.market-feed-table th {
+  padding: 12px 10px;
+}
+
+.market-feed-table tbody tr {
+  transition: background 150ms ease;
+}
+
+.market-feed-table tbody tr:hover {
+  background: rgba(35, 38, 44, 0.62);
+}
+
+.market-feed-table td:first-child,
+.market-feed-table th:first-child {
+  padding-left: 14px;
+}
+
+.market-feed-table td:last-child,
+.market-feed-table th:last-child {
+  padding-right: 14px;
+}
+
+.market-feed-table .button-link {
+  color: #050505;
+}
+
+.market-feed-table .button-link.secondary {
+  color: var(--text2);
 }
 
 .market-feed-cards {
-  display: grid;
+  display: none;
 }
 
 .market-card {
@@ -1389,6 +1597,8 @@ select:focus,
     display: none;
   }
 
+  .polymarket-hero,
+  .disclosure-rail,
   .filters,
   .admin-filter-bar,
   .landing-hero,
@@ -1398,6 +1608,36 @@ select:focus,
   .price-table,
   .meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .polymarket-hero {
+    min-height: auto;
+    padding: 18px;
+  }
+
+  .market-hero-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-hero-metrics > div:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .market-hero-metrics > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+
+  .market-feed-nav {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .market-feed-table-wrap {
+    display: none;
+  }
+
+  .market-feed-cards {
+    display: grid;
   }
 
   .market-detail-sidebar {
@@ -1451,6 +1691,10 @@ select:focus,
   .shell > main,
   .page-container {
     padding: 12px 10px 136px;
+  }
+
+  .polymarket-feed-page {
+    gap: 12px;
   }
 
   .topbar {
@@ -1525,6 +1769,10 @@ select:focus,
     padding: 12px 0 14px;
   }
 
+  .polymarket-hero {
+    padding: 14px;
+  }
+
   .hero h1,
   .hero h2 {
     font-size: clamp(26px, 8.8vw, 34px);
@@ -1542,6 +1790,27 @@ select:focus,
     z-index: 24;
     gap: 10px;
     padding: 12px;
+  }
+
+  .market-command-center {
+    top: 54px;
+    margin-right: -2px;
+    margin-left: -2px;
+    padding: 10px;
+  }
+
+  .market-command-center .filters {
+    position: static;
+    padding: 0;
+  }
+
+  .market-hero-metrics > div {
+    min-height: 68px;
+    padding: 10px 12px;
+  }
+
+  .market-hero-metrics strong {
+    font-size: 19px;
   }
 
   .section-heading-row,

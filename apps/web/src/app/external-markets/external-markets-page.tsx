@@ -40,6 +40,9 @@ import { getSiteUrl } from "../../lib/site-url";
 const toDisplay = (value: number | null, locale: AppLocale): string =>
   value === null ? "—" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const toCompactDisplay = (value: number | null, locale: AppLocale): string =>
+  value === null ? "—" : value.toLocaleString(locale, { notation: "compact", maximumFractionDigits: 1 });
+
 const toPriceDisplay = (value: number | null, locale: AppLocale): string =>
   value === null || value <= 0 ? "暫無價格" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -104,6 +107,11 @@ const isDefaultFeedMarket = (market: ExternalMarketApiRecord): boolean =>
   hasExternalMarketPriceData(market) &&
   !isExternalMarketStale(market);
 
+const isExplicitlyStaleMarket = (market: ExternalMarketApiRecord): boolean => {
+  const provenance = market.sourceProvenance ?? market.provenance;
+  return Boolean(provenance && typeof provenance === "object" && (provenance as Record<string, unknown>).stale === true);
+};
+
 const qualityScore = (market: ExternalMarketApiRecord): number =>
   (market.status === "open" ? 8 : 0) +
   (hasExternalMarketActivity(market) ? 4 : 0) +
@@ -116,34 +124,38 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
   const sort = params?.sort ?? "trending";
   const market = params?.market?.trim().toLowerCase() ?? "";
   const defaultFeed = isDefaultFeedStatus(status);
-
-  return markets
-    .filter((item) => {
-      if (q && !`${item.title} ${item.titleOriginal ?? ""} ${item.titleLocalized ?? ""} ${item.description} ${item.externalId} ${item.slug}`.toLowerCase().includes(q)) {
-        return false;
-      }
-      if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
-        return false;
-      }
-      if (defaultFeed || status === "open") {
-        return isDefaultFeedMarket(item);
-      }
-      if (status === "closing") {
-        const closeTime = toTime(item.closeTime);
-        return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && closeTime !== null && closeTime > Date.now() && closeTime <= Date.now() + 72 * 60 * 60 * 1000;
-      }
-      if (status === "volume") {
-        return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.volume24h ?? item.volumeTotal ?? 0) > 0;
-      }
-      if (status === "liquidity") {
-        return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.liquidity ?? 0) > 0;
-      }
-      if (status === "closed") {
-        return item.status === "closed" || item.status === "resolved" || item.status === "cancelled";
-      }
-      return status === "all" || item.status === status;
-    })
-    .sort((a, b) => {
+  const defaultCandidate = (item: ExternalMarketApiRecord, allowStale: boolean): boolean =>
+    isExternalMarketOpenNow(item) &&
+    hasExternalMarketActivity(item) &&
+    hasExternalMarketPriceData(item) &&
+    ((allowStale && !isExplicitlyStaleMarket(item)) || !isExternalMarketStale(item));
+  const baseMatches = (item: ExternalMarketApiRecord, allowStaleDefault = false): boolean => {
+    if (q && !`${item.title} ${item.titleOriginal ?? ""} ${item.titleLocalized ?? ""} ${item.description} ${item.externalId} ${item.slug}`.toLowerCase().includes(q)) {
+      return false;
+    }
+    if (market && item.slug.toLowerCase() !== market && item.externalId.toLowerCase() !== market && item.id.toLowerCase() !== market) {
+      return false;
+    }
+    if (defaultFeed || status === "open") {
+      return defaultCandidate(item, allowStaleDefault);
+    }
+    if (status === "closing") {
+      const closeTime = toTime(item.closeTime);
+      return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && closeTime !== null && closeTime > Date.now() && closeTime <= Date.now() + 72 * 60 * 60 * 1000;
+    }
+    if (status === "volume") {
+      return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.volume24h ?? item.volumeTotal ?? 0) > 0;
+    }
+    if (status === "liquidity") {
+      return isExternalMarketOpenNow(item) && !isExternalMarketStale(item) && (item.liquidity ?? 0) > 0;
+    }
+    if (status === "closed") {
+      return item.status === "closed" || item.status === "resolved" || item.status === "cancelled";
+    }
+    return status === "all" || item.status === status;
+  };
+  const sortMarkets = (items: ExternalMarketApiRecord[]) =>
+    items.sort((a, b) => {
       const statusDelta = (b.status === "open" ? 1 : 0) - (a.status === "open" ? 1 : 0);
       if (statusDelta !== 0) return statusDelta;
       if (sort === "volume") return (b.volume24h ?? b.volumeTotal ?? 0) - (a.volume24h ?? a.volumeTotal ?? 0);
@@ -162,6 +174,12 @@ const filterAndSortMarkets = (markets: ExternalMarketApiRecord[], params?: Marke
       if (qualityDelta !== 0) return qualityDelta;
       return (toTime(b.lastUpdatedAt ?? b.lastSyncedAt ?? b.updatedAt) ?? 0) - (toTime(a.lastUpdatedAt ?? a.lastSyncedAt ?? a.updatedAt) ?? 0);
     });
+
+  const filtered = markets.filter((item) => baseMatches(item));
+  if (filtered.length === 0 && (defaultFeed || status === "open")) {
+    return sortMarkets(markets.filter((item) => baseMatches(item, true)));
+  }
+  return sortMarkets(filtered);
 };
 
 const buildFeedHref = (params: MarketFeedSearchParams | undefined, next: MarketFeedSearchParams): string => {
@@ -309,99 +327,137 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const thirdwebClientConfigured = Boolean(process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID?.trim());
   const staleMarketsPresent = markets.some(isExternalMarketStale);
   const staleOpenMarketsPresent = markets.some((market) => isExternalMarketOpenNow(market) && isExternalMarketStale(market));
+  const activeMarketsCount = markets.filter(isDefaultFeedMarket).length;
+  const updatedMarketsCount = markets.filter((market) => !isExternalMarketStale(market)).length;
+  const totalVolume24h = visibleMarkets.reduce((sum, market) => sum + (market.volume24h ?? 0), 0);
+  const totalLiquidity = visibleMarkets.reduce((sum, market) => sum + (market.liquidity ?? 0), 0);
 
   return (
-    <main className="stack">
+    <main className="stack polymarket-feed-page">
       <FunnelEventTracker name="market_view" metadata={{ surface: "feed" }} />
       {refCode ? <FunnelEventTracker name="referral_code_seen" metadata={{ code: refCode }} /> : null}
-      <section className="hero">
-        <h1>{copy.title}</h1>
-        <p>{copy.subtitle}</p>
-        <div className="trust-badge-row" aria-label="Polymarket Beta 狀態">
-          <span className="badge badge-info">Beta</span>
-          <span className="badge badge-success">非託管</span>
-          <span className="badge badge-warning">交易尚未啟用</span>
-          <span className="badge badge-warning">人手審批</span>
+      <section className="hero polymarket-hero">
+        <div className="hero-copy">
+          <h1>{copy.title}</h1>
+          <p>{copy.subtitle}</p>
+          <div className="trust-badge-row" aria-label="Polymarket Beta 狀態">
+            <span className="badge badge-info">Beta</span>
+            <span className="badge badge-success">非託管</span>
+            <span className="badge badge-warning">交易尚未啟用</span>
+            <span className="badge badge-warning">人手審批</span>
+          </div>
+          <div className="market-hero-metrics" aria-label="Polymarket market feed summary">
+            <div>
+              <span className="metric-label">活躍市場</span>
+              <strong>{activeMarketsCount.toLocaleString(locale)}</strong>
+            </div>
+            <div>
+              <span className="metric-label">已更新</span>
+              <strong>{updatedMarketsCount.toLocaleString(locale)}</strong>
+            </div>
+            <div>
+              <span className="metric-label">24 小時成交</span>
+              <strong>{toCompactDisplay(totalVolume24h || null, locale)}</strong>
+            </div>
+            <div>
+              <span className="metric-label">流動性</span>
+              <strong>{toCompactDisplay(totalLiquidity || null, locale)}</strong>
+            </div>
+          </div>
         </div>
-        {refCode ? <div className="banner banner-success referral-banner">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice prefix="你正在使用推薦碼：" />}
-        <div className="market-actions">
-          <TrackedCopyButton
-            value={shareUrl}
-            label="複製一般邀請連結"
-            copiedLabel="已複製"
-            eventName="invite_link_copied"
-            metadata={refCode ? { code: refCode, surface: "polymarket_feed" } : { surface: "polymarket_feed" }}
-          />
+        <aside className="hero-status-panel stack" aria-label="Polymarket referral and launch status">
+          {refCode ? <div className="banner banner-success referral-banner">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice prefix="你正在使用推薦碼：" />}
+          <div className="share-inline">
+            <span className="metric-label">邀請好友</span>
+            <TrackedCopyButton
+              value={shareUrl}
+              label="複製一般邀請連結"
+              copiedLabel="已複製"
+              eventName="invite_link_copied"
+              metadata={refCode ? { code: refCode, surface: "polymarket_feed" } : { surface: "polymarket_feed" }}
+            />
+          </div>
+          <div className="hero-status-list">
+            <div className="kv"><span className="kv-key">Beta 產品</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
+            <div className="kv"><span className="kv-key">安全提醒</span><span className="kv-value">僅使用官方網站與簽名訂單</span></div>
+            <div className="kv"><span className="kv-key">返佣說明</span><span className="kv-value">符合條件的交易可獲返佣</span></div>
+          </div>
+        </aside>
+      </section>
+      <section className="disclosure-rail" aria-label="Beta, safety, and reward disclosures">
+        <BetaLaunchDisclosure />
+        <SharedSafetyDisclosure />
+        <SharedRewardDisclosure />
+      </section>
+      <section className="market-command-center stack" aria-label="Polymarket market controls">
+        <form className="filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
+          {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
+          <label className="stack">
+            搜尋
+            <input name="q" defaultValue={params?.q ?? ""} placeholder="搜尋市場、slug 或外部 ID" />
+          </label>
+          <label className="stack">
+            篩選
+            <select name="status" defaultValue={defaultFeed ? "open" : selectedStatus}>
+              <option value="all">全部</option>
+              <option value="open">開放</option>
+              <option value="closing">即將結束</option>
+              <option value="volume">高成交量</option>
+              <option value="liquidity">高流動性</option>
+              <option value="closed">已結束</option>
+            </select>
+          </label>
+          <label className="stack">
+            排序
+            <select name="sort" defaultValue={params?.sort ?? "trending"}>
+              <option value="trending">熱門</option>
+              <option value="volume">成交量</option>
+              <option value="liquidity">流動性</option>
+              <option value="latest">最新</option>
+              <option value="close">即將結束</option>
+            </select>
+          </label>
+          <button type="submit">套用</button>
+          <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>刷新</Link>
+        </form>
+        <div className="market-feed-nav">
+          <nav className="chip-row" aria-label="Polymarket 類別">
+            {[
+              ["all", "全部"],
+              ["open", "開放"],
+              ["closing", "即將結束"],
+              ["volume", "高成交量"],
+              ["liquidity", "高流動性"],
+              ["closed", "已結束"],
+            ].map(([status, label]) => (
+              <Link
+                key={status}
+                className={`chip ${((defaultFeed ? "open" : selectedStatus) === status) ? "active" : ""}`}
+                href={buildLocalizedFeedHref(locale, normalizedParams, { status })}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+          <nav className="tab-row" aria-label="Polymarket 排序">
+            {[
+              ["trending", "熱門"],
+              ["volume", "成交量"],
+              ["liquidity", "流動性"],
+              ["latest", "最新"],
+              ["close", "即將結束"],
+            ].map(([sort, label]) => (
+              <Link
+                key={sort}
+                className={`tab-link ${((params?.sort ?? "trending") === sort) ? "active" : ""}`}
+                href={buildLocalizedFeedHref(locale, normalizedParams, { sort })}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </section>
-      <BetaLaunchDisclosure />
-      <SharedSafetyDisclosure />
-      <SharedRewardDisclosure />
-      <form className="panel filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
-        {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
-        <label className="stack">
-          搜尋
-          <input name="q" defaultValue={params?.q ?? ""} placeholder="搜尋市場、slug 或外部 ID" />
-        </label>
-        <label className="stack">
-          篩選
-          <select name="status" defaultValue={defaultFeed ? "open" : selectedStatus}>
-            <option value="all">全部</option>
-            <option value="open">開放</option>
-            <option value="closing">即將結束</option>
-            <option value="volume">高成交量</option>
-            <option value="liquidity">高流動性</option>
-            <option value="closed">已結束</option>
-          </select>
-        </label>
-        <label className="stack">
-          排序
-          <select name="sort" defaultValue={params?.sort ?? "trending"}>
-            <option value="trending">熱門</option>
-            <option value="volume">成交量</option>
-            <option value="liquidity">流動性</option>
-            <option value="latest">最新</option>
-            <option value="close">即將結束</option>
-          </select>
-        </label>
-        <button type="submit">套用</button>
-        <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>刷新</Link>
-      </form>
-      <nav className="chip-row" aria-label="Polymarket 類別">
-        {[
-          ["all", "全部"],
-          ["open", "開放"],
-          ["closing", "即將結束"],
-          ["volume", "高成交量"],
-          ["liquidity", "高流動性"],
-          ["closed", "已結束"],
-        ].map(([status, label]) => (
-          <Link
-            key={status}
-            className={`chip ${((defaultFeed ? "open" : selectedStatus) === status) ? "active" : ""}`}
-            href={buildLocalizedFeedHref(locale, normalizedParams, { status })}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
-      <nav className="tab-row" aria-label="Polymarket 排序">
-        {[
-          ["trending", "熱門"],
-          ["volume", "成交量"],
-          ["liquidity", "流動性"],
-          ["latest", "最新"],
-          ["close", "即將結束"],
-        ].map(([sort, label]) => (
-          <Link
-            key={sort}
-            className={`tab-link ${((params?.sort ?? "trending") === sort) ? "active" : ""}`}
-            href={buildLocalizedFeedHref(locale, normalizedParams, { sort })}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
       {staleMarketsPresent ? (
         <div className="banner banner-warning">市場資料可能已過期，請稍後再試。</div>
       ) : null}

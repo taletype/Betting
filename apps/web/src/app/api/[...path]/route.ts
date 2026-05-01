@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseClient } from "@bet/db";
+import { getPolymarketBuilderCode } from "@bet/integrations";
 import { createSupabaseAdminClient } from "@bet/supabase/admin";
 import { createSupabaseServerClient } from "@bet/supabase/server";
 import { normalizeApiPayload } from "../_shared/api-serialization";
@@ -45,7 +46,9 @@ import {
 
 import {
   evaluateAdminAccess,
+  evaluateAdminPermission,
   getAuthenticatedUser,
+  type AdminPermission,
 } from "../auth";
 
 let supabaseAdminClientFactory = createSupabaseAdminClient;
@@ -65,6 +68,8 @@ const getVersionPayload = () => ({
 
 const safeErrorMessage = (error: unknown): string =>
   process.env.NODE_ENV === "production" ? "Request failed" : error instanceof Error ? error.message : "Failed to fetch data";
+
+const privateNoStoreHeaders = { "cache-control": "private, no-store" };
 
 const rateLimitState = new Map<string, { windowStartedAtMs: number; count: number }>();
 
@@ -118,6 +123,58 @@ const recordAdminAuditLog = async (input: {
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+const adminPermissionDeniedResponse = (
+  permission: AdminPermission,
+  decision: ReturnType<typeof evaluateAdminPermission>,
+) => NextResponse.json(
+  {
+    error: decision.error ?? "Admin privileges required",
+    code: "ADMIN_PERMISSION_REQUIRED",
+    permission,
+  },
+  { status: decision.status ?? 403 },
+);
+
+const requireAdminPermissionResponse = (
+  user: Awaited<ReturnType<typeof getAuthenticatedUser>>,
+  permission: AdminPermission,
+): NextResponse | null => {
+  const decision = evaluateAdminPermission(user, permission);
+  return decision.ok ? null : adminPermissionDeniedResponse(permission, decision);
+};
+
+const parsePayoutDualControlThreshold = (): bigint => {
+  const rawValue = process.env.AMBASSADOR_PAYOUT_DUAL_CONTROL_THRESHOLD_USDC_ATOMS?.trim();
+  if (!rawValue) return 0n;
+  const parsed = BigInt(rawValue);
+  if (parsed < 0n) throw new Error("AMBASSADOR_PAYOUT_DUAL_CONTROL_THRESHOLD_USDC_ATOMS must be non-negative");
+  return parsed;
+};
+
+const assertPayoutPaidByDifferentActor = async (payoutId: string, actorUserId: string): Promise<void> => {
+  const [payout] = await createDatabaseClient().query<{
+    amount_usdc_atoms: bigint | number | string;
+    reviewed_by: string | null;
+    status: string;
+  }>(
+    `
+      select amount_usdc_atoms, reviewed_by, status
+        from public.ambassador_reward_payouts
+       where id = $1::uuid
+       limit 1
+    `,
+    [payoutId],
+  );
+  if (!payout) throw new Error("payout request not found");
+  if (payout.status !== "approved") throw new Error("payout requires admin approval before it can be marked paid");
+  if (BigInt(String(payout.amount_usdc_atoms)) >= parsePayoutDualControlThreshold() && payout.reviewed_by === actorUserId) {
+    throw new Error("payout requires a different admin to mark paid after approval");
+  }
+};
+
+const polymarketSubmitBlockedResponse = (status: 403 | 503, code: string, disabledReasons: string[]) =>
+  NextResponse.json({ error: "Polymarket routed trading is disabled", code, disabledReasons }, { status });
 
 const isInternalExchangeEnabled = (): boolean => process.env.INTERNAL_EXCHANGE_ENABLED === "true";
 const getServiceApiBaseUrl = (): string | null => {
@@ -278,6 +335,41 @@ async function handleRequest(
       if (process.env.POLYMARKET_ROUTED_TRADING_KILL_SWITCH === "true" || process.env.POLYMARKET_ORDER_SUBMIT_KILL_SWITCH === "true") {
         return NextResponse.json({ error: "Polymarket routed trading is disabled", code: "POLYMARKET_ROUTED_TRADING_DISABLED" }, { status: 503 });
       }
+      const globallyEnabled = process.env.POLYMARKET_ROUTED_TRADING_ENABLED === "true";
+      const betaEnabled = process.env.POLYMARKET_ROUTED_TRADING_BETA_ENABLED === "true";
+      const betaUserAllowlisted = globallyEnabled || (betaEnabled && isPolymarketRoutedTradingAllowlisted({ userId }));
+      if (!globallyEnabled && !betaEnabled) {
+        return polymarketSubmitBlockedResponse(503, "POLYMARKET_ROUTED_TRADING_DISABLED", ["routed_trading_disabled"]);
+      }
+      if (!betaUserAllowlisted) {
+        return polymarketSubmitBlockedResponse(403, "POLYMARKET_BETA_USER_NOT_ALLOWLISTED", ["beta_user_not_allowlisted"]);
+      }
+      if (!getPolymarketBuilderCode()) {
+        return polymarketSubmitBlockedResponse(503, "POLYMARKET_BUILDER_CODE_MISSING", ["builder_code_missing"]);
+      }
+      if (process.env.POLYMARKET_CLOB_SUBMITTER !== "real" && process.env.POLYMARKET_SUBMITTER_AVAILABLE !== "true") {
+        return polymarketSubmitBlockedResponse(503, "POLYMARKET_SUBMITTER_UNAVAILABLE", ["submitter_unavailable"]);
+      }
+      const [linkedWalletResult, l2CredentialsResult] = await Promise.all([
+        adminSupabase()
+          .from("linked_wallets")
+          .select("id")
+          .eq("user_id", userId)
+          .maybeSingle(),
+        adminSupabase()
+          .from("polymarket_l2_credentials")
+          .select("status")
+          .eq("user_id", userId)
+          .maybeSingle(),
+      ]);
+      if (linkedWalletResult.error) throw linkedWalletResult.error;
+      if (l2CredentialsResult.error) throw l2CredentialsResult.error;
+      if (!linkedWalletResult.data) {
+        return polymarketSubmitBlockedResponse(403, "POLYMARKET_WALLET_NOT_LINKED", ["wallet_not_connected"]);
+      }
+      if (!l2CredentialsResult.data || l2CredentialsResult.data.status === "revoked") {
+        return polymarketSubmitBlockedResponse(403, "POLYMARKET_L2_CREDENTIALS_MISSING", ["credentials_missing"]);
+      }
       const forwarded = await forwardServiceApiRequest(request, "polymarket/orders/submit");
       if (forwarded) return forwarded;
       return NextResponse.json(
@@ -332,7 +424,7 @@ async function handleRequest(
             walletAddress: data.wallet_address,
             updatedAt: data.updated_at,
           }
-        : { status: "missing", walletAddress: null, updatedAt: null });
+        : { status: "missing", walletAddress: null, updatedAt: null }, { headers: privateNoStoreHeaders });
     }
 
     if (apiPath === "polymarket/l2-credentials" && request.method === "DELETE") {
@@ -341,7 +433,7 @@ async function handleRequest(
         .update({ status: "revoked", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("user_id", userId);
       if (error) throw error;
-      return NextResponse.json({ status: "revoked", walletAddress: null, updatedAt: new Date().toISOString() });
+      return NextResponse.json({ status: "revoked", walletAddress: null, updatedAt: new Date().toISOString() }, { headers: privateNoStoreHeaders });
     }
 
     if (apiPath === "polymarket/l2-credentials" && request.method === "POST") {
@@ -584,10 +676,14 @@ async function handleRequest(
       const adminActorId = user!.id;
 
       if (apiPath === "admin/polymarket/status" && request.method === "GET") {
+        const permissionError = requireAdminPermissionResponse(user, "polymarket:read");
+        if (permissionError) return permissionError;
         return adminPolymarketStatusResponse(request, adminSupabase);
       }
 
       if (apiPath === "admin/withdrawals" && request.method === "GET") {
+        const permissionError = requireAdminPermissionResponse(user, "withdrawal:read");
+        if (permissionError) return permissionError;
         const { data, error } = await adminSupabase().rpc("rpc_admin_list_requested_withdrawals");
         if (error) {
           throw error;
@@ -596,11 +692,14 @@ async function handleRequest(
       }
 
       if (apiPath === "admin/ambassador" && request.method === "GET") {
-        void adminActorId;
+        const permissionError = requireAdminPermissionResponse(user, "admin:read");
+        if (permissionError) return permissionError;
         return NextResponse.json(normalizeApiPayload(await readAdminAmbassadorOverviewDb()));
       }
 
       if (apiPath === "admin/ambassador/codes" && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "ambassador_code:manage");
+        if (permissionError) return permissionError;
         const body = (await request.json().catch(() => ({}))) as { ownerUserId?: string; code?: string | null };
         const result = normalizeApiPayload(await createAdminAmbassadorCodeDb({
             ownerUserId: String(body.ownerUserId ?? ""),
@@ -612,6 +711,8 @@ async function handleRequest(
       }
 
       if (apiPath.match(/^admin\/ambassador\/codes\/[^/]+\/disable$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "ambassador_code:manage");
+        if (permissionError) return permissionError;
         const codeId = apiPath.split("/")[3] ?? "";
         const result = normalizeApiPayload(await disableAdminAmbassadorCodeDb(codeId));
         await recordAdminAuditLog({ actorUserId: adminActorId, action: "ambassador_code.disable", entityType: "ambassador_code", entityId: codeId });
@@ -619,6 +720,8 @@ async function handleRequest(
       }
 
       if (apiPath === "admin/ambassador/referral-attributions/override" && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "referral_attribution:override");
+        if (permissionError) return permissionError;
         const body = (await request.json().catch(() => ({}))) as {
           referredUserId?: string;
           ambassadorCode?: string;
@@ -638,6 +741,8 @@ async function handleRequest(
       }
 
       if (apiPath === "admin/ambassador/trade-attributions/mock" && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "builder_trade_attribution:record");
+        if (permissionError) return permissionError;
         const body = (await request.json().catch(() => ({}))) as {
           userId?: string;
           polymarketOrderId?: string | null;
@@ -661,11 +766,13 @@ async function handleRequest(
             }),
           );
         const resultRecord = asRecord(result);
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "builder_trade_attribution.record_mock", entityType: "builder_trade_attribution", entityId: String(resultRecord.tradeAttributionId ?? ""), metadata: { status: body.status ?? "pending" } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "builder_trade_attribution.record_unconfirmed_placeholder", entityType: "builder_trade_attribution", entityId: String(resultRecord.tradeAttributionId ?? ""), metadata: { requestedStatus: body.status ?? "pending" } });
         return NextResponse.json(result, { status: 201 });
       }
 
       if (apiPath.match(/^admin\/ambassador\/trade-attributions\/[^/]+\/payable$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "reward_ledger:review");
+        if (permissionError) return permissionError;
         const tradeAttributionId = apiPath.split("/")[3] ?? "";
         const result = await markRewardsPayableDb(tradeAttributionId);
         await recordAdminAuditLog({ actorUserId: adminActorId, action: "reward_ledger.mark_payable", entityType: "builder_trade_attribution", entityId: tradeAttributionId });
@@ -673,6 +780,8 @@ async function handleRequest(
       }
 
       if (apiPath.match(/^admin\/ambassador\/trade-attributions\/[^/]+\/void$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "reward_ledger:review");
+        if (permissionError) return permissionError;
         const tradeAttributionId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { reason?: string };
         const result = await voidRewardsForTradeAttributionDb(tradeAttributionId, String(body.reason ?? ""));
@@ -681,6 +790,8 @@ async function handleRequest(
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/approve$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:approve");
+        if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const result = await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null });
@@ -689,14 +800,19 @@ async function handleRequest(
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/paid$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:mark_paid");
+        if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
+        await assertPayoutPaidByDifferentActor(payoutId, adminActorId);
         const result = await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null });
         await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, metadata: { txHash: body.txHash ?? null } });
         return NextResponse.json(result);
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/failed$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:close");
+        if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") });
@@ -705,6 +821,8 @@ async function handleRequest(
       }
 
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/cancelled$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:close");
+        if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") });

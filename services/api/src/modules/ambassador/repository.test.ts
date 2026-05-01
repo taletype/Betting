@@ -230,7 +230,7 @@ test("reward ledger entries are created as pending records", () => {
   assert.match(source, /status,\s*created_at/);
   assert.match(source, /'pending'/);
   assert.match(source, /builder trade attribution must be confirmed before rewards become payable/);
-  assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
+assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
   assert.match(handlers, /accountConfirmedBuilderTradeRewards/);
   assert.doesNotMatch(handlers, /ledger = await markRewardsPayable\(transaction, tradeAttribution\.id\)/);
 });
@@ -256,6 +256,34 @@ test("payout workflow enforces threshold and admin approval before paid", () => 
   assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
   assert.match(source, /recipient already has an open reward payout request/);
   assert.match(source, /payout requires admin approval before it can be marked paid/);
+});
+
+test("payout state changes are isolated to rows reserved by that payout", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+  const webFallback = readFileSync(resolve(process.cwd(), "../../apps/web/src/app/api/_shared/ambassador.ts"), "utf8");
+
+  for (const moduleSource of [source, webFallback]) {
+    assert.match(moduleSource, /reserved_by_payout_id = \$2::uuid/);
+    assert.match(moduleSource, /where reserved_by_payout_id = \$1::uuid[\s\S]+and status = 'approved'/);
+    assert.match(moduleSource, /reserved_by_payout_id = null/);
+    assert.doesNotMatch(
+      moduleSource,
+      /set status = 'paid'[\s\S]{0,180}where recipient_user_id = \$1::uuid[\s\S]{0,80}and status = 'approved'/,
+    );
+    assert.doesNotMatch(
+      moduleSource,
+      /set status = 'payable'[\s\S]{0,220}where recipient_user_id = \$1::uuid[\s\S]{0,80}and status = 'approved'/,
+    );
+  }
+});
+
+test("Builder placeholder admin route cannot confirm fees or create rewards", () => {
+  const handlers = readFileSync(resolve(process.cwd(), "src/modules/ambassador/handlers.ts"), "utf8");
+
+  assert.match(handlers, /source: "admin_placeholder_unconfirmed"/);
+  assert.match(handlers, /const safeStatus = input\.status === "void" \? "void" : "pending"/);
+  assert.doesNotMatch(handlers, /source: "admin_mock"/);
+  assert.doesNotMatch(handlers, /tradeAttribution\.status === "confirmed"[\s\S]+accountConfirmedBuilderTradeRewards/);
 });
 
 test("open high-risk flag blocks payout approval with safe error", async () => {

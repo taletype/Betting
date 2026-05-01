@@ -1,6 +1,6 @@
 # Reward Ledger
 
-Rewards are calculated only from confirmed Builder-fee revenue. Pending or unconfirmed trade attribution must not create payable rewards.
+Rewards are calculated only from confirmed Polymarket Builder-fee evidence. Local routed-order audits, public trade ticks, admin placeholders, pending evidence, disputed evidence, or unconfirmed trade attribution must not create payable rewards.
 
 Split:
 - Platform: 60%
@@ -9,6 +9,6 @@ Split:
 
 If there is no valid direct referrer, the 30% referrer share stays with platform revenue. Rewards are direct-referral only: there is no second-level, recursive, or tree calculation.
 
-Confirmed Builder attribution creates ledger rows once using the trade attribution as the idempotency boundary. Duplicate attribution must not double-create rewards. Voided attribution voids unpaid rewards. Paid rewards are immutable in normal flows and require explicit admin adjustment plus audit trail if correction is ever needed.
+Confirmed Builder attribution creates ledger rows once using the trade attribution and source evidence as idempotency boundaries. Duplicate evidence or duplicate attribution must not double-create rewards. Voided attribution voids unpaid rewards. Paid rewards are immutable in normal flows and require explicit admin adjustment plus audit trail if correction is ever needed.
 
-Reward rows are accounting records only. They are not trading balances and must not mutate internal trading balances.
+Reward rows are accounting records only. They are not betting/trading balances and must not mutate internal trading balances. They also must not trigger automatic payout execution.

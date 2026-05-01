@@ -1292,9 +1292,9 @@ export const readAmbassadorDashboard = async (
 
 const findExistingBuilderTradeAttribution = async (
   executor: DatabaseExecutor,
-  input: { polymarketOrderId?: string | null; polymarketTradeId?: string | null },
+  input: { polymarketOrderId?: string | null; polymarketTradeId?: string | null; sourceBuilderFeeImportId?: string | null },
 ): Promise<BuilderTradeAttributionRecord | null> => {
-  if (!input.polymarketOrderId && !input.polymarketTradeId) return null;
+  if (!input.polymarketOrderId && !input.polymarketTradeId && !input.sourceBuilderFeeImportId) return null;
 
   const [row] = await executor.query<BuilderTradeAttributionRow>(
     `
@@ -1302,9 +1302,10 @@ const findExistingBuilderTradeAttribution = async (
       from public.builder_trade_attributions
       where ($1::text is not null and polymarket_order_id = $1)
          or ($2::text is not null and polymarket_trade_id = $2)
+         or ($3::uuid is not null and source_builder_fee_import_id = $3::uuid)
       limit 1
     `,
-    [input.polymarketOrderId ?? null, input.polymarketTradeId ?? null],
+    [input.polymarketOrderId ?? null, input.polymarketTradeId ?? null, input.sourceBuilderFeeImportId ?? null],
   );
   return row ? mapTradeAttribution(row) : null;
 };
@@ -1321,13 +1322,39 @@ export const recordBuilderTradeAttribution = async (
     builderFeeUsdcAtoms: bigint;
     status?: BuilderTradeAttributionStatus;
     rawJson?: Record<string, unknown>;
+    sourceBuilderFeeImportId?: string | null;
+    sourceEvidenceKey?: string | null;
   },
 ): Promise<BuilderTradeAttributionRecord> => {
   if (input.notionalUsdcAtoms <= 0n) throw new Error("notional must be positive");
   if (input.builderFeeUsdcAtoms <= 0n) throw new Error("builder fee must be positive");
 
   const existing = await findExistingBuilderTradeAttribution(transaction, input);
-  if (existing) return existing;
+  if (existing) {
+    if (input.status === "confirmed" && existing.status !== "confirmed") {
+      const [row] = await transaction.query<BuilderTradeAttributionRow>(
+        `
+          update public.builder_trade_attributions
+          set status = 'confirmed',
+              confirmed_at = coalesce(confirmed_at, now()),
+              raw_json = raw_json || $2::jsonb,
+              source_builder_fee_import_id = coalesce(source_builder_fee_import_id, $3::uuid),
+              source_evidence_key = coalesce(source_evidence_key, $4)
+          where id = $1::uuid
+          returning id, user_id, direct_referrer_user_id, polymarket_order_id, polymarket_trade_id, condition_id, market_slug, notional_usdc_atoms, builder_fee_usdc_atoms, status, raw_json, observed_at, confirmed_at
+        `,
+        [
+          existing.id,
+          JSON.stringify(input.rawJson ?? {}),
+          input.sourceBuilderFeeImportId ?? null,
+          input.sourceEvidenceKey ?? null,
+        ],
+      );
+      if (!row) throw new Error("failed to confirm builder trade attribution");
+      return mapTradeAttribution(row);
+    }
+    return existing;
+  }
 
   const attribution = await getReferralAttributionForUser(transaction, input.userId);
   const directReferrerUserId = attribution?.qualificationStatus === "rejected" ? null : attribution?.referrerUserId ?? null;
@@ -1346,6 +1373,8 @@ export const recordBuilderTradeAttribution = async (
         builder_fee_usdc_atoms,
         status,
         raw_json,
+        source_builder_fee_import_id,
+        source_evidence_key,
         observed_at,
         confirmed_at
       ) values (
@@ -1359,6 +1388,8 @@ export const recordBuilderTradeAttribution = async (
         $8,
         $9,
         $10::jsonb,
+        $11::uuid,
+        $12,
         now(),
         case when $9 = 'confirmed' then now() else null end
       )
@@ -1375,6 +1406,8 @@ export const recordBuilderTradeAttribution = async (
       input.builderFeeUsdcAtoms,
       status,
       JSON.stringify(input.rawJson ?? {}),
+      input.sourceBuilderFeeImportId ?? null,
+      input.sourceEvidenceKey ?? null,
     ],
   );
   if (!row) throw new Error("failed to record builder trade attribution");
@@ -1741,11 +1774,13 @@ export const maybeCreateAutoPayoutRequest = async (
     `
       update public.ambassador_reward_ledger
       set status = 'approved',
-          approved_at = coalesce(approved_at, now())
+          approved_at = coalesce(approved_at, now()),
+          reserved_by_payout_id = $2::uuid,
+          reserved_at = coalesce(reserved_at, now())
       where recipient_user_id = $1::uuid
         and status = 'payable'
     `,
-    [recipientUserId],
+    [recipientUserId, payout.id],
   );
   return payout;
 };
@@ -1823,11 +1858,13 @@ export const requestRewardPayout = async (
       `
         update public.ambassador_reward_ledger
         set status = 'approved',
-            approved_at = coalesce(approved_at, now())
+            approved_at = coalesce(approved_at, now()),
+            reserved_by_payout_id = $2::uuid,
+            reserved_at = coalesce(reserved_at, now())
         where recipient_user_id = $1::uuid
           and status = 'payable'
       `,
-      [input.recipientUserId],
+      [input.recipientUserId, payout.id],
     );
 
     await flagPayoutWalletReuse(transaction, {
@@ -1926,8 +1963,9 @@ export const approveRewardPayout = async (
       from public.ambassador_reward_ledger
       where recipient_user_id = $1::uuid
         and status = 'approved'
+        and reserved_by_payout_id = $2::uuid
     `,
-    [existing.recipient_user_id],
+    [existing.recipient_user_id, input.payoutId],
   );
   if ((reserved?.amount ?? 0n) < existing.amount_usdc_atoms) {
     throw new Error("payout amount exceeds locked rewards");
@@ -2006,10 +2044,10 @@ export const markRewardPayoutPaid = async (
       update public.ambassador_reward_ledger
       set status = 'paid',
           paid_at = coalesce(paid_at, now())
-      where recipient_user_id = $1::uuid
+      where reserved_by_payout_id = $1::uuid
         and status = 'approved'
     `,
-    [existing.recipient_user_id],
+    [input.payoutId],
   );
 
   const [row] = await transaction.query<PayoutRow>(
@@ -2099,11 +2137,13 @@ export const updateRewardPayoutFailureState = async (
     `
       update public.ambassador_reward_ledger
       set status = 'payable',
-          approved_at = null
-      where recipient_user_id = $1::uuid
+          approved_at = null,
+          reserved_by_payout_id = null,
+          reserved_at = null
+      where reserved_by_payout_id = $1::uuid
         and status = 'approved'
     `,
-    [existing.recipient_user_id],
+    [input.payoutId],
   );
   return mapPayout(row);
 };
