@@ -1223,10 +1223,32 @@ const mergeLocaleCopy = <T>(fallback: T, override: DeepPartial<T> | undefined): 
   return result as T;
 };
 
+const simplifiedPairs =
+  "帳账務务體体註注冊册電电郵邮發发錄錄碼码歸归連连結结獎奖勵励確确認认費费計计實实際际員员審审閱閱讀读導导覽覽資资产產产領领頁页預预測測場场報报設设顯显開开關关閉闭啟启後后個个會会過过無无暫暂當当進进錢钱鏈链網网絡絡驗验證证轉转庫库額额應应該该據据類类狀状态態态標标記记擁拥覆复匯汇線线觸触達达異异敗败錯错誤误擊击儲储佇伫讓让對对與與還还這这裡里爲为為为訂订单單单簽签風风險险說说參参数數数價价買买賣卖盤盘動动時时间間间來来備备訊讯請请檢检傳传輸輸較较內內僅仅從从聯联繫系組组織织紀纪餘余遞递層层託托灣湾優优";
+
+const traditionalToSimplified = Object.fromEntries(
+  Array.from({ length: Math.floor(simplifiedPairs.length / 2) }, (_value, index) => [
+    simplifiedPairs[index * 2],
+    simplifiedPairs[index * 2 + 1],
+  ])
+) as Record<string, string>;
+
+const simplifyText = (value: string): string =>
+  value.replace(/[^\x00-\x7F]/g, (char) => traditionalToSimplified[char] ?? char);
+
+const simplifyLocaleCopy = <T>(value: T): T => {
+  if (typeof value === "string") return simplifyText(value) as T;
+  if (Array.isArray(value)) return value.map((item) => simplifyLocaleCopy(item)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, simplifyLocaleCopy(item)])) as T;
+  }
+  return value;
+};
+
 const localizedCopy: Record<AppLocale, DeepPartial<LocaleCopy>> = {
   en,
   "zh-HK": zhHK,
-  "zh-CN": zhHK,
+  "zh-CN": simplifyLocaleCopy(zhHK),
 };
 
 export const getLocaleCopy = (locale: AppLocale): LocaleCopy => mergeLocaleCopy(en, localizedCopy[locale]);

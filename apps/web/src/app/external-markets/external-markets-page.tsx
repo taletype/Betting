@@ -44,7 +44,245 @@ const toCompactDisplay = (value: number | null, locale: AppLocale): string =>
   value === null ? "—" : value.toLocaleString(locale, { notation: "compact", maximumFractionDigits: 1 });
 
 const toPriceDisplay = (value: number | null, locale: AppLocale): string =>
-  value === null || value <= 0 ? "暫無價格" : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  value === null || value <= 0 ? (locale === "en" ? "No price" : locale === "zh-CN" ? "暂无价格" : "暫無價格") : value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const feedCopy: Record<AppLocale, {
+  betaAria: string;
+  beta: string;
+  nonCustodial: string;
+  tradingDisabled: string;
+  manualApproval: string;
+  activeMarkets: string;
+  updated: string;
+  volume24h: string;
+  liquidity: string;
+  referralPrefix: string;
+  inviteFriends: string;
+  copyInvite: string;
+  copied: string;
+  betaProduct: string;
+  safetyReminder: string;
+  officialSiteOnly: string;
+  rewardNote: string;
+  eligibleRewards: string;
+  controlsAria: string;
+  search: string;
+  searchPlaceholder: string;
+  filter: string;
+  sort: string;
+  apply: string;
+  refresh: string;
+  categoriesAria: string;
+  sortAria: string;
+  statuses: Array<[string, string]>;
+  sorts: Array<[string, string]>;
+  staleWarning: string;
+  loadFailedTitle: string;
+  refreshMarkets: string;
+  emptyTitle: string;
+  emptyActiveSr: string;
+  viewAllMarkets: string;
+  tableAria: string;
+  tableHeaders: string[];
+  staleData: string;
+  noTradeData: string;
+  sourcePolymarket: string;
+  sourceApi: string;
+  lastUpdated: string;
+  marketDetails: string;
+  updatedAt: string;
+  priceTrend: string;
+  copyMarketReferralLink: string;
+  supportAria: string;
+  builderSafetyTitle: string;
+  builderSafetyBody: string;
+  dataStatusTitle: string;
+  dataUrl: string;
+  tradingStatus: string;
+  builderCodeSet: string;
+  builderCodeMissing: string;
+  yes: string;
+  no: string;
+  enabled: string;
+}> = {
+  en: {
+    betaAria: "Polymarket beta status",
+    beta: "Beta",
+    nonCustodial: "Non-custodial",
+    tradingDisabled: "Trading not enabled",
+    manualApproval: "Manual approval",
+    activeMarkets: "Active markets",
+    updated: "Updated",
+    volume24h: "24h volume",
+    liquidity: "Liquidity",
+    referralPrefix: "You are using referral code: ",
+    inviteFriends: "Invite friends",
+    copyInvite: "Copy general invite link",
+    copied: "Copied",
+    betaProduct: "Beta product",
+    safetyReminder: "Safety reminder",
+    officialSiteOnly: "Use only official websites and signed orders",
+    rewardNote: "Reward note",
+    eligibleRewards: "Eligible trades can earn rewards",
+    controlsAria: "Polymarket market controls",
+    search: "Search",
+    searchPlaceholder: "Search markets, slug, or external ID",
+    filter: "Filter",
+    sort: "Sort",
+    apply: "Apply",
+    refresh: "Refresh",
+    categoriesAria: "Polymarket categories",
+    sortAria: "Polymarket sort",
+    statuses: [["all", "All"], ["open", "Open"], ["closing", "Closing soon"], ["volume", "High volume"], ["liquidity", "High liquidity"], ["closed", "Closed"]],
+    sorts: [["trending", "Trending"], ["volume", "Volume"], ["liquidity", "Liquidity"], ["latest", "Latest"], ["close", "Closing soon"]],
+    staleWarning: "Market data may be stale. Please try again later.",
+    loadFailedTitle: "Market data could not be refreshed",
+    refreshMarkets: "Refresh markets",
+    emptyTitle: "No market data right now",
+    emptyActiveSr: "No active market data right now",
+    viewAllMarkets: "View all markets",
+    tableAria: "Polymarket markets table",
+    tableHeaders: ["Status", "Market", "Outcomes / price", "Bid / Ask", "Volume", "Liquidity", "Close time", "Source / update", "Actions"],
+    staleData: "Data may be stale",
+    noTradeData: "No trade data",
+    sourcePolymarket: "Source: Polymarket",
+    sourceApi: "Data source: Polymarket API",
+    lastUpdated: "Last updated: ",
+    marketDetails: "Market details",
+    updatedAt: "Updated at",
+    priceTrend: "Price trend",
+    copyMarketReferralLink: "Copy market referral link",
+    supportAria: "Safety and operations information",
+    builderSafetyTitle: "Builder / trading safety status",
+    builderSafetyBody: "Browsing markets alone does not create Builder fees. Fees apply only to eligible and successfully matched Polymarket routed orders; live order submission is disabled by default.",
+    dataStatusTitle: "Market data connection status",
+    dataUrl: "Data URL",
+    tradingStatus: "Trading status",
+    builderCodeSet: "Builder Code configured",
+    builderCodeMissing: "Builder Code not configured",
+    yes: "yes",
+    no: "no",
+    enabled: "enabled",
+  },
+  "zh-HK": {
+    betaAria: "Polymarket Beta 狀態",
+    beta: "Beta",
+    nonCustodial: "非託管",
+    tradingDisabled: "交易尚未啟用",
+    manualApproval: "人手審批",
+    activeMarkets: "活躍市場",
+    updated: "已更新",
+    volume24h: "24 小時成交",
+    liquidity: "流動性",
+    referralPrefix: "你正在使用推薦碼：",
+    inviteFriends: "邀請好友",
+    copyInvite: "複製一般邀請連結",
+    copied: "已複製",
+    betaProduct: "Beta 產品",
+    safetyReminder: "安全提醒",
+    officialSiteOnly: "僅使用官方網站與簽名訂單",
+    rewardNote: "返佣說明",
+    eligibleRewards: "符合條件的交易可獲返佣",
+    controlsAria: "Polymarket market controls",
+    search: "搜尋",
+    searchPlaceholder: "搜尋市場、slug 或外部 ID",
+    filter: "篩選",
+    sort: "排序",
+    apply: "套用",
+    refresh: "刷新",
+    categoriesAria: "Polymarket 類別",
+    sortAria: "Polymarket 排序",
+    statuses: [["all", "全部"], ["open", "開放"], ["closing", "即將結束"], ["volume", "高成交量"], ["liquidity", "高流動性"], ["closed", "已結束"]],
+    sorts: [["trending", "熱門"], ["volume", "成交量"], ["liquidity", "流動性"], ["latest", "最新"], ["close", "即將結束"]],
+    staleWarning: "市場資料可能已過期，請稍後再試。",
+    loadFailedTitle: "市場資料暫時未能更新",
+    refreshMarkets: "重新整理市場",
+    emptyTitle: "暫時未有市場資料",
+    emptyActiveSr: "暫時未有活躍市場資料",
+    viewAllMarkets: "查看全部市場",
+    tableAria: "Polymarket 市場表格",
+    tableHeaders: ["狀態", "市場", "結果 / 價格", "Bid / Ask", "成交量", "流動性", "結束時間", "來源 / 更新", "操作"],
+    staleData: "資料可能過期",
+    noTradeData: "暫無成交資料",
+    sourcePolymarket: "來源：Polymarket",
+    sourceApi: "資料來源：Polymarket API",
+    lastUpdated: "最後更新：",
+    marketDetails: "市場詳情",
+    updatedAt: "更新時間",
+    priceTrend: "價格走勢",
+    copyMarketReferralLink: "複製市場推薦連結",
+    supportAria: "安全及營運資訊",
+    builderSafetyTitle: "Builder / 交易安全狀態",
+    builderSafetyBody: "單純瀏覽市場不會產生 Builder 費用。只適用於合資格並成功成交的 Polymarket 路由訂單；實際訂單提交預設停用。",
+    dataStatusTitle: "市場資料連線狀態",
+    dataUrl: "資料 URL",
+    tradingStatus: "交易狀態",
+    builderCodeSet: "Builder Code 已設定",
+    builderCodeMissing: "Builder Code 未設定",
+    yes: "yes",
+    no: "no",
+    enabled: "enabled",
+  },
+  "zh-CN": {
+    betaAria: "Polymarket Beta 状态",
+    beta: "Beta",
+    nonCustodial: "非托管",
+    tradingDisabled: "交易尚未启用",
+    manualApproval: "人工审核",
+    activeMarkets: "活跃市场",
+    updated: "已更新",
+    volume24h: "24 小时成交",
+    liquidity: "流动性",
+    referralPrefix: "你正在使用推荐码：",
+    inviteFriends: "邀请好友",
+    copyInvite: "复制一般邀请链接",
+    copied: "已复制",
+    betaProduct: "Beta 产品",
+    safetyReminder: "安全提醒",
+    officialSiteOnly: "仅使用官方网站与签名订单",
+    rewardNote: "返佣说明",
+    eligibleRewards: "符合条件的交易可获返佣",
+    controlsAria: "Polymarket market controls",
+    search: "搜索",
+    searchPlaceholder: "搜索市场、slug 或外部 ID",
+    filter: "筛选",
+    sort: "排序",
+    apply: "应用",
+    refresh: "刷新",
+    categoriesAria: "Polymarket 类别",
+    sortAria: "Polymarket 排序",
+    statuses: [["all", "全部"], ["open", "开放"], ["closing", "即将结束"], ["volume", "高成交量"], ["liquidity", "高流动性"], ["closed", "已结束"]],
+    sorts: [["trending", "热门"], ["volume", "成交量"], ["liquidity", "流动性"], ["latest", "最新"], ["close", "即将结束"]],
+    staleWarning: "市场数据可能已过期，请稍后再试。",
+    loadFailedTitle: "市场数据暂时未能更新",
+    refreshMarkets: "重新整理市场",
+    emptyTitle: "暂时没有市场数据",
+    emptyActiveSr: "暂时没有活跃市场数据",
+    viewAllMarkets: "查看全部市场",
+    tableAria: "Polymarket 市场表格",
+    tableHeaders: ["状态", "市场", "结果 / 价格", "Bid / Ask", "成交量", "流动性", "结束时间", "来源 / 更新", "操作"],
+    staleData: "数据可能过期",
+    noTradeData: "暂无成交数据",
+    sourcePolymarket: "来源：Polymarket",
+    sourceApi: "数据来源：Polymarket API",
+    lastUpdated: "最后更新：",
+    marketDetails: "市场详情",
+    updatedAt: "更新时间",
+    priceTrend: "价格走势",
+    copyMarketReferralLink: "复制市场推荐链接",
+    supportAria: "安全及运营信息",
+    builderSafetyTitle: "Builder / 交易安全状态",
+    builderSafetyBody: "单纯浏览市场不会产生 Builder 费用。只适用于合资格并成功成交的 Polymarket 路由订单；实际订单提交默认停用。",
+    dataStatusTitle: "市场数据连接状态",
+    dataUrl: "数据 URL",
+    tradingStatus: "交易状态",
+    builderCodeSet: "Builder Code 已设置",
+    builderCodeMissing: "Builder Code 未设置",
+    yes: "yes",
+    no: "no",
+    enabled: "enabled",
+  },
+};
 
 const statusTone = (status: string): "neutral" | "success" | "warning" => {
   if (status === "cancelled" || status === "resolved" || status === "closed") {
@@ -54,17 +292,24 @@ const statusTone = (status: string): "neutral" | "success" | "warning" => {
   return "success";
 };
 
-const getCloseState = (market: ExternalMarketApiRecord): { label: string; progress: number } => {
+const closeStateLabels: Record<AppLocale, { ended: string; live: string; closing: string }> = {
+  en: { ended: "Ended", live: "Live", closing: "Closing soon" },
+  "zh-HK": { ended: "已結束", live: "進行中", closing: "即將結束" },
+  "zh-CN": { ended: "已结束", live: "进行中", closing: "即将结束" },
+};
+
+const getCloseState = (market: ExternalMarketApiRecord, locale: AppLocale): { label: string; progress: number } => {
+  const labels = closeStateLabels[locale];
   if (market.status === "closed" || market.status === "resolved" || market.status === "cancelled") {
-    return { label: "已結束", progress: 100 };
+    return { label: labels.ended, progress: 100 };
   }
 
-  if (!market.closeTime) return { label: "進行中", progress: 42 };
+  if (!market.closeTime) return { label: labels.live, progress: 42 };
 
   const remaining = new Date(market.closeTime).getTime() - Date.now();
-  if (remaining <= 0) return { label: "已結束", progress: 100 };
-  if (remaining <= 24 * 60 * 60 * 1000) return { label: "即將結束", progress: 86 };
-  return { label: "進行中", progress: 48 };
+  if (remaining <= 0) return { label: labels.ended, progress: 100 };
+  if (remaining <= 24 * 60 * 60 * 1000) return { label: labels.closing, progress: 86 };
+  return { label: labels.live, progress: 48 };
 };
 
 const toSparklinePoints = (market: ExternalMarketApiRecord): TimeSeriesPoint[] =>
@@ -257,6 +502,7 @@ const isAllowlistedPolymarketBetaUser = (user: { id: string; email: string | nul
 
 export async function renderExternalMarketsPage(locale: AppLocale, params?: MarketFeedSearchParams) {
   const copy = getLocaleCopy(locale).research;
+  const ui = feedCopy[locale];
   let markets: ExternalMarketApiRecord[] = [];
   let loadFailed = false;
   let loadDiagnostics: ExternalMarketsLoadErrorCode[] = [];
@@ -273,10 +519,10 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
   const routedTradingEnabled = globallyRoutedTradingEnabled || betaRoutedTradingEnabled;
   const publicSubmitEnabled = globallyRoutedTradingEnabled && hasBuilderCode && submitterAvailable;
   const publicTradingStatusLabel = publicSubmitEnabled
-    ? "實盤提交已啟用"
+    ? (locale === "en" ? "Live submission enabled" : locale === "zh-CN" ? "实盘提交已启用" : "實盤提交已啟用")
     : routedTradingEnabled
-      ? "交易介面預覽已啟用；實盤提交仍然停用"
-      : "交易介面預覽；實盤提交停用";
+      ? (locale === "en" ? "Trading preview enabled; live submission remains disabled" : locale === "zh-CN" ? "交易界面预览已启用；实盘提交仍然停用" : "交易介面預覽已啟用；實盤提交仍然停用")
+      : (locale === "en" ? "Trading preview; live submission disabled" : locale === "zh-CN" ? "交易界面预览；实盘提交停用" : "交易介面預覽；實盤提交停用");
   const normalizedParams: MarketFeedSearchParams = { ...params, ref: refCode ?? params?.ref ?? undefined };
   const dataReadiness = getPublicExternalMarketsReadiness();
   const selectedStatus = params?.status?.trim();
@@ -340,96 +586,80 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         <div className="hero-copy">
           <h1>{copy.title}</h1>
           <p>{copy.subtitle}</p>
-          <div className="trust-badge-row" aria-label="Polymarket Beta 狀態">
-            <span className="badge badge-info">Beta</span>
-            <span className="badge badge-success">非託管</span>
-            <span className="badge badge-warning">交易尚未啟用</span>
-            <span className="badge badge-warning">人手審批</span>
+          <div className="trust-badge-row" aria-label={ui.betaAria}>
+            <span className="badge badge-info">{ui.beta}</span>
+            <span className="badge badge-success">{ui.nonCustodial}</span>
+            <span className="badge badge-warning">{ui.tradingDisabled}</span>
+            <span className="badge badge-warning">{ui.manualApproval}</span>
           </div>
           <div className="market-hero-metrics" aria-label="Polymarket market feed summary">
             <div>
-              <span className="metric-label">活躍市場</span>
+              <span className="metric-label">{ui.activeMarkets}</span>
               <strong>{activeMarketsCount.toLocaleString(locale)}</strong>
             </div>
             <div>
-              <span className="metric-label">已更新</span>
+              <span className="metric-label">{ui.updated}</span>
               <strong>{updatedMarketsCount.toLocaleString(locale)}</strong>
             </div>
             <div>
-              <span className="metric-label">24 小時成交</span>
+              <span className="metric-label">{ui.volume24h}</span>
               <strong>{toCompactDisplay(totalVolume24h || null, locale)}</strong>
             </div>
             <div>
-              <span className="metric-label">流動性</span>
+              <span className="metric-label">{ui.liquidity}</span>
               <strong>{toCompactDisplay(totalLiquidity || null, locale)}</strong>
             </div>
           </div>
         </div>
         <aside className="hero-status-panel stack" aria-label="Polymarket referral and launch status">
-          {refCode ? <div className="banner banner-success referral-banner">你正在使用推薦碼：{refCode}</div> : <PendingReferralNotice prefix="你正在使用推薦碼：" />}
+          {refCode ? <div className="banner banner-success referral-banner">{ui.referralPrefix}{refCode}</div> : <PendingReferralNotice prefix={ui.referralPrefix} />}
           <div className="share-inline">
-            <span className="metric-label">邀請好友</span>
+            <span className="metric-label">{ui.inviteFriends}</span>
             <TrackedCopyButton
               value={shareUrl}
-              label="複製一般邀請連結"
-              copiedLabel="已複製"
+              label={ui.copyInvite}
+              copiedLabel={ui.copied}
               eventName="invite_link_copied"
               metadata={refCode ? { code: refCode, surface: "polymarket_feed" } : { surface: "polymarket_feed" }}
             />
           </div>
           <div className="hero-status-list">
-            <div className="kv"><span className="kv-key">Beta 產品</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
-            <div className="kv"><span className="kv-key">安全提醒</span><span className="kv-value">僅使用官方網站與簽名訂單</span></div>
-            <div className="kv"><span className="kv-key">返佣說明</span><span className="kv-value">符合條件的交易可獲返佣</span></div>
+            <div className="kv"><span className="kv-key">{ui.betaProduct}</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
+            <div className="kv"><span className="kv-key">{ui.safetyReminder}</span><span className="kv-value">{ui.officialSiteOnly}</span></div>
+            <div className="kv"><span className="kv-key">{ui.rewardNote}</span><span className="kv-value">{ui.eligibleRewards}</span></div>
           </div>
         </aside>
       </section>
       <section className="disclosure-rail" aria-label="Beta, safety, and reward disclosures">
-        <BetaLaunchDisclosure />
-        <SharedSafetyDisclosure />
-        <SharedRewardDisclosure />
+        <BetaLaunchDisclosure locale={locale} />
+        <SharedSafetyDisclosure locale={locale} />
+        <SharedRewardDisclosure locale={locale} />
       </section>
-      <section className="market-command-center stack" aria-label="Polymarket market controls">
+      <section className="market-command-center stack" aria-label={ui.controlsAria}>
         <form className="filters market-feed-controls" action={getLocaleHref(locale, "/polymarket")}>
           {refCode ? <input type="hidden" name="ref" value={refCode} /> : null}
           <label className="stack">
-            搜尋
-            <input name="q" defaultValue={params?.q ?? ""} placeholder="搜尋市場、slug 或外部 ID" />
+            {ui.search}
+            <input name="q" defaultValue={params?.q ?? ""} placeholder={ui.searchPlaceholder} />
           </label>
           <label className="stack">
-            篩選
+            {ui.filter}
             <select name="status" defaultValue={defaultFeed ? "open" : selectedStatus}>
-              <option value="all">全部</option>
-              <option value="open">開放</option>
-              <option value="closing">即將結束</option>
-              <option value="volume">高成交量</option>
-              <option value="liquidity">高流動性</option>
-              <option value="closed">已結束</option>
+              {ui.statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label className="stack">
-            排序
+            {ui.sort}
             <select name="sort" defaultValue={params?.sort ?? "trending"}>
-              <option value="trending">熱門</option>
-              <option value="volume">成交量</option>
-              <option value="liquidity">流動性</option>
-              <option value="latest">最新</option>
-              <option value="close">即將結束</option>
+              {ui.sorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
-          <button type="submit">套用</button>
-          <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>刷新</Link>
+          <button type="submit">{ui.apply}</button>
+          <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>{ui.refresh}</Link>
         </form>
         <div className="market-feed-nav">
-          <nav className="chip-row" aria-label="Polymarket 類別">
-            {[
-              ["all", "全部"],
-              ["open", "開放"],
-              ["closing", "即將結束"],
-              ["volume", "高成交量"],
-              ["liquidity", "高流動性"],
-              ["closed", "已結束"],
-            ].map(([status, label]) => (
+          <nav className="chip-row" aria-label={ui.categoriesAria}>
+            {ui.statuses.map(([status, label]) => (
               <Link
                 key={status}
                 className={`chip ${((defaultFeed ? "open" : selectedStatus) === status) ? "active" : ""}`}
@@ -439,14 +669,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               </Link>
             ))}
           </nav>
-          <nav className="tab-row" aria-label="Polymarket 排序">
-            {[
-              ["trending", "熱門"],
-              ["volume", "成交量"],
-              ["liquidity", "流動性"],
-              ["latest", "最新"],
-              ["close", "即將結束"],
-            ].map(([sort, label]) => (
+          <nav className="tab-row" aria-label={ui.sortAria}>
+            {ui.sorts.map(([sort, label]) => (
               <Link
                 key={sort}
                 className={`tab-link ${((params?.sort ?? "trending") === sort) ? "active" : ""}`}
@@ -459,12 +683,12 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
         </div>
       </section>
       {staleMarketsPresent ? (
-        <div className="banner banner-warning">市場資料可能已過期，請稍後再試。</div>
+        <div className="banner banner-warning">{ui.staleWarning}</div>
       ) : null}
       <section className="stack">
         {loadFailed ? (
           <div className="panel empty-state">
-            <strong>市場資料暫時未能更新</strong>
+            <strong>{ui.loadFailedTitle}</strong>
             <p>{copy.loadError}</p>
             {loadDiagnostics.includes("market_source_unavailable") ? (
               <>
@@ -483,15 +707,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                 </ul>
               ) : null
             )}
-            <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>重新整理市場</Link>
+            <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, {})}>{ui.refreshMarkets}</Link>
           </div>
         ) : visibleMarkets.length === 0 ? (
           <div className="panel empty-state">
-            <strong>暫時未有市場資料</strong>
-            <p>{defaultFeed && staleOpenMarketsPresent ? "市場資料可能已過期，請稍後再試。" : "暫時未有市場資料"}</p>
-            <span className="sr-only">暫時未有活躍市場資料</span>
+            <strong>{ui.emptyTitle}</strong>
+            <p>{defaultFeed && staleOpenMarketsPresent ? ui.staleWarning : ui.emptyTitle}</p>
+            <span className="sr-only">{ui.emptyActiveSr}</span>
             {defaultFeed ? (
-              <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>查看全部市場</Link>
+              <Link className="button-link secondary" href={buildLocalizedFeedHref(locale, normalizedParams, { status: "all" })}>{ui.viewAllMarkets}</Link>
             ) : (
               <ul>
                 <li>{copy.emptyDetails.externalMarketsEmpty}</li>
@@ -501,19 +725,11 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </div>
         ) : (
           <>
-          <div className="panel market-feed-table-wrap" aria-label="Polymarket 市場表格">
+          <div className="panel market-feed-table-wrap" aria-label={ui.tableAria}>
             <table className="table market-feed-table">
               <thead>
                 <tr>
-                  <th>狀態</th>
-                  <th>市場</th>
-                  <th>結果 / 價格</th>
-                  <th>Bid / Ask</th>
-                  <th>成交量</th>
-                  <th>流動性</th>
-                  <th>結束時間</th>
-                  <th>來源 / 更新</th>
-                  <th>操作</th>
+                  {ui.tableHeaders.map((label) => <th key={label}>{label}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -532,7 +748,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <td>
                         <div className="stack">
                           <span className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</span>
-                          {stale ? <span className="badge badge-warning">資料可能過期</span> : null}
+                          {stale ? <span className="badge badge-warning">{ui.staleData}</span> : null}
                         </div>
                       </td>
                       <td>
@@ -557,15 +773,15 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                       <td>{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</td>
                       <td>{market.closeTime ? formatDateTime(locale, market.closeTime, "UTC") : "—"}</td>
                       <td>
-                        <div>來源：Polymarket</div>
-                        <div className="muted">資料來源：Polymarket API</div>
-                        <div className="muted">最後更新：{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</div>
+                        <div>{ui.sourcePolymarket}</div>
+                        <div className="muted">{ui.sourceApi}</div>
+                        <div className="muted">{ui.lastUpdated}{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</div>
                       </td>
                       <td>
                         <div className="table-actions">
                           <Link className="button-link primary-cta" href={detailPath}>{copy.tradeViaPolymarket}</Link>
                           <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
-                          <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
+                          <Link className="button-link secondary" href={detailPath}>{ui.marketDetails}</Link>
                         </div>
                       </td>
                     </tr>
@@ -585,7 +801,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
             const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
             const marketShareUrl = `${getSiteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);
-            const closeState = getCloseState(market);
+            const closeState = getCloseState(market, locale);
             const stale = isExternalMarketStale(market);
             const noTradeData = !hasExternalMarketActivity(market) || !hasExternalMarketPriceData(market);
 
@@ -597,8 +813,8 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="market-card-meta">
                     <div className="badge badge-neutral"><span className="source-dot" aria-hidden="true" />POLYMARKET</div>
                     <div className={`badge badge-${statusTone(market.status)}`}>{copy.statuses[market.status] ?? market.status}</div>
-                    {stale ? <div className="badge badge-warning">資料可能過期</div> : null}
-                    {noTradeData ? <div className="badge badge-warning">暫無成交資料</div> : null}
+                    {stale ? <div className="badge badge-warning">{ui.staleData}</div> : null}
+                    {noTradeData ? <div className="badge badge-warning">{ui.noTradeData}</div> : null}
                     {translationBadge(market, locale) ? <div className="badge badge-warning">{translationBadge(market, locale)}</div> : null}
                   </div>
                   <strong className="market-card-title">{localizeMarketTitle(market, locale)}</strong>
@@ -627,11 +843,11 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                   <div className="kv"><span className="kv-key">{copy.bestAsk}</span><span className="kv-value">{toPriceDisplay(market.bestAsk, locale)}</span></div>
                   <MiniMetricTrend label={copy.volume24h} value={toDisplay(market.volume24h, locale)} points={sparklinePoints} />
                   <div className="kv"><span className="kv-key">{copy.liquidity}</span><span className="kv-value">{toDisplay(market.liquidity ?? market.volumeTotal, locale)}</span></div>
-                  <div className="kv"><span className="kv-key">更新時間</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
+                  <div className="kv"><span className="kv-key">{ui.updatedAt}</span><span className="kv-value">{market.lastUpdatedAt || market.lastSyncedAt ? formatDateTime(locale, market.lastUpdatedAt ?? market.lastSyncedAt!, "UTC") : copy.never}</span></div>
                 </div>
                 {shouldRenderSparkline(sparklinePoints) ? (
                   <div className="market-card-chart">
-                    <MarketSparkline points={sparklinePoints} label="價格走勢" hideWhenEmpty />
+                    <MarketSparkline points={sparklinePoints} label={ui.priceTrend} hideWhenEmpty />
                   </div>
                 ) : null}
               </div>
@@ -645,11 +861,11 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               <div className="market-actions compact-actions">
                 <Link className="button-link primary-cta" href={detailPath}>{copy.tradeViaPolymarket}</Link>
                 <span className="muted disabled-inline-reason">{marketDisabledLabel}</span>
-                <Link className="button-link secondary" href={detailPath}>市場詳情</Link>
+                <Link className="button-link secondary" href={detailPath}>{ui.marketDetails}</Link>
                 <TrackedCopyButton
                   value={marketShareUrl}
-                  label="複製市場推薦連結"
-                  copiedLabel="已複製"
+                  label={ui.copyMarketReferralLink}
+                  copiedLabel={ui.copied}
                   eventName="market_share_link_copied"
                   metadata={refCode ? { code: refCode, market: market.slug || market.externalId } : { market: market.slug || market.externalId }}
                 />
@@ -685,7 +901,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           </>
         )}
       </section>
-      <section className="feed-support stack" aria-label="安全及營運資訊">
+      <section className="feed-support stack" aria-label={ui.supportAria}>
         <BuilderFeeDisclosureCard
           locale={locale}
           hasBuilderCode={hasBuilderCode}
@@ -693,22 +909,22 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
           tradingStatusLabel={publicTradingStatusLabel}
         />
         <section className="panel disclosure-card stack">
-          <strong>Builder / 交易安全狀態</strong>
-          <p className="muted">單純瀏覽市場不會產生 Builder 費用。只適用於合資格並成功成交的 Polymarket 路由訂單；實際訂單提交預設停用。</p>
+          <strong>{ui.builderSafetyTitle}</strong>
+          <p className="muted">{ui.builderSafetyBody}</p>
         </section>
         <details className="panel disclosure-card stack technical-disclosure">
-          <summary>市場資料連線狀態</summary>
+          <summary>{ui.dataStatusTitle}</summary>
           <div className="grid">
-            <div className="kv"><span className="kv-key">資料 URL</span><span className="kv-value mono">{dataReadiness.dataUrl}</span></div>
-            <div className="kv"><span className="kv-key">API base URL configured</span><span className="kv-value">{dataReadiness.apiBaseUrlConfigured ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">same-origin API reachable</span><span className="kv-value">{sameOriginApiReachable ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">{fallbackUsed ? "yes" : "no"}</span></div>
-            <div className="kv"><span className="kv-key">交易狀態</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
-            <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? "Builder Code 已設定" : "Builder Code 未設定"}</span></div>
-            <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? "yes" : "no"}</span></div>
+            <div className="kv"><span className="kv-key">{ui.dataUrl}</span><span className="kv-value mono">{dataReadiness.dataUrl}</span></div>
+            <div className="kv"><span className="kv-key">API base URL configured</span><span className="kv-value">{dataReadiness.apiBaseUrlConfigured ? ui.yes : ui.no}</span></div>
+            <div className="kv"><span className="kv-key">same-origin API reachable</span><span className="kv-value">{sameOriginApiReachable ? ui.yes : ui.no}</span></div>
+            <div className="kv"><span className="kv-key">external markets endpoint reachable</span><span className="kv-value">{externalMarketsEndpointReachable ? ui.yes : ui.no}</span></div>
+            <div className="kv"><span className="kv-key">service API reachable</span><span className="kv-value">{serviceApiReachable ? ui.yes : ui.no}</span></div>
+            <div className="kv"><span className="kv-key">Polymarket fallback enabled</span><span className="kv-value">{dataReadiness.polymarketFallbackEnabled ? ui.yes : ui.no}</span></div>
+            <div className="kv"><span className="kv-key">fallback used on last request</span><span className="kv-value">{fallbackUsed ? ui.yes : ui.no}</span></div>
+            <div className="kv"><span className="kv-key">{ui.tradingStatus}</span><span className="kv-value">{publicTradingStatusLabel}</span></div>
+            <div className="kv"><span className="kv-key">Builder Code</span><span className="kv-value">{hasBuilderCode ? ui.builderCodeSet : ui.builderCodeMissing}</span></div>
+            <div className="kv"><span className="kv-key">Thirdweb client configured</span><span className="kv-value">{thirdwebClientConfigured ? ui.yes : ui.no}</span></div>
           </div>
         </details>
         <ThirdwebWalletFundingCard surface="polymarket_feed" walletConnected={false} />

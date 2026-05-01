@@ -1,11 +1,82 @@
 import React from "react";
 
+import { defaultLocale, type AppLocale } from "../lib/locale";
 import { getPublicBetaLaunchState } from "../lib/launch-mode";
 
 export type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 
 export const sharedSafetyCopy = "本平台不會代用戶下注或交易，亦不託管用戶在 Polymarket 的資金。";
 export const sharedRewardCopy = "獎勵計算可自動記錄，但實際支付需要管理員審批。";
+
+const productCopy: Record<AppLocale, {
+  safetyTitle: string;
+  rewardTitle: string;
+  safetyBody: string;
+  rewardBody: string;
+  betaPreview: string;
+  productionMode: string;
+  betaLaunchState: string;
+  beta: string;
+  routedTradingReview: string;
+  tradingDisabled: string;
+  nonCustodial: string;
+  autoPayoutDisabled: string;
+  manualApproval: string;
+  pendingRewards: string;
+  betaBody: string;
+}> = {
+  en: {
+    safetyTitle: "Safety note",
+    rewardTitle: "Reward note",
+    safetyBody: "The platform does not trade or bet for users and does not custody user Polymarket funds.",
+    rewardBody: "Rewards can be recorded automatically, but actual payouts require admin approval.",
+    betaPreview: "Public beta preview",
+    productionMode: "Production mode",
+    betaLaunchState: "Beta launch safety state",
+    beta: "Beta",
+    routedTradingReview: "Trading routing needs review",
+    tradingDisabled: "Trading not enabled",
+    nonCustodial: "Non-custodial",
+    autoPayoutDisabled: "Automatic payout must stay disabled",
+    manualApproval: "Manual approval",
+    pendingRewards: "Pending rewards",
+    betaBody: "Public beta is for browsing Polymarket markets, referral attribution, and reward accounting preview only.",
+  },
+  "zh-HK": {
+    safetyTitle: "安全提示",
+    rewardTitle: "獎勵提示",
+    safetyBody: sharedSafetyCopy,
+    rewardBody: sharedRewardCopy,
+    betaPreview: "Beta 公開預覽",
+    productionMode: "正式模式",
+    betaLaunchState: "Beta launch safety state",
+    beta: "Beta",
+    routedTradingReview: "交易路由需覆核",
+    tradingDisabled: "交易尚未啟用",
+    nonCustodial: "非託管",
+    autoPayoutDisabled: "自動支付必須停用",
+    manualApproval: "人手審批",
+    pendingRewards: "待確認獎勵",
+    betaBody: "公開 Beta 只供瀏覽 Polymarket 市場、推薦歸因及獎勵帳務預覽。",
+  },
+  "zh-CN": {
+    safetyTitle: "安全提示",
+    rewardTitle: "奖励提示",
+    safetyBody: "本平台不会代用户下注或交易，也不托管用户在 Polymarket 的资金。",
+    rewardBody: "奖励计算可自动记录，但实际支付需要管理员人工审核。",
+    betaPreview: "Beta 公开预览",
+    productionMode: "正式模式",
+    betaLaunchState: "Beta launch safety state",
+    beta: "Beta",
+    routedTradingReview: "交易路由需审核",
+    tradingDisabled: "交易尚未启用",
+    nonCustodial: "非托管",
+    autoPayoutDisabled: "自动支付必须停用",
+    manualApproval: "人工审核",
+    pendingRewards: "待确认奖励",
+    betaBody: "公开 Beta 仅供浏览 Polymarket 市场、推荐归因及奖励账务预览。",
+  },
+};
 
 export function StatusChip({
   tone = "neutral",
@@ -180,43 +251,50 @@ export function AdminPanelCard({
 }
 
 export function SharedSafetyDisclosure({
-  title = "安全提示",
+  title,
+  locale = defaultLocale,
 }: Readonly<{
   title?: string;
+  locale?: AppLocale;
 }>) {
-  return <SafetyDisclosure title={title}>{sharedSafetyCopy}</SafetyDisclosure>;
+  const copy = productCopy[locale];
+  return <SafetyDisclosure title={title ?? copy.safetyTitle}>{copy.safetyBody}</SafetyDisclosure>;
 }
 
 export function SharedRewardDisclosure({
-  title = "獎勵提示",
+  title,
+  locale = defaultLocale,
 }: Readonly<{
   title?: string;
+  locale?: AppLocale;
 }>) {
-  return <SafetyDisclosure title={title}>{sharedRewardCopy}</SafetyDisclosure>;
+  const copy = productCopy[locale];
+  return <SafetyDisclosure title={title ?? copy.rewardTitle}>{copy.rewardBody}</SafetyDisclosure>;
 }
 
-export function BetaLaunchDisclosure() {
+export function BetaLaunchDisclosure({ locale = defaultLocale }: Readonly<{ locale?: AppLocale }> = {}) {
   const launch = getPublicBetaLaunchState();
+  const copy = productCopy[locale];
 
   return (
     <section className="panel disclosure-card stack" data-testid="beta-launch-disclosure">
       <div className="section-heading-row">
-        <strong>{launch.isBeta ? "Beta 公開預覽" : "正式模式"}</strong>
+        <strong>{launch.isBeta ? copy.betaPreview : copy.productionMode}</strong>
         <StatusChip tone={launch.isBeta ? "info" : "success"}>{launch.mode}</StatusChip>
       </div>
-      <div className="trust-badge-row" aria-label="Beta launch safety state">
-        <StatusChip tone={launch.isBeta ? "info" : "success"}>Beta</StatusChip>
+      <div className="trust-badge-row" aria-label={copy.betaLaunchState}>
+        <StatusChip tone={launch.isBeta ? "info" : "success"}>{copy.beta}</StatusChip>
         <StatusChip tone={launch.routedTradingEnabled ? "warning" : "success"}>
-          {launch.routedTradingEnabled ? "交易路由需覆核" : "交易尚未啟用"}
+          {launch.routedTradingEnabled ? copy.routedTradingReview : copy.tradingDisabled}
         </StatusChip>
-        <StatusChip tone="success">非託管</StatusChip>
+        <StatusChip tone="success">{copy.nonCustodial}</StatusChip>
         <StatusChip tone={launch.autoPayoutEnabled ? "warning" : "success"}>
-          {launch.autoPayoutEnabled ? "自動支付必須停用" : "人手審批"}
+          {launch.autoPayoutEnabled ? copy.autoPayoutDisabled : copy.manualApproval}
         </StatusChip>
-        <StatusChip tone="warning">待確認獎勵</StatusChip>
+        <StatusChip tone="warning">{copy.pendingRewards}</StatusChip>
       </div>
       <div className="muted">
-        公開 Beta 只供瀏覽 Polymarket 市場、推薦歸因及獎勵帳務預覽。{sharedSafetyCopy} {sharedRewardCopy} 實際支付不會自動執行。
+        {copy.betaBody} {copy.safetyBody} {copy.rewardBody}
       </div>
     </section>
   );

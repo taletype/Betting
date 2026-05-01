@@ -1,5 +1,5 @@
 import React from "react";
-import { defaultLocale, formatDateTime, getLocaleCopy } from "../../lib/locale";
+import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
 import { PayoutStatusChart, RewardSplitChart, VolumeHistoryChart } from "../charts/market-charts";
@@ -9,27 +9,166 @@ import { requestRewardPayoutAction } from "./reward-actions";
 
 export const dynamic = "force-dynamic";
 
-const rewardStatusLabels: Record<string, string> = {
-  pending: "待確認",
-  payable: "可提取",
-  approved: "審批中",
-  paid: "已支付",
-  void: "已取消",
-  failed: "已失敗",
-};
-
-const payoutStatusLabels: Record<string, string> = {
-  requested: "已申請",
-  approved: "已審批",
-  paid: "已支付",
-  failed: "已失敗",
-  cancelled: "已取消",
-};
-
-const rewardContextLabels: Record<string, string> = {
-  direct_referrer_commission: "推薦來源",
-  trader_cashback: "交易者 cashback",
-  platform_revenue: "平台收入",
+const rewardsPageCopy: Record<AppLocale, {
+  noPayableRewards: string;
+  openPayout: string;
+  heroExtraOne: string;
+  heroExtraTwo: string;
+  noAutoTreasury: string;
+  pendingRewards: string;
+  payableRewards: string;
+  paidRewards: string;
+  accountingNoticeTitle: string;
+  accountingNoticeBody: string;
+  signedOutBody: string;
+  pendingNote: string;
+  payableNote: string;
+  paidNote: string;
+  approvedPayout: string;
+  approvedPayoutNote: string;
+  pendingShort: string;
+  payableShort: string;
+  paidShort: string;
+  payoutReviewTitle: string;
+  payoutWallet: string;
+  payoutWalletTitle: string;
+  payoutHelp: string;
+  submitPayout: string;
+  rewardLedgerEmptyTitle: string;
+  rewardLedgerEmptyBody: string;
+  date: string;
+  builderFeeRevenue: string;
+  rewardAmount: string;
+  context: string;
+  confirmedBuilderFeeRevenue: string;
+  payoutEmptyTitle: string;
+  payoutEmptyBody: string;
+  requested: string;
+  approved: string;
+  paid: string;
+  failed: string;
+  cancelled: string;
+}> = {
+  en: {
+    noPayableRewards: "There are no payable rewards right now, so a payout request cannot be submitted.",
+    openPayout: "A payout request is already under review. You can submit again after it is completed, cancelled, or failed.",
+    heroExtraOne: "Rewards are not trading balances and cannot be used for in-app betting or trading.",
+    heroExtraTwo: "The payout asset is pUSD on Polygon. Make sure your receiving address supports Polygon.",
+    noAutoTreasury: "Treasury transfers are never automatic.",
+    pendingRewards: "Pending rewards",
+    payableRewards: "Payable rewards",
+    paidRewards: "Paid rewards",
+    accountingNoticeTitle: "Accounting note",
+    accountingNoticeBody: "This page shows referral reward accounting only; it does not represent profit. Every payout requires manual approval before payment.",
+    signedOutBody: "Log in to view your referral reward ledger and manual payout requests.",
+    pendingNote: "Still waiting for Builder-fee revenue and attribution confirmation.",
+    payableNote: "Available for manual payout request.",
+    paidNote: "Marked paid by an admin.",
+    approvedPayout: "Payout under review",
+    approvedPayoutNote: "Locked while waiting for admin approval or payout recording.",
+    pendingShort: "Pending",
+    payableShort: "Payable",
+    paidShort: "Paid",
+    payoutReviewTitle: "Request manual payout",
+    payoutWallet: "Payout wallet",
+    payoutWalletTitle: "Enter a valid 0x EVM wallet address",
+    payoutHelp: "You can request only the full amount up to your current payable rewards. Submitting does not mark rewards as paid.",
+    submitPayout: "Submit payout request",
+    rewardLedgerEmptyTitle: "No reward records yet",
+    rewardLedgerEmptyBody: "Referral reward accounting will appear here after eligible trades are confirmed.",
+    date: "Date",
+    builderFeeRevenue: "Builder-fee revenue",
+    rewardAmount: "Reward amount",
+    context: "Referrer / trader cashback",
+    confirmedBuilderFeeRevenue: "Confirmed Builder-fee revenue",
+    payoutEmptyTitle: "No payout requests yet",
+    payoutEmptyBody: "Review status will appear here after you submit a manual payout request.",
+    requested: "requested",
+    approved: "approved",
+    paid: "paid",
+    failed: "failed",
+    cancelled: "cancelled",
+  },
+  "zh-HK": {
+    noPayableRewards: "目前沒有可提取獎勵，暫時不能提交提款申請。",
+    openPayout: "已有審批中的提款申請，完成、取消或失敗後才可再次提交。",
+    heroExtraOne: "獎勵不是交易餘額，不能用作平台內下注或交易。",
+    heroExtraTwo: "支付資產為 Polygon pUSD（Polygon 上的 pUSD），請確認你的收款地址支援 Polygon 網絡。",
+    noAutoTreasury: "不會自動從金庫轉帳。",
+    pendingRewards: "待確認獎勵",
+    payableRewards: "可提取獎勵",
+    paidRewards: "已支付獎勵",
+    accountingNoticeTitle: "帳務提示",
+    accountingNoticeBody: "本頁只顯示推薦獎勵帳務紀錄，亦不代表盈利。所有項目支付前需經人工審批。",
+    signedOutBody: "登入後可查看你的推薦獎勵帳本及人工支付申請。",
+    pendingNote: "仍需確認 Builder 費用收入及歸因。",
+    payableNote: "可提交人工支付申請。",
+    paidNote: "已由管理員標記為支付完成。",
+    approvedPayout: "審批中提款",
+    approvedPayoutNote: "已鎖定等待管理員審批或記錄支付。",
+    pendingShort: "待確認",
+    payableShort: "可提取",
+    paidShort: "已支付",
+    payoutReviewTitle: "申請人工支付",
+    payoutWallet: "payout wallet",
+    payoutWalletTitle: "請輸入有效的 0x EVM 錢包地址",
+    payoutHelp: "只可申請不超過目前可提取獎勵的全額提款；提交後不會把獎勵標記為已支付。",
+    submitPayout: "提交支付申請",
+    rewardLedgerEmptyTitle: "暫時未有獎勵紀錄",
+    rewardLedgerEmptyBody: "合資格交易確認後，推薦獎勵帳務會顯示於此。",
+    date: "日期",
+    builderFeeRevenue: "Builder 費用收入",
+    rewardAmount: "獎勵金額",
+    context: "推薦來源 / 交易者 cashback",
+    confirmedBuilderFeeRevenue: "已確認 Builder 費用收入",
+    payoutEmptyTitle: "暫時未有支付申請",
+    payoutEmptyBody: "提交人工支付申請後，審批狀態會顯示於此。",
+    requested: "requested",
+    approved: "approved",
+    paid: "paid",
+    failed: "failed",
+    cancelled: "cancelled",
+  },
+  "zh-CN": {
+    noPayableRewards: "目前没有可提现奖励，暂时不能提交提款申请。",
+    openPayout: "已有审核中的提款申请，完成、取消或失败后才可再次提交。",
+    heroExtraOne: "奖励不是交易余额，不能用作平台内下注或交易。",
+    heroExtraTwo: "支付资产为 Polygon 上的 pUSD，请确认你的收款地址支持 Polygon 网络。",
+    noAutoTreasury: "不会自动从金库转账。",
+    pendingRewards: "待确认奖励",
+    payableRewards: "可提现奖励",
+    paidRewards: "已支付奖励",
+    accountingNoticeTitle: "账务提示",
+    accountingNoticeBody: "本页只显示推荐奖励账务记录，也不代表盈利。所有项目支付前都需人工审核。",
+    signedOutBody: "登录后可查看你的推荐奖励账本及人工支付申请。",
+    pendingNote: "仍需确认 Builder 费用收入及归因。",
+    payableNote: "可提交人工支付申请。",
+    paidNote: "已由管理员标记为支付完成。",
+    approvedPayout: "审核中提款",
+    approvedPayoutNote: "已锁定等待管理员审核或记录支付。",
+    pendingShort: "待确认",
+    payableShort: "可提现",
+    paidShort: "已支付",
+    payoutReviewTitle: "申请人工支付",
+    payoutWallet: "payout wallet",
+    payoutWalletTitle: "请输入有效的 0x EVM 钱包地址",
+    payoutHelp: "只可申请不超过目前可提现奖励的全额提款；提交后不会把奖励标记为已支付。",
+    submitPayout: "提交支付申请",
+    rewardLedgerEmptyTitle: "暂时没有奖励记录",
+    rewardLedgerEmptyBody: "合资格交易确认后，推荐奖励账务会显示于此。",
+    date: "日期",
+    builderFeeRevenue: "Builder 费用收入",
+    rewardAmount: "奖励金额",
+    context: "推荐来源 / 交易者 cashback",
+    confirmedBuilderFeeRevenue: "已确认 Builder 费用收入",
+    payoutEmptyTitle: "暂时没有支付申请",
+    payoutEmptyBody: "提交人工支付申请后，审核状态会显示于此。",
+    requested: "requested",
+    approved: "approved",
+    paid: "paid",
+    failed: "failed",
+    cancelled: "cancelled",
+  },
 };
 
 const rewardShareBps: Record<string, bigint> = {
@@ -51,10 +190,10 @@ const statusTone = (status: string): Tone => {
   return "neutral";
 };
 
-export default async function RewardsPage() {
-  const locale = defaultLocale;
+export async function renderRewardsPage(locale: AppLocale) {
   const copy = getLocaleCopy(locale).rewards;
   const authCopy = getLocaleCopy(locale).auth;
+  const pageCopy = rewardsPageCopy[locale];
   const dashboard = await getAmbassadorDashboard().catch(() => null);
   const toUsdcNumber = (value: string | number | bigint | null | undefined) => Number(toBigInt(value)) / 1_000_000;
   const approvedRewards = dashboard ? toBigInt(dashboard.rewards.approvedRewards) : 0n;
@@ -63,57 +202,55 @@ export default async function RewardsPage() {
   const payoutDisabledReason = !dashboard
     ? null
     : payableRewards <= 0n
-      ? "目前沒有可提取獎勵，暫時不能提交提款申請。"
+      ? pageCopy.noPayableRewards
       : hasOpenPayout
-        ? "已有審批中的提款申請，完成、取消或失敗後才可再次提交。"
+        ? pageCopy.openPayout
         : null;
 
   return (
     <main className="stack">
       <section className="hero">
-        <h1>獎勵</h1>
-        <p>獎勵來自已確認的 Builder 費用收入。實際支付需要管理員審批。</p>
-        <p>獎勵不是交易餘額，不能用作平台內下注或交易。</p>
-        <p>支付資產為 Polygon 上的 pUSD，請確認你的收款地址支援 Polygon 網絡。</p>
-        <p>實際支付不會自動執行，必須由管理員審批及記錄交易哈希。</p>
-        <p>不會自動從金庫轉帳。</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.subtitle}</p>
+        <p>{pageCopy.heroExtraOne}</p>
+        <p>{pageCopy.heroExtraTwo}</p>
+        <p>{copy.adminApprovalNotice}</p>
+        <p>{pageCopy.noAutoTreasury}</p>
         <div className="trust-badge-row">
-          <span className="badge badge-warning">待確認獎勵</span>
-          <span className="badge badge-success">可提取獎勵</span>
-          <span className="badge badge-neutral">已支付獎勵</span>
-          <span className="badge badge-warning">管理員審批</span>
+          <span className="badge badge-warning">{pageCopy.pendingRewards}</span>
+          <span className="badge badge-success">{pageCopy.payableRewards}</span>
+          <span className="badge badge-neutral">{pageCopy.paidRewards}</span>
+          <span className="badge badge-warning">{copy.adminApprovalNotice.includes("admin") ? "Admin approval" : "管理員審批"}</span>
         </div>
         <PendingReferralNotice />
       </section>
-      <BetaLaunchDisclosure />
-      <SharedSafetyDisclosure />
-      <SharedRewardDisclosure />
-      <SafetyDisclosure title="帳務提示">
-        本頁只顯示推薦獎勵帳務紀錄，亦不代表盈利。所有項目支付前需經人工審批。
-      </SafetyDisclosure>
+      <BetaLaunchDisclosure locale={locale} />
+      <SharedSafetyDisclosure locale={locale} />
+      <SharedRewardDisclosure locale={locale} />
+      <SafetyDisclosure title={pageCopy.accountingNoticeTitle}>{pageCopy.accountingNoticeBody}</SafetyDisclosure>
 
       {!dashboard ? (
         <section className="panel stack">
-          <EmptyState title={authCopy.sessionRequired}>登入後可查看你的推薦獎勵帳本及人工支付申請。</EmptyState>
-          <a href="/login">{authCopy.login}</a>
+          <EmptyState title={authCopy.sessionRequired}>{pageCopy.signedOutBody}</EmptyState>
+          <a href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
         </section>
       ) : (
         <>
           <section className="grid">
-            <MetricCard label="待確認獎勵" value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" note="仍需確認 Builder 費用收入及歸因。" />
-            <MetricCard label="可提取獎勵" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" note="可提交人工支付申請。" />
-            <MetricCard label="已支付獎勵" value={formatUsdc(dashboard.rewards.paidRewards, locale)} note="已由管理員標記為支付完成。" />
+            <MetricCard label={pageCopy.pendingRewards} value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" note={pageCopy.pendingNote} />
+            <MetricCard label={pageCopy.payableRewards} value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" note={pageCopy.payableNote} />
+            <MetricCard label={pageCopy.paidRewards} value={formatUsdc(dashboard.rewards.paidRewards, locale)} note={pageCopy.paidNote} />
             {approvedRewards > 0n || hasOpenPayout ? (
-              <MetricCard label="審批中提款" value={formatUsdc(approvedRewards, locale)} tone="warning" note="已鎖定等待管理員審批或記錄支付。" />
+              <MetricCard label={pageCopy.approvedPayout} value={formatUsdc(approvedRewards, locale)} tone="warning" note={pageCopy.approvedPayoutNote} />
             ) : null}
           </section>
 
           <section className="grid">
             <RewardSplitChart
               points={[
-                { label: "待確認", value: toUsdcNumber(dashboard.rewards.pendingRewards), tone: "volume" },
-                { label: "可提取", value: toUsdcNumber(dashboard.rewards.payableRewards), tone: "bid" },
-                { label: "已支付", value: toUsdcNumber(dashboard.rewards.paidRewards), tone: "liquidity" },
+                { label: pageCopy.pendingShort, value: toUsdcNumber(dashboard.rewards.pendingRewards), tone: "volume" },
+                { label: pageCopy.payableShort, value: toUsdcNumber(dashboard.rewards.payableRewards), tone: "bid" },
+                { label: pageCopy.paidShort, value: toUsdcNumber(dashboard.rewards.paidRewards), tone: "liquidity" },
               ]}
             />
             <PayoutStatusChart
@@ -132,42 +269,42 @@ export default async function RewardsPage() {
           </section>
 
           <section className="panel stack">
-            <h2 className="section-title">申請人工支付</h2>
-            <p className="muted">支付資產為 Polygon pUSD。請確認你的收款地址支援 Polygon 網絡。</p>
-            <p className="muted">實際支付不會自動執行，必須由管理員審批及記錄交易哈希。</p>
-            <p className="muted">獎勵不是交易餘額，不能用作平台內下注或交易。</p>
+            <h2 className="section-title">{pageCopy.payoutReviewTitle}</h2>
+            <p className="muted">{copy.polygonPusdNotice}</p>
+            <p className="muted">{copy.adminApprovalNotice}</p>
+            <p className="muted">{pageCopy.heroExtraOne}</p>
             <form action={requestRewardPayoutAction} className="stack">
               <label className="stack">
-                payout wallet
+                {pageCopy.payoutWallet}
                 <input
                   name="destinationValue"
                   placeholder="0x..."
                   pattern="^0x[a-fA-F0-9]{40}$"
-                  title="請輸入有效的 0x EVM 錢包地址"
+                  title={pageCopy.payoutWalletTitle}
                   aria-describedby="payout-wallet-help payout-disabled-reason"
                   required
                 />
               </label>
-              <div id="payout-wallet-help" className="muted">只可申請不超過目前可提取獎勵的全額提款；提交後不會把獎勵標記為已支付。</div>
+              <div id="payout-wallet-help" className="muted">{pageCopy.payoutHelp}</div>
               {payoutDisabledReason ? <div id="payout-disabled-reason" className="status-bad">{payoutDisabledReason}</div> : null}
-              <button type="submit" disabled={Boolean(payoutDisabledReason)}>提交支付申請</button>
+              <button type="submit" disabled={Boolean(payoutDisabledReason)}>{pageCopy.submitPayout}</button>
             </form>
           </section>
 
           <section className="panel stack">
-            <h2 className="section-title">獎勵帳本</h2>
+            <h2 className="section-title">{copy.ledger}</h2>
             {dashboard.rewardLedger.length === 0 ? (
-              <EmptyState title="暫時未有獎勵紀錄">合資格交易確認後，推薦獎勵帳務會顯示於此。</EmptyState>
+              <EmptyState title={pageCopy.rewardLedgerEmptyTitle}>{pageCopy.rewardLedgerEmptyBody}</EmptyState>
             ) : (
               <table className="table">
                 <thead>
                   <tr>
-                    <th>日期</th>
-                    <th>來源</th>
-                    <th>Builder 費用收入</th>
-                    <th>獎勵金額</th>
-                    <th>狀態</th>
-                    <th>推薦來源 / 交易者 cashback</th>
+                    <th>{pageCopy.date}</th>
+                    <th>{copy.sourceTrade}</th>
+                    <th>{pageCopy.builderFeeRevenue}</th>
+                    <th>{pageCopy.rewardAmount}</th>
+                    <th>{copy.status}</th>
+                    <th>{pageCopy.context}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -178,10 +315,10 @@ export default async function RewardsPage() {
                       <tr key={entry.id}>
                         <td>{formatDateTime(locale, entry.createdAt)}</td>
                         <td className="mono">{entry.sourceTradeAttributionId.slice(0, 8)}</td>
-                        <td>{builderFeeRevenue === null ? "已確認 Builder 費用收入" : formatUsdc(builderFeeRevenue, locale)}</td>
+                        <td>{builderFeeRevenue === null ? pageCopy.confirmedBuilderFeeRevenue : formatUsdc(builderFeeRevenue, locale)}</td>
                         <td>{formatUsdc(entry.amountUsdcAtoms, locale)}</td>
-                        <td><StatusChip tone={statusTone(entry.status)}>{rewardStatusLabels[entry.status] ?? copy.statuses[entry.status] ?? entry.status}</StatusChip></td>
-                        <td>{rewardContextLabels[entry.rewardType] ?? copy.rewardTypes[entry.rewardType] ?? entry.rewardType}</td>
+                        <td><StatusChip tone={statusTone(entry.status)}>{copy.statuses[entry.status] ?? entry.status}</StatusChip></td>
+                        <td>{copy.rewardTypes[entry.rewardType] ?? entry.rewardType}</td>
                       </tr>
                     );
                   })}
@@ -193,16 +330,16 @@ export default async function RewardsPage() {
           <section className="panel stack">
             <h2 className="section-title">{copy.payouts}</h2>
             {dashboard.payouts.length === 0 ? (
-              <EmptyState title="暫時未有支付申請">提交人工支付申請後，審批狀態會顯示於此。</EmptyState>
+              <EmptyState title={pageCopy.payoutEmptyTitle}>{pageCopy.payoutEmptyBody}</EmptyState>
             ) : (
               <table className="table">
                 <thead>
                   <tr>
-                    <th>requested</th>
-                    <th>approved</th>
-                    <th>paid</th>
-                    <th>failed</th>
-                    <th>cancelled</th>
+                    <th>{pageCopy.requested}</th>
+                    <th>{pageCopy.approved}</th>
+                    <th>{pageCopy.paid}</th>
+                    <th>{pageCopy.failed}</th>
+                    <th>{pageCopy.cancelled}</th>
                     <th>{copy.amount}</th>
                     <th>{copy.payoutDestination}</th>
                     <th>tx hash</th>
@@ -214,12 +351,12 @@ export default async function RewardsPage() {
                       <td>{formatDateTime(locale, payout.createdAt)}</td>
                       <td>{payout.reviewedAt ? formatDateTime(locale, payout.reviewedAt) : "-"}</td>
                       <td>{payout.paidAt ? formatDateTime(locale, payout.paidAt) : "-"}</td>
-                      <td>{payout.status === "failed" ? payoutStatusLabels[payout.status] : "-"}</td>
-                      <td>{payout.status === "cancelled" ? payoutStatusLabels[payout.status] : "-"}</td>
+                      <td>{payout.status === "failed" ? copy.payoutStatuses[payout.status] : "-"}</td>
+                      <td>{payout.status === "cancelled" ? copy.payoutStatuses[payout.status] : "-"}</td>
                       <td>{formatUsdc(payout.amountUsdcAtoms, locale)}</td>
                       <td>
                         <div>{payout.destinationValue}</div>
-                        <StatusChip tone={statusTone(payout.status)}>{payoutStatusLabels[payout.status] ?? copy.payoutStatuses[payout.status] ?? payout.status}</StatusChip>
+                        <StatusChip tone={statusTone(payout.status)}>{copy.payoutStatuses[payout.status] ?? payout.status}</StatusChip>
                       </td>
                       <td className="mono">{payout.txHash ?? "-"}</td>
                     </tr>
@@ -232,4 +369,8 @@ export default async function RewardsPage() {
       )}
     </main>
   );
+}
+
+export default async function RewardsPage() {
+  return renderRewardsPage(defaultLocale);
 }

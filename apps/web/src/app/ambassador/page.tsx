@@ -1,5 +1,5 @@
 import React from "react";
-import { defaultLocale, formatDateTime, getLocaleCopy } from "../../lib/locale";
+import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
 import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
 import { applyReferralCodeAction } from "../auth-actions";
@@ -12,13 +12,103 @@ import { getSiteUrl } from "../../lib/site-url";
 
 export const dynamic = "force-dynamic";
 
-const rewardExplanation =
-  "分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易，並產生已確認的 Builder 費用收入後，你可獲得推薦獎勵。";
-const safetyExplanation =
-  "本平台只支援直接推薦獎勵；不設多層或遞延推薦獎勵，亦不承諾固定回報。";
-const payoutApprovalExplanation = "獎勵計算可自動記錄，但實際支付需要管理員審批。";
-const manualPayoutExplanation = "實際支付不會自動執行，必須由管理員審批及記錄交易哈希。";
-const polygonPayoutExplanation = "請確認你的收款地址支援 Polygon 網絡。";
+const ambassadorPageCopy: Record<AppLocale, {
+  heroTitle: string;
+  rewardRules: string;
+  payoutTips: string;
+  manualPayout: string;
+  polygonPayout: string;
+  signedOutBody: string;
+  referralCodeNote: string;
+  copyReferralLink: string;
+  copyMarketReferralLink: string;
+  copied: string;
+  directReferralCount: string;
+  builderAttribution: string;
+  chartEmpty: string;
+  builderAttributionNote: string;
+  viewMarkets: string;
+  goRewards: string;
+  copyShareText: string;
+  emptyReferralTitle: string;
+  emptyReferralBody: string;
+  directReferredUser: string;
+  attributedAt: string;
+  eligibleVolume: string;
+}> = {
+  en: {
+    heroTitle: "Ambassador Rewards",
+    rewardRules: "Referral rules",
+    payoutTips: "Payout tips",
+    manualPayout: "Actual payouts are not automatic. They must be approved by an admin and recorded with a transaction hash.",
+    polygonPayout: "Make sure your receiving address supports the Polygon network.",
+    signedOutBody: "Log in or sign up to view your referral code, copy market referral links, and track direct referral reward accounting.",
+    referralCodeNote: "Referral codes are used only for direct referral attribution. After you share market links, confirmed Builder-fee revenue is used for reward accounting.",
+    copyReferralLink: "Copy referral link",
+    copyMarketReferralLink: "Copy market referral link",
+    copied: "Copied",
+    directReferralCount: "Direct referrals",
+    builderAttribution: "Builder fee attribution",
+    chartEmpty: "No chart data yet",
+    builderAttributionNote: "Rewards are calculated only from confirmed Builder-fee revenue. Actual payouts require admin approval.",
+    viewMarkets: "View Polymarket markets",
+    goRewards: "Go to rewards",
+    copyShareText: "Copy share text",
+    emptyReferralTitle: "No direct referral activity yet",
+    emptyReferralBody: "Direct referral attribution will appear here after you share market links.",
+    directReferredUser: "Direct referred user",
+    attributedAt: "Attributed",
+    eligibleVolume: "Eligible volume",
+  },
+  "zh-HK": {
+    heroTitle: "邀請朋友",
+    rewardRules: "推薦規則",
+    payoutTips: "支付提示",
+    manualPayout: "實際支付不會自動執行，必須由管理員審批及記錄交易哈希。",
+    polygonPayout: "請確認你的收款地址支援 Polygon 網絡。",
+    signedOutBody: "登入或註冊後可查看你的推薦碼、複製市場推薦連結，並追蹤直接推薦獎勵帳務。",
+    referralCodeNote: "推薦碼只作直接推薦歸因。分享市場連結後，已確認 Builder 費用收入會用作獎勵帳務紀錄。",
+    copyReferralLink: "複製推薦連結",
+    copyMarketReferralLink: "複製市場推薦連結",
+    copied: "已複製",
+    directReferralCount: "直接推薦人數",
+    builderAttribution: "Builder 費用歸因",
+    chartEmpty: "暫時未有圖表資料",
+    builderAttributionNote: "獎勵只會根據已確認的 Builder 費用收入計算，實際支付需要管理員審批。",
+    viewMarkets: "查看 Polymarket 市場",
+    goRewards: "前往獎勵",
+    copyShareText: "複製分享文字",
+    emptyReferralTitle: "暫時未有直接推薦活動",
+    emptyReferralBody: "分享市場連結後，直接推薦歸因會在此顯示。",
+    directReferredUser: "直接推薦用戶",
+    attributedAt: "歸因日期",
+    eligibleVolume: "合資格成交額",
+  },
+  "zh-CN": {
+    heroTitle: "邀请朋友",
+    rewardRules: "推荐规则",
+    payoutTips: "支付提示",
+    manualPayout: "实际支付不会自动执行，必须由管理员审核并记录交易哈希。",
+    polygonPayout: "请确认你的收款地址支持 Polygon 网络。",
+    signedOutBody: "登录或注册后可查看你的推荐码、复制市场推荐链接，并追踪直接推荐奖励账务。",
+    referralCodeNote: "推荐码只作直接推荐归因。分享市场链接后，已确认 Builder 费用收入会用作奖励账务记录。",
+    copyReferralLink: "复制推荐链接",
+    copyMarketReferralLink: "复制市场推荐链接",
+    copied: "已复制",
+    directReferralCount: "直接推荐人数",
+    builderAttribution: "Builder 费用归因",
+    chartEmpty: "暂时没有图表数据",
+    builderAttributionNote: "奖励只会根据已确认的 Builder 费用收入计算，实际支付需要管理员审核。",
+    viewMarkets: "查看 Polymarket 市场",
+    goRewards: "前往奖励",
+    copyShareText: "复制分享文字",
+    emptyReferralTitle: "暂时没有直接推荐活动",
+    emptyReferralBody: "分享市场链接后，直接推荐归因会在此显示。",
+    directReferredUser: "直接推荐用户",
+    attributedAt: "归因日期",
+    eligibleVolume: "合资格成交额",
+  },
+};
 
 const getMarketSlug = (searchParams?: Record<string, string | string[] | undefined>): string | null => {
   const rawSlug = searchParams?.market ?? searchParams?.slug;
@@ -30,14 +120,14 @@ const getMarketSlug = (searchParams?: Record<string, string | string[] | undefin
   return slug;
 };
 
-export default async function AmbassadorPage({
+export async function renderAmbassadorPage(locale: AppLocale, {
   searchParams,
 }: Readonly<{
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }> = {}) {
-  const locale = defaultLocale;
   const copy = getLocaleCopy(locale).ambassador;
   const authCopy = getLocaleCopy(locale).auth;
+  const pageCopy = ambassadorPageCopy[locale];
   const dashboard = await getAmbassadorDashboard().catch(() => null);
   const siteUrl = getSiteUrl();
   const resolvedSearchParams = await searchParams;
@@ -53,40 +143,41 @@ export default async function AmbassadorPage({
     <main className="stack">
       <section className="hero">
         <div className="hero-copy stack">
-          <h1>邀請朋友</h1>
-          <p>{rewardExplanation}</p>
+          <h1>{pageCopy.heroTitle}</h1>
+          <p>{copy.subtitle}</p>
           <div className="trust-badge-row">
-            <StatusChip>直接推薦</StatusChip>
-            <StatusChip>人手審批</StatusChip>
-            <StatusChip tone="warning">待確認獎勵</StatusChip>
-            <StatusChip>非託管</StatusChip>
+            <StatusChip>{copy.directReferrals}</StatusChip>
+            <StatusChip>{getLocaleCopy(locale).rewards.adminApprovalNotice.includes("admin") ? "Manual approval" : "人手審批"}</StatusChip>
+            <StatusChip tone="warning">{copy.pendingRewards}</StatusChip>
+            <StatusChip>{locale === "en" ? "Non-custodial" : locale === "zh-CN" ? "非托管" : "非託管"}</StatusChip>
           </div>
           <PendingReferralNotice />
         </div>
       </section>
-      <BetaLaunchDisclosure />
-      <SharedSafetyDisclosure />
-      <SharedRewardDisclosure />
-      <SafetyDisclosure title="推薦規則">
+      <BetaLaunchDisclosure locale={locale} />
+      <SharedSafetyDisclosure locale={locale} />
+      <SharedRewardDisclosure locale={locale} />
+      <SafetyDisclosure title={pageCopy.rewardRules}>
         <div className="stack">
-          <p>{rewardExplanation}</p>
-          <p>{safetyExplanation}</p>
-          <p>{payoutApprovalExplanation}</p>
+          <p>{copy.subtitle}</p>
+          <p>{copy.safeNotice}</p>
+          <p>{copy.approvalNotice}</p>
         </div>
       </SafetyDisclosure>
-      <SafetyDisclosure title="支付提示">
+      <SafetyDisclosure title={pageCopy.payoutTips}>
         <div className="stack">
-          <p>{manualPayoutExplanation}</p>
-          <p>{polygonPayoutExplanation}</p>
+          <p>{pageCopy.manualPayout}</p>
+          <p>{pageCopy.polygonPayout}</p>
         </div>
       </SafetyDisclosure>
 
       {!dashboard ? (
         <section className="panel stack">
-          <EmptyState title={authCopy.sessionRequired}>登入或註冊後可查看你的推薦碼、複製市場推薦連結，並追蹤直接推薦獎勵帳務。</EmptyState>
+          <EmptyState title={authCopy.sessionRequired}>{pageCopy.signedOutBody}</EmptyState>
+          <span className="sr-only">{pageCopy.copyMarketReferralLink}</span>
           <div className="market-actions">
-            <a className="button-link" href="/login">{authCopy.login}</a>
-            <a className="button-link secondary" href="/signup">{authCopy.signup}</a>
+            <a className="button-link" href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
+            <a className="button-link secondary" href={getLocaleHref(locale, "/signup")}>{authCopy.signup}</a>
           </div>
         </section>
       ) : (
@@ -94,18 +185,18 @@ export default async function AmbassadorPage({
           <PendingReferralApplier />
           <section className="panel ambassador-code-card invite-link-card">
             <div className="stack">
-              <span className="metric-label">推薦碼</span>
+              <span className="metric-label">{copy.code}</span>
               <div className="metric-sm mono">{referralCode}</div>
-              <span className="metric-label">推薦連結</span>
+              <span className="metric-label">{copy.link}</span>
               <div className="metric-sm mono">{referralLink}</div>
-              <p className="muted">推薦碼只作直接推薦歸因。分享市場連結後，已確認 Builder 費用收入會用作獎勵帳務紀錄。</p>
+              <p className="muted">{pageCopy.referralCodeNote}</p>
             </div>
             <div className="market-actions">
-              <TrackedCopyButton value={referralLink} label="複製推薦連結" copiedLabel="已複製" eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
+              <TrackedCopyButton value={referralLink} label={pageCopy.copyReferralLink} copiedLabel={pageCopy.copied} eventName="invite_link_copied" metadata={{ code: dashboard.ambassadorCode.code }} />
               <TrackedCopyButton
                 value={marketReferralLink}
-                label="複製市場推薦連結"
-                copiedLabel="已複製"
+                label={pageCopy.copyMarketReferralLink}
+                copiedLabel={pageCopy.copied}
                 eventName="market_share_link_copied"
                 metadata={{ code: dashboard.ambassadorCode.code, marketSlug: marketSlug ?? "polymarket_feed" }}
               />
@@ -113,10 +204,10 @@ export default async function AmbassadorPage({
           </section>
 
           <section className="grid">
-            <MetricCard label="直接推薦人數" value={dashboard.rewards.directReferralCount.toLocaleString(locale)} />
-            <MetricCard label="待確認獎勵" value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" />
-            <MetricCard label="可提取獎勵" value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" />
-            <MetricCard label="已支付獎勵" value={formatUsdc(dashboard.rewards.paidRewards, locale)} />
+            <MetricCard label={pageCopy.directReferralCount} value={dashboard.rewards.directReferralCount.toLocaleString(locale)} />
+            <MetricCard label={copy.pendingRewards} value={formatUsdc(dashboard.rewards.pendingRewards, locale)} tone="warning" />
+            <MetricCard label={copy.payableRewards} value={formatUsdc(dashboard.rewards.payableRewards, locale)} tone="success" />
+            <MetricCard label={copy.paidRewards} value={formatUsdc(dashboard.rewards.paidRewards, locale)} />
           </section>
 
           <section className="grid">
@@ -128,25 +219,25 @@ export default async function AmbassadorPage({
             />
             <RewardSplitChart
               points={[
-                { label: "待確認", value: toUsdcNumber(dashboard.rewards.pendingRewards), tone: "volume" },
-                { label: "可提取", value: toUsdcNumber(dashboard.rewards.payableRewards), tone: "bid" },
-                { label: "已支付", value: toUsdcNumber(dashboard.rewards.paidRewards), tone: "liquidity" },
+                { label: copy.pendingRewards, value: toUsdcNumber(dashboard.rewards.pendingRewards), tone: "volume" },
+                { label: copy.payableRewards, value: toUsdcNumber(dashboard.rewards.payableRewards), tone: "bid" },
+                { label: copy.paidRewards, value: toUsdcNumber(dashboard.rewards.paidRewards), tone: "liquidity" },
               ]}
             />
-            <section className="chart-panel stack" aria-label="Builder 費用收入">
-              <strong>Builder 費用歸因</strong>
-              <div className="chart-empty">暫時未有圖表資料</div>
-              <p className="muted">獎勵只會根據已確認的 Builder 費用收入計算，實際支付需要管理員審批。</p>
+            <section className="chart-panel stack" aria-label={pageCopy.builderAttribution}>
+              <strong>{pageCopy.builderAttribution}</strong>
+              <div className="chart-empty">{pageCopy.chartEmpty}</div>
+              <p className="muted">{pageCopy.builderAttributionNote}</p>
             </section>
           </section>
 
           <section className="market-actions">
-            <a className="button-link" href="/polymarket">查看 Polymarket 市場</a>
-            <a className="button-link secondary" href="/rewards">前往獎勵</a>
+            <a className="button-link" href={getLocaleHref(locale, "/polymarket")}>{pageCopy.viewMarkets}</a>
+            <a className="button-link secondary" href={getLocaleHref(locale, "/rewards")}>{pageCopy.goRewards}</a>
             <TrackedCopyButton
-              value={`${rewardExplanation} ${referralLink}`}
-              label="複製分享文字"
-              copiedLabel="已複製"
+              value={`${copy.subtitle} ${referralLink}`}
+              label={pageCopy.copyShareText}
+              copiedLabel={pageCopy.copied}
               eventName="invite_link_copied"
               metadata={{ code: dashboard.ambassadorCode.code }}
             />
@@ -164,15 +255,15 @@ export default async function AmbassadorPage({
           <section className="panel stack">
             <h2 className="section-title">{copy.referredTraders}</h2>
             {dashboard.directReferrals.length === 0 ? (
-              <EmptyState title="暫時未有直接推薦活動">分享市場連結後，直接推薦歸因會在此顯示。</EmptyState>
+              <EmptyState title={pageCopy.emptyReferralTitle}>{pageCopy.emptyReferralBody}</EmptyState>
             ) : (
               <table className="table">
                 <thead>
                   <tr>
-                    <th>直接推薦用戶</th>
-                    <th>歸因日期</th>
-                    <th>合資格成交額</th>
-                    <th>狀態</th>
+                    <th>{pageCopy.directReferredUser}</th>
+                    <th>{pageCopy.attributedAt}</th>
+                    <th>{pageCopy.eligibleVolume}</th>
+                    <th>{copy.status}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -192,4 +283,10 @@ export default async function AmbassadorPage({
       )}
     </main>
   );
+}
+
+export default async function AmbassadorPage(props: Readonly<{
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}> = {}) {
+  return renderAmbassadorPage(defaultLocale, props);
 }
