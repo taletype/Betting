@@ -36,14 +36,14 @@ Admin-only check:
 
 - `GET /api/admin/ambassador-dashboard-health`
 
-Safe failure codes:
+Safe failure codes and operator action:
 
-- `ambassador_tables_missing`
-- `dashboard_db_unavailable`
-- `profile_write_failed`
-- `ambassador_code_create_failed`
-- `service_api_unreachable`
-- `service_api_401`
-- `service_api_500`
+- `ambassador_tables_missing`: apply the required production Supabase migrations listed above.
+- `profile_write_failed`: check service-role configuration, RLS policies, and the `public.profiles` insert/upsert path.
+- `dashboard_db_unavailable`: check `DATABASE_URL` or `SUPABASE_DB_URL`.
+- `service_api_unreachable`: check that `API_BASE_URL` points to a reachable service API.
+- `service_api_401`: check service API authentication configuration between the web app and service API.
+- `service_api_500`: check service API logs for the failing dashboard request.
+- `ambassador_code_create_failed`: check `public.ambassador_codes` constraints and collision/retry behavior.
 
 The health response must not include cookies, bearer tokens, service-role keys, SQL connection strings, private keys, L2 secrets, or signatures.

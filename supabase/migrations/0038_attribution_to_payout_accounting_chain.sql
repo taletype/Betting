@@ -186,6 +186,8 @@ select
   linked.updated_at
 from public.linked_wallets linked;
 
+drop view if exists public.reward_ledger_entries;
+
 create or replace view public.reward_ledger_entries as
 select
   ledger.id,
