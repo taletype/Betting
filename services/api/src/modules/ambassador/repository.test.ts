@@ -247,11 +247,13 @@ test("unconfirmed Builder attribution does not create payable rewards", () => {
 test("payout workflow enforces threshold and admin approval before paid", () => {
   const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
 
+  assert.match(source, /from public\.ambassador_reward_ledger[\s\S]+status = 'payable'[\s\S]+for update/);
   assert.match(source, /payable rewards are below the minimum payout threshold/);
   assert.match(source, /status = 'requested'/);
   assert.match(source, /'requested',\s*\$3,/);
   assert.match(source, /status = 'approved'/);
   assert.match(source, /ambassador_reward_ledger[\s\S]+set status = 'approved'/);
+  assert.match(source, /payout request must reserve the exact payable reward amount/);
   assert.match(source, /status = 'approved'/);
   assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
   assert.match(source, /recipient already has an open reward payout request/);
