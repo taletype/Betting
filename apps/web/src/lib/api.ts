@@ -436,6 +436,18 @@ export const voidAdminTradeAttributionRewards = async (tradeAttributionId: strin
     body: { reason },
   });
 
+export const reviewAdminRiskFlag = async (riskFlagId: string, reviewNotes: string) =>
+  readApiJson(`/admin/ambassador/risk-flags/${riskFlagId}/review`, {
+    method: "POST",
+    body: { reviewNotes },
+  });
+
+export const dismissAdminRiskFlag = async (riskFlagId: string, reviewNotes: string) =>
+  readApiJson(`/admin/ambassador/risk-flags/${riskFlagId}/dismiss`, {
+    method: "POST",
+    body: { reviewNotes },
+  });
+
 export const requestAmbassadorPayout = async (input: { destinationType: "wallet" | "manual"; destinationValue: string }) =>
   readApiJson("/ambassador/payouts", {
     method: "POST",
