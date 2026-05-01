@@ -43,6 +43,7 @@ import {
   overrideAdminReferralAttributionDb,
   voidRewardsForTradeAttributionDb,
 } from "../_shared/ambassador";
+import { updateAdminRiskFlagReviewState } from "../../admin/risk-flags";
 
 import {
   evaluateAdminAccess,
@@ -801,6 +802,36 @@ async function handleRequest(
         const reason = requireAdminReasonField(body.reason, "void reason is required");
         const result = await voidRewardsForTradeAttributionDb(tradeAttributionId, reason);
         await recordAdminAuditLog({ actorUserId: adminActorId, action: "reward_ledger.void", entityType: "builder_trade_attribution", entityId: tradeAttributionId, metadata: { reason } });
+        return NextResponse.json(result);
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/risk-flags\/[^/]+\/review$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "risk_flag:review");
+        if (permissionError) return permissionError;
+        const riskFlagId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { reviewNotes?: string };
+        const reviewNotes = requireAdminReasonField(body.reviewNotes, "risk review notes are required");
+        const result = await updateAdminRiskFlagReviewState({
+          riskFlagId,
+          reviewedBy: adminActorId,
+          status: "reviewed",
+          reviewNotes,
+        });
+        return NextResponse.json(result);
+      }
+
+      if (apiPath.match(/^admin\/ambassador\/risk-flags\/[^/]+\/dismiss$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "risk_flag:dismiss");
+        if (permissionError) return permissionError;
+        const riskFlagId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { reviewNotes?: string };
+        const reviewNotes = requireAdminReasonField(body.reviewNotes, "risk review notes are required");
+        const result = await updateAdminRiskFlagReviewState({
+          riskFlagId,
+          reviewedBy: adminActorId,
+          status: "dismissed",
+          reviewNotes,
+        });
         return NextResponse.json(result);
       }
 
