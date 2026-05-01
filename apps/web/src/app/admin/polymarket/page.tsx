@@ -13,6 +13,7 @@ const yesNo = (value: boolean): string => (value ? "yes" : "no");
 const yesNoUnknown = (value: boolean | null): string => value === null ? "-" : yesNo(value);
 const count = (value: number | null): string => value?.toLocaleString(defaultLocale) ?? "-";
 const status = (value: number | "unreachable"): string => value === "unreachable" ? value : String(value);
+const duration = (value: number | null | undefined): string => typeof value === "number" && value > 0 ? `${(value / 1000).toFixed(1)}s` : "-";
 
 const diagnosisCopy: Record<"ok" | "safe_empty" | "unavailable", string> = {
   ok: "ok",
@@ -65,7 +66,11 @@ export default async function AdminPolymarketPage() {
         <div className="kv"><span className="kv-key">上次熱門同步</span><span className="kv-value">{statusPayload.syncSummary.lastSmartSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastSmartSync) : "-"}</span></div>
         <div className="kv"><span className="kv-key">上次完整同步</span><span className="kv-value">{statusPayload.syncSummary.lastFullOpenSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastFullOpenSync) : "-"}</span></div>
         <div className="kv"><span className="kv-key">上次 archive 同步</span><span className="kv-value">{statusPayload.syncSummary.lastArchiveSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastArchiveSync) : "-"}</span></div>
-        <div className="kv"><span className="kv-key">分頁抓取數</span><span className="kv-value">{count(statusPayload.syncSummary.pagesFetchedLastFullSync)}</span></div>
+        <div className="kv"><span className="kv-key">上次同步</span><span className="kv-value">{statusPayload.syncSummary.lastFullOpenSync ? formatDateTime(defaultLocale, statusPayload.syncSummary.lastFullOpenSync) : "-"}</span></div>
+        <div className="kv"><span className="kv-key">同步耗時</span><span className="kv-value">{duration(statusPayload.syncSummary.lastSyncDurationMs)}</span></div>
+        <div className="kv"><span className="kv-key">已抓取頁數</span><span className="kv-value">{count(statusPayload.syncSummary.pagesFetchedLastFullSync)}</span></div>
+        <div className="kv"><span className="kv-key">下一個 Offset</span><span className="kv-value">{statusPayload.syncSummary.nextOffsetLastFullSync ?? "-"}</span></div>
+        <div className="kv"><span className="kv-key">同步未完成</span><span className="kv-value">{statusPayload.syncSummary.lastFullSyncCompleted ? "no" : "yes"}</span></div>
         <div className="kv"><span className="kv-key">已達同步上限</span><span className="kv-value">{statusPayload.syncSummary.maxPagesReachedLastFullSync || statusPayload.syncSummary.maxMarketsReachedLastFullSync ? "yes" : "no"}</span></div>
         <div className="kv"><span className="kv-key">Gamma fallback 可連線</span><span className="kv-value">{yesNo(marketDataHealth.gammaFallbackReachable)}</span></div>
         <div className="kv"><span className="kv-key">fallback 市場數量</span><span className="kv-value">{count(marketDataHealth.gammaFallbackMarketCount)}</span></div>

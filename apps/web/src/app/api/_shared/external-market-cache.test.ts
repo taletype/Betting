@@ -161,4 +161,40 @@ test("limit, offset, max limit, and sorting are stable", async () => {
 
   const capped = await readExternalMarketsFromCache(makeSupabase(rows) as never, { view: "all", status: "all", limit: 999 });
   assert.equal(capped.pagination.limit, 250);
+  assert.equal(capped.pagination.totalCount, 3);
+  assert.equal(capped.pagination.nextOffset, null);
+});
+
+test("offset is applied after filtering and final page has no nextOffset", async () => {
+  const rows = [
+    makeCacheRow({ external_id: "HIDDEN", title: "Hidden stale", stale_after: "2000-01-01T00:00:00.000Z" }),
+    makeCacheRow({ external_id: "FIRST", title: "Visible first", volume: 100 }),
+    makeCacheRow({ external_id: "SECOND", title: "Visible second", volume: 90 }),
+  ];
+
+  const result = await readExternalMarketsFromCache(makeSupabase(rows) as never, {
+    view: "smart",
+    status: "open",
+    sort: "volume",
+    limit: 1,
+    offset: 1,
+  });
+
+  assert.deepEqual(result.markets.map((market) => market.externalId), ["SECOND"]);
+  assert.equal(result.pagination.totalCount, 2);
+  assert.equal(result.pagination.nextOffset, null);
+});
+
+test("view all keeps no-price and stale rows while smart hides them", async () => {
+  const rows = [
+    makeCacheRow({ external_id: "GOOD", title: "Good market" }),
+    makeCacheRow({ external_id: "NO_PRICE", title: "No price", best_bid: null, best_ask: null, outcomes: [] }),
+    makeCacheRow({ external_id: "STALE", title: "Stale market", stale_after: "2000-01-01T00:00:00.000Z" }),
+  ];
+
+  const all = await readExternalMarketsFromCache(makeSupabase(rows) as never, { view: "all", status: "all", sort: "latest" });
+  const smart = await readExternalMarketsFromCache(makeSupabase(rows) as never, { view: "smart", status: "open", sort: "latest" });
+
+  assert.deepEqual(new Set(all.markets.map((market) => market.externalId)), new Set(["GOOD", "NO_PRICE", "STALE"]));
+  assert.deepEqual(smart.markets.map((market) => market.externalId), ["GOOD"]);
 });

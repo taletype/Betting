@@ -27,6 +27,14 @@ export interface PolymarketCacheSyncResult {
   uniqueMarkets?: number;
   maxPagesReached?: boolean;
   maxMarketsReached?: boolean;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
+  startOffset?: number;
+  nextOffset?: number | null;
+  completed?: boolean;
+  privateTradingEndpointsUsed?: false;
+  upstream?: "gamma-api.polymarket.com";
 }
 
 export type PolymarketCacheSyncMode =
@@ -43,6 +51,7 @@ export interface SyncPolymarketMarketCacheOptions {
   pageSize?: number;
   maxPages?: number;
   maxMarkets?: number;
+  offset?: number;
 }
 
 const safeErrorMessage = (error: unknown): string =>
@@ -55,6 +64,8 @@ interface FetchModeResult {
   uniqueMarkets: number;
   maxPagesReached: boolean;
   maxMarketsReached: boolean;
+  startOffset: number;
+  nextOffset: number | null;
   staleAfter: string;
 }
 
@@ -82,12 +93,15 @@ const fetchForMode = async (
       uniqueMarkets: new Set(records.map((record) => record.market.externalId)).size,
       maxPagesReached: false,
       maxMarketsReached: false,
+      startOffset: 0,
+      nextOffset: null,
       staleAfter,
     };
   }
 
   const result = await fetchAllPolymarketGammaEventMarkets({
     pageSize: options.pageSize ?? 100,
+    offset: options.offset ?? 0,
     maxPages: options.maxPages ?? 50,
     maxMarkets: options.maxMarkets ?? 5_000,
     active: mode === "archive_closed" ? false : true,
@@ -123,6 +137,8 @@ export async function syncPolymarketMarketCache(
 ): Promise<PolymarketCacheSyncResult> {
   const syncMode = options.mode ?? "smart";
   const syncKind = getSyncKind(syncMode, options.syncKind);
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
   const runId = await createMarketSyncRun(supabase, syncKind);
   if (!runId) {
     return { ok: true, status: "skipped", marketsSeen: 0, marketsUpserted: 0, runId: null, syncMode };
@@ -163,7 +179,12 @@ export async function syncPolymarketMarketCache(
     const uniqueMarkets = deduped.length;
     const maxPagesReached = results.some((result) => result.maxPagesReached);
     const maxMarketsReached = results.some((result) => result.maxMarketsReached);
+    const startOffset = results.reduce((min, result) => Math.min(min, result.startOffset), Number.MAX_SAFE_INTEGER);
+    const nextOffset = syncMode === "all" ? null : results[0]?.nextOffset ?? null;
+    const completed = !maxPagesReached && !maxMarketsReached && nextOffset === null;
     const status = archiveError ? "partial" : "success";
+    const finishedAt = new Date().toISOString();
+    const durationMs = Date.now() - startedAtMs;
 
     await finishMarketSyncRun(supabase, runId, {
       status,
@@ -172,13 +193,20 @@ export async function syncPolymarketMarketCache(
       errorMessage: archiveError,
       diagnostics: {
         syncMode,
+        startedAt,
+        finishedAt,
+        durationMs,
         upstream: "gamma-api.polymarket.com",
         fetchedVia: "public-gamma-events-paginated",
         pagesFetched,
         rawRecordsSeen,
         uniqueMarkets,
+        marketsUpserted,
+        startOffset: Number.isFinite(startOffset) ? startOffset : 0,
+        nextOffset,
         maxPagesReached,
         maxMarketsReached,
+        completed,
         archiveClosedAttempted: syncMode === "all",
         archiveClosedError: archiveError,
         clobReadEnabled: false,
@@ -199,15 +227,31 @@ export async function syncPolymarketMarketCache(
       uniqueMarkets,
       maxPagesReached,
       maxMarketsReached,
+      startedAt,
+      finishedAt,
+      durationMs,
+      startOffset: Number.isFinite(startOffset) ? startOffset : 0,
+      nextOffset,
+      completed,
+      privateTradingEndpointsUsed: false,
+      upstream: "gamma-api.polymarket.com",
     };
   } catch (error) {
+    const finishedAt = new Date().toISOString();
+    const durationMs = Date.now() - startedAtMs;
     await finishMarketSyncRun(supabase, runId, {
       status: "failure",
       errorMessage: safeErrorMessage(error),
       diagnostics: {
         syncMode,
+        startedAt,
+        finishedAt,
+        durationMs,
         upstream: "gamma-api.polymarket.com",
         fetchedVia: "public-gamma-events-paginated",
+        startOffset: options.offset ?? 0,
+        nextOffset: options.offset ?? 0,
+        completed: false,
         clobReadEnabled: false,
         privateTradingEndpointsUsed: false,
       },
@@ -220,6 +264,14 @@ export async function syncPolymarketMarketCache(
       runId,
       error: safeErrorMessage(error),
       syncMode,
+      startedAt,
+      finishedAt,
+      durationMs,
+      startOffset: options.offset ?? 0,
+      nextOffset: options.offset ?? 0,
+      completed: false,
+      privateTradingEndpointsUsed: false,
+      upstream: "gamma-api.polymarket.com",
     };
   }
 }

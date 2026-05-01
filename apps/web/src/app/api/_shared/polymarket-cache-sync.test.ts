@@ -133,10 +133,51 @@ test("all_open mode uses paginated fetch and reports maxMarketsReached", async (
   assert.equal(result.status, "success");
   assert.equal(result.pagesFetched, 2);
   assert.equal(result.maxMarketsReached, true);
+  assert.equal(result.startOffset, 0);
+  assert.equal(result.nextOffset, 4);
+  assert.equal(result.completed, false);
   assert.equal(result.marketsSeen, 3);
   const finished = supabase.state.finishedRuns[0] as { diagnostics?: Record<string, unknown> };
   assert.equal(finished.diagnostics?.privateTradingEndpointsUsed, false);
+  assert.equal(finished.diagnostics?.upstream, "gamma-api.polymarket.com");
+  assert.equal(finished.diagnostics?.startOffset, 0);
+  assert.equal(finished.diagnostics?.nextOffset, 4);
+  assert.equal(typeof finished.diagnostics?.durationMs, "number");
   assert.equal(finished.diagnostics?.fetchedVia, "public-gamma-events-paginated");
+});
+
+test("all_open mode can resume from a bounded offset batch", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const offsets: string[] = [];
+  const supabase = makeSupabase();
+
+  globalThis.fetch = (async (input) => {
+    const url = new URL(String(input));
+    offsets.push(url.searchParams.get("offset") ?? "");
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    return new Response(JSON.stringify(Array.from({ length: 100 }, (_, index) => makeEvent(`offset-${offset + index}`))), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const result = await syncPolymarketMarketCache(supabase.client as never, {
+    mode: "all_open",
+    pageSize: 100,
+    maxPages: 1,
+    maxMarkets: 1_000,
+    offset: 500,
+  });
+
+  assert.deepEqual(offsets, ["500"]);
+  assert.equal(result.pagesFetched, 1);
+  assert.equal(result.maxPagesReached, true);
+  assert.equal(result.startOffset, 500);
+  assert.equal(result.nextOffset, 600);
 });
 
 test("all mode combines open and archive records", async (t) => {

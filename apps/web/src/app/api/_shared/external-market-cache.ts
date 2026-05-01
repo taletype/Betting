@@ -150,6 +150,8 @@ const toNumber = (value: string | number | null): number | null => {
 const readNumber = (value: unknown): number | null =>
   typeof value === "string" || typeof value === "number" ? toNumber(value) : null;
 
+// Safe while full active sync remains capped at maxMarkets <= 5_000.
+// If archive sync grows cached rows beyond 10_000, move filtering/sorting DB-side.
 const CACHE_READ_ROW_WINDOW = 10_000;
 const DEFAULT_CACHE_READ_LIMIT = 100;
 const MAX_CACHE_READ_LIMIT = 250;

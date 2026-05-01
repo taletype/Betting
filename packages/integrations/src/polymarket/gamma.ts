@@ -39,6 +39,7 @@ export interface PolymarketGammaEventMarketsPage {
 
 export interface FetchAllPolymarketGammaEventMarketsOptions {
   pageSize?: number;
+  offset?: number;
   maxPages?: number;
   maxMarkets?: number;
   active?: boolean;
@@ -56,6 +57,8 @@ export interface FetchAllPolymarketGammaEventMarketsResult {
   uniqueMarkets: number;
   maxPagesReached: boolean;
   maxMarketsReached: boolean;
+  startOffset: number;
+  nextOffset: number | null;
 }
 
 const clampInteger = (value: number, min: number, max: number): number => {
@@ -221,13 +224,14 @@ export const fetchAllPolymarketGammaEventMarkets = async (
   const pageSize = clampInteger(options.pageSize ?? 100, 1, 500);
   const maxPages = clampInteger(options.maxPages ?? 50, 1, Number.MAX_SAFE_INTEGER);
   const maxMarkets = clampInteger(options.maxMarkets ?? 5_000, 1, Number.MAX_SAFE_INTEGER);
+  const startOffset = Math.max(0, Math.trunc(options.offset ?? 0));
   const dedupe = options.dedupe ?? true;
   const records: PolymarketGammaRecord[] = [];
   const seenExternalIds = new Set<string>();
   let pagesFetched = 0;
   let rawRecordsSeen = 0;
-  let offset = 0;
-  let nextOffset: number | null = 0;
+  let offset = startOffset;
+  let nextOffset: number | null = startOffset;
   let maxPagesReached = false;
   let maxMarketsReached = false;
 
@@ -275,6 +279,8 @@ export const fetchAllPolymarketGammaEventMarkets = async (
     uniqueMarkets: seenExternalIds.size || records.length,
     maxPagesReached,
     maxMarketsReached,
+    startOffset,
+    nextOffset,
   };
 };
 
