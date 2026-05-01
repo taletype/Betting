@@ -6,6 +6,7 @@ import { incrementCounter, logger } from "@bet/observability";
 
 import {
   accountConfirmedBuilderTradeRewards,
+  recordBuilderFeeRevenueLedger,
   recordBuilderTradeAttribution,
   type AmbassadorRewardLedgerRecord,
 } from "../ambassador/repository";
@@ -598,6 +599,30 @@ const reconcileEvidence = async (
     await markImport(transaction, { importId: fee.id, status: "confirmed" });
     incrementCounter("builder_fee_evidence_confirmed", { source: fee.source });
     const rewards = await accountConfirmedBuilderTradeRewards(transaction, { tradeAttributionId: attribution.id });
+    await recordBuilderFeeRevenueLedger(transaction, {
+      tradeAttributionId: attribution.id,
+      builderCode: fee.builder_code ?? "",
+      confirmationSource: fee.source,
+      idempotencyKey: `builder-fee:${fee.deterministic_import_key}`,
+      source: "polymarket",
+      externalOrderId: fee.external_order_id ?? fee.clob_order_id ?? candidate.polymarket_order_id,
+      externalTradeId: fee.external_trade_id ?? candidate.external_trade_id,
+      appUserId: candidate.user_id,
+      traderWalletAddress: fee.trader_wallet ?? candidate.trader_wallet ?? candidate.linked_wallet_address,
+      referrerUserId: attribution.directReferrerUserId,
+      referralAttributionId: candidate.referral_attribution_id,
+      marketExternalId: fee.market_external_id ?? candidate.market_external_id,
+      side: fee.side,
+      notionalAmountAtoms: fee.notional_amount_atoms > 0n ? fee.notional_amount_atoms : candidate.notional_usdc_atoms,
+      builderFeeBps: fee.fee_bps,
+      builderFeeAmountAtoms: fee.fee_amount_atoms,
+      asset: fee.fee_asset.trim().toUpperCase() === "USDC" ? "pUSD" : fee.fee_asset,
+      rawJson: {
+        builderFeeImportId: fee.id,
+        deterministicImportKey: fee.deterministic_import_key,
+        routedOrderAuditId: candidate.id,
+      },
+    });
     if (rewards.length > 0) {
       incrementCounter("reward_ledger_created_from_confirmed_fee", { source: fee.source });
     }

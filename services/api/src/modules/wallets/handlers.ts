@@ -75,6 +75,27 @@ export const linkBaseWallet = async (input: LinkWalletInput) => {
         walletAddress: linkedWallet.walletAddress,
       },
     });
+    await insertAuditRecord(transaction, {
+      actorUserId: userId,
+      action: "wallet_bound",
+      entityType: "linked_wallet",
+      entityId: linkedWallet.id,
+      metadata: {
+        chain: linkedWallet.chain,
+        walletAddress: linkedWallet.walletAddress,
+      },
+    });
+    await insertAuditRecord(transaction, {
+      actorUserId: userId,
+      action: "wallet_verified",
+      entityType: "linked_wallet",
+      entityId: linkedWallet.id,
+      metadata: {
+        chain: linkedWallet.chain,
+        walletAddress: linkedWallet.walletAddress,
+        verifiedAt: linkedWallet.verifiedAt,
+      },
+    });
 
     return linkedWallet;
   });

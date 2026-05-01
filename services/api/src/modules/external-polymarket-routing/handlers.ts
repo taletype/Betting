@@ -686,6 +686,66 @@ const recordRoutedOrderAudit = async (
       }),
     ],
   );
+  await db.query(
+    `
+      insert into public.builder_route_events (
+        event_id,
+        idempotency_key,
+        event_type,
+        app_user_id,
+        wallet_address,
+        market_external_id,
+        external_order_id,
+        source,
+        builder_code,
+        notional_amount_atoms,
+        asset,
+        raw_reference_id,
+        occurred_at,
+        status,
+        raw_json,
+        ingested_at,
+        created_at
+      ) values (
+        $1,
+        $1,
+        'routed_order_submitted',
+        $2::uuid,
+        $3,
+        $4,
+        $5,
+        'polymarket',
+        $6,
+        $7::bigint,
+        'pUSD',
+        $5,
+        now(),
+        case when $6 = $8 then 'eligible' else 'ineligible' end,
+        $9::jsonb,
+        now(),
+        now()
+      )
+      on conflict (idempotency_key) do nothing
+    `,
+    [
+      `routed-order:${upstream.orderId ?? payload.userId}:${payload.market.externalId}:${payload.userConfirmation.tokenID}`,
+      payload.userId,
+      payload.linkedWalletAddress,
+      payload.market.externalId,
+      upstream.orderId,
+      payload.orderInput.builderCode,
+      String(notional),
+      payload.signedOrder.builder,
+      JSON.stringify({
+        orderId: upstream.orderId,
+        status: upstream.status,
+        success: upstream.success,
+        attachedBeforeUserSignature: true,
+      }),
+    ],
+  ).catch(() => {
+    // Route-event ingestion is accounting evidence only; never fail order routing after upstream submit.
+  });
 };
 
 const assertRecentOrderTimestamp = (timestamp: string, now: Date): void => {

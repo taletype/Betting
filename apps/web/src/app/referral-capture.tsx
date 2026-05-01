@@ -37,9 +37,25 @@ export const clearPendingReferralCode = (): void => {
 
 export function ReferralCapture() {
   useEffect(() => {
+    const rawIncoming = new URLSearchParams(window.location.search).get("ref");
     const incoming = readReferralCodeFromSearch(window.location.search);
     if (incoming) {
       trackFunnelEvent("referral_code_seen", { code: incoming });
+    }
+
+    if (rawIncoming && !incoming) {
+      void fetch("/api/referrals/click", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code: rawIncoming,
+          queryRef: rawIncoming,
+          landingPath: `${window.location.pathname}${window.location.search}`,
+          sessionId: window.localStorage.getItem(referralSessionStorageKey) ?? crypto.randomUUID(),
+        }),
+      }).catch(() => {
+        // Best-effort rejection capture; browsing should continue.
+      });
     }
 
     const code = selectReferralCodeToPersist(
@@ -49,6 +65,18 @@ export function ReferralCapture() {
     if (code) {
       persistPendingReferralCode(code);
       trackFunnelEvent("referral_code_captured", { code });
+      void fetch("/api/referrals/click", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code,
+          queryRef: incoming,
+          landingPath: `${window.location.pathname}${window.location.search}`,
+          sessionId: window.localStorage.getItem(referralSessionStorageKey),
+        }),
+      }).catch(() => {
+        // Click capture is best-effort; market browsing must never break.
+      });
     }
   }, []);
 

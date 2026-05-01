@@ -44,11 +44,13 @@ import { runExternalSync } from "./modules/admin/external-sync";
 import { getDepositHistory, verifyDeposit } from "./modules/deposits/handlers";
 import {
   approveAdminRewardPayout,
+  captureReferralClick,
   captureAmbassadorReferral,
   createAdminAmbassadorCode,
   disableAdminAmbassadorCode,
   getAdminAmbassadorOverview,
   getAmbassadorDashboard,
+  ingestBuilderRouteEvent,
   markAdminRewardPayoutPaid,
   markAdminBuilderTradeRewardsPayable,
   overrideAdminReferralAttribution,
@@ -543,6 +545,52 @@ const handleRequest = async (request: Request): Promise<Response> => {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/referrals/click") {
+      const body = await parseBody(request);
+      const payload = await captureReferralClick({
+        rawCode: String(body.code ?? body.ref ?? body.rawCode ?? ""),
+        landingPath: body.landingPath ? String(body.landingPath) : url.searchParams.get("landingPath") ?? "/",
+        queryRef: body.queryRef ? String(body.queryRef) : null,
+        anonymousSessionId: body.anonymousSessionId ? String(body.anonymousSessionId) : body.sessionId ? String(body.sessionId) : null,
+        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip"),
+        userAgent: request.headers.get("user-agent"),
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" }, status: 202 });
+    }
+
+    if (request.method === "POST" && url.pathname === "/internal/builder-route-events") {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      const body = await parseBody(request);
+      const payload = await ingestBuilderRouteEvent({
+        eventId: body.eventId ? String(body.eventId) : body.event_id ? String(body.event_id) : null,
+        idempotencyKey: body.idempotencyKey ? String(body.idempotencyKey) : body.idempotency_key ? String(body.idempotency_key) : null,
+        eventType: String(body.eventType ?? body.event_type ?? ""),
+        appUserId: body.appUserId ? String(body.appUserId) : body.app_user_id ? String(body.app_user_id) : null,
+        walletAddress: body.walletAddress ? String(body.walletAddress) : body.wallet_address ? String(body.wallet_address) : null,
+        marketExternalId: body.marketExternalId ? String(body.marketExternalId) : body.market_external_id ? String(body.market_external_id) : null,
+        externalOrderId: body.externalOrderId ? String(body.externalOrderId) : body.external_order_id ? String(body.external_order_id) : null,
+        externalTradeId: body.externalTradeId ? String(body.externalTradeId) : body.external_trade_id ? String(body.external_trade_id) : null,
+        source: body.source ? String(body.source) : "polymarket",
+        builderCode: body.builderCode ? String(body.builderCode) : body.builder_code ? String(body.builder_code) : null,
+        side: body.side === "maker" || body.side === "taker" ? body.side : "unknown",
+        notionalAmountAtoms: body.notionalAmountAtoms || body.notional_amount ? BigInt(String(body.notionalAmountAtoms ?? body.notional_amount)) : null,
+        builderFeeBps: body.builderFeeBps || body.builder_fee_bps ? Number(body.builderFeeBps ?? body.builder_fee_bps) : null,
+        builderFeeAmountAtoms: body.builderFeeAmountAtoms || body.builder_fee_amount ? BigInt(String(body.builderFeeAmountAtoms ?? body.builder_fee_amount)) : null,
+        asset: body.asset ? String(body.asset) : null,
+        rawReferenceId: body.rawReferenceId ? String(body.rawReferenceId) : body.raw_reference_id ? String(body.raw_reference_id) : null,
+        occurredAt: body.occurredAt ? String(body.occurredAt) : body.occurred_at ? String(body.occurred_at) : null,
+        rawJson: body,
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" }, status: 202 });
+    }
+
+    if (request.method === "POST" && url.pathname === "/internal/builder-fee-confirmations") {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      return Response.json(await runPolymarketBuilderAttributionSyncWithDependencies({ createdBy: requestUser!.id }), { status: 202 });
+    }
+
     if (request.method === "GET" && url.pathname === "/external/markets") {
       const rateLimit = checkRateLimit("publicMarkets", actorIdentity);
       if (!rateLimit.allowed) {
@@ -845,6 +893,14 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/wallets/me") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      return new Response(toJson({ wallets: [await getLinkedWallet(requestUserId)].filter(Boolean) }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     if (request.method === "GET" && url.pathname === "/polymarket/l2-credentials/status") {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) return unauthorized;
@@ -908,7 +964,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       return Response.json(payload, { status: 201 });
     }
 
-    if (request.method === "POST" && url.pathname === "/wallets/link") {
+    if (request.method === "POST" && (url.pathname === "/wallets/link" || url.pathname === "/wallets/bind" || url.pathname === "/wallets/verify")) {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
         return unauthorized;
@@ -930,6 +986,19 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
+    if (request.method === "DELETE" && segments.length === 2 && segments[0] === "wallets") {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const db = createDatabaseClient();
+      await db.query(`delete from public.linked_wallets where id = $1::uuid and user_id = $2::uuid`, [segments[1] ?? "", requestUserId]);
+      await db.query(
+        `insert into public.audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+         values ($1::uuid, 'wallet_unbound', 'linked_wallet', $2, '{}'::jsonb, now())`,
+        [requestUserId, segments[1] ?? ""],
+      );
+      return Response.json({ ok: true });
+    }
+
     if (request.method === "GET" && url.pathname === "/deposits") {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
@@ -942,7 +1011,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/ambassador/dashboard") {
+    if (request.method === "GET" && (url.pathname === "/ambassador/dashboard" || url.pathname === "/ambassador/summary" || url.pathname === "/referrals/me")) {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
         return unauthorized;
@@ -954,7 +1023,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "POST" && url.pathname === "/ambassador/capture") {
+    if (request.method === "POST" && (url.pathname === "/ambassador/capture" || url.pathname === "/referrals/apply")) {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
         return unauthorized;
@@ -985,7 +1054,19 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "POST" && url.pathname === "/ambassador/payouts") {
+    if (request.method === "GET" && (url.pathname === "/rewards/summary" || url.pathname === "/rewards/ledger" || url.pathname === "/rewards/payout-requests")) {
+      const unauthorized = requireAuthenticatedUser(requestUserId);
+      if (unauthorized) return unauthorized;
+      const dashboard = await getAmbassadorDashboard(requestUserId);
+      const payload = url.pathname.endsWith("/summary")
+        ? { rewards: dashboard.rewards }
+        : url.pathname.endsWith("/ledger")
+          ? { rewardLedger: dashboard.rewardLedger }
+          : { payoutRequests: dashboard.payouts };
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (request.method === "POST" && (url.pathname === "/ambassador/payouts" || url.pathname === "/rewards/payout-requests")) {
       const unauthorized = requireAuthenticatedUser(requestUserId);
       if (unauthorized) {
         return unauthorized;
@@ -1108,7 +1189,16 @@ const handleRequest = async (request: Request): Promise<Response> => {
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/admin/ambassador") {
+    if (
+      request.method === "GET" &&
+      (
+        url.pathname === "/admin/ambassador" ||
+        url.pathname === "/admin/referrals" ||
+        url.pathname === "/admin/rewards" ||
+        url.pathname === "/admin/payouts" ||
+        url.pathname === "/admin/polymarket/builder-attributions"
+      )
+    ) {
       const unauthorizedAdmin = requireAdminResponse(requestUser);
       if (unauthorizedAdmin) return unauthorizedAdmin;
 
@@ -1207,6 +1297,120 @@ const handleRequest = async (request: Request): Promise<Response> => {
       const payload = await markAdminBuilderTradeRewardsPayable({
         adminUserId: requestUser!.id,
         tradeAttributionId: segments[3] ?? "",
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "admin" &&
+      segments[1] === "ambassador" &&
+      segments[2] === "risk-flags" &&
+      (segments[4] === "review" || segments[4] === "dismiss")
+    ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      const body = await parseBody(request);
+      const status = segments[4] === "review" ? "reviewed" : "dismissed";
+      const db = createDatabaseClient();
+      await db.query(
+        `
+          update public.ambassador_risk_flags
+             set status = $3,
+                 reviewed_by = $2::uuid,
+                 reviewed_at = now(),
+                 review_notes = $4
+           where id = $1::uuid
+             and status = 'open'
+        `,
+        [segments[3] ?? "", requestUser!.id, status, String(body.reviewNotes ?? body.notes ?? "")],
+      );
+      await db.query(
+        `
+          insert into public.admin_audit_log (
+            actor_user_id, actor_admin_user_id, action, entity_type, target_type, entity_id, target_id,
+            before_status, after_status, note, metadata, created_at
+          ) values ($1::uuid, $1::uuid, $2, 'ambassador_risk_flag', 'ambassador_risk_flag', $3, $3, 'open', $4, $5, '{}'::jsonb, now())
+        `,
+        [requestUser!.id, segments[4] === "review" ? "risk_flag.review" : "risk_flag.dismiss", segments[3] ?? "", status, String(body.reviewNotes ?? body.notes ?? "")],
+      );
+      return Response.json({ ok: true });
+    }
+
+    if (request.method === "GET" && url.pathname === "/admin/payouts/export.csv") {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      const overview = await getAdminAmbassadorOverview();
+      const csv = [
+        "id,recipient_user_id,amount_usdc_atoms,status,payout_chain,payout_asset,destination_type,destination_value,tx_hash",
+        ...overview.payouts.map((payout) => [
+          payout.id,
+          payout.recipientUserId,
+          payout.amountUsdcAtoms.toString(),
+          payout.status,
+          payout.payoutChain,
+          payout.payoutAsset,
+          payout.destinationType,
+          payout.destinationValue.replaceAll(",", " "),
+          payout.txHash ?? "",
+        ].join(",")),
+      ].join("\n");
+      return new Response(csv, { headers: { "content-type": "text/csv; charset=utf-8" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "payouts" &&
+      segments[3] === "approve"
+    ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      const body = await parseBody(request);
+      const payload = await approveAdminRewardPayout({
+        adminUserId: requestUser!.id,
+        payoutId: segments[2] ?? "",
+        notes: body.notes ? String(body.notes) : null,
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "payouts" &&
+      segments[3] === "mark-paid"
+    ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      const body = await parseBody(request);
+      const payload = await markAdminRewardPayoutPaid({
+        adminUserId: requestUser!.id,
+        payoutId: segments[2] ?? "",
+        txHash: body.txHash ? String(body.txHash) : null,
+        notes: body.notes ? String(body.notes) : null,
+      });
+      return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
+    }
+
+    if (
+      request.method === "POST" &&
+      segments.length === 4 &&
+      segments[0] === "admin" &&
+      segments[1] === "payouts" &&
+      (segments[3] === "mark-failed" || segments[3] === "cancel")
+    ) {
+      const unauthorizedAdmin = requireAdminResponse(requestUser);
+      if (unauthorizedAdmin) return unauthorizedAdmin;
+      const body = await parseBody(request);
+      const payload = await updateAdminRewardPayoutFailureState({
+        adminUserId: requestUser!.id,
+        payoutId: segments[2] ?? "",
+        status: segments[3] === "mark-failed" ? "failed" : "cancelled",
+        notes: String(body.notes ?? ""),
       });
       return new Response(toJson(payload), { headers: { "content-type": "application/json" } });
     }

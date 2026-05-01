@@ -168,6 +168,12 @@ const createFakeDb = (candidateOverrides: Record<string, unknown> = {}) => {
         });
         return [] as T[];
       }
+      if (/insert into public\.builder_fee_revenue_ledger/.test(sql)) {
+        return [{ id: "88888888-8888-4888-8888-888888888888" }] as T[];
+      }
+      if (/update public\.ambassador_reward_ledger set builder_fee_revenue_ledger_id/.test(sql)) {
+        return [] as T[];
+      }
       throw new Error(`unexpected query: ${sql}`);
     },
   };

@@ -29,3 +29,13 @@ Admin security:
 - Frontend code must not import service-role clients or expose service-role keys.
 - Every payout state change writes an audit-log entry before the operator treats the action as complete.
 - There is no automatic payout, multi-level referral reward, second-level reward, or promised-return workflow.
+
+Operator checklist:
+- Confirm payout wallet is a valid Polygon-compatible `0x` address.
+- Confirm selected reward ledger rows are reserved by this payout request.
+- Review Builder-fee revenue rows and routed-order lineage.
+- Review direct referral attribution and referral code status.
+- Review open fraud flags.
+- Approve only after review.
+- Manually send Polygon pUSD outside the app.
+- Mark paid only after payment has settled and a valid Polygon transaction hash is available.

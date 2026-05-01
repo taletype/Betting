@@ -12,14 +12,12 @@ import {
   calculateRewardLedgerDrafts,
   assertValidPayoutTxHash,
   buildPolygonTxUrl,
-  decideAutoPayoutRequest,
   decideReferralAttribution,
   generateAmbassadorCode,
   getAmbassadorRewardsConfig,
   normalizePayoutWalletAddress,
   validateRewardShareConfig,
   type AmbassadorCodeRecord,
-  type AmbassadorRewardPayoutRecord,
   type AmbassadorRiskStatus,
   type AmbassadorRewardsConfig,
   type ReferralAttributionRecord,
@@ -230,8 +228,8 @@ test("reward ledger entries are created as pending records", () => {
   assert.match(source, /status,\s*created_at/);
   assert.match(source, /'pending'/);
   assert.match(source, /builder trade attribution must be confirmed before rewards become payable/);
-  assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
-  assert.match(handlers, /accountConfirmedBuilderTradeRewards/);
+  assert.match(source, /recordBuilderFeeRevenueLedger/);
+  assert.doesNotMatch(handlers, /accountConfirmedBuilderTradeRewards/);
   assert.doesNotMatch(handlers, /ledger = await markRewardsPayable\(transaction, tradeAttribution\.id\)/);
 });
 
@@ -396,66 +394,15 @@ test("AMBASSADOR_AUTO_PAYOUT_ENABLED=true is rejected by runtime config", () => 
   }
 });
 
-test("auto payout request is created only when threshold and Polygon wallet checks pass", () => {
-  const config = { ...enabledConfig, minPayoutUsdcAtoms: 500_000n, autoPayoutRequestEnabled: true };
-  const payoutWallet = {
-    chain: "polygon",
-    walletAddress: "0x1111111111111111111111111111111111111111",
-    assetPreference: "pUSD",
-  };
-
-  assert.deepEqual(
-    decideAutoPayoutRequest({ config, payableBalance: 499_999n, payoutWallet, openPayout: null }),
-    { action: "below_threshold" },
-  );
-  assert.deepEqual(
-    decideAutoPayoutRequest({ config, payableBalance: 500_000n, payoutWallet: null, openPayout: null }),
-    { action: "missing_wallet" },
-  );
-  assert.deepEqual(
-    decideAutoPayoutRequest({
-      config,
-      payableBalance: 500_000n,
-      payoutWallet: { ...payoutWallet, walletAddress: "not-an-address" },
-      openPayout: null,
-    }),
-    { action: "invalid_wallet" },
-  );
-  assert.deepEqual(
-    decideAutoPayoutRequest({
-      config,
-      payableBalance: 500_000n,
-      payoutWallet,
-      openPayout: {
-        id: "55555555-5555-4555-8555-555555555555",
-        recipientUserId: "66666666-6666-4666-8666-666666666666",
-        amountUsdcAtoms: 500_000n,
-        status: "requested",
-        destinationType: "wallet",
-        destinationValue: payoutWallet.walletAddress,
-        payoutChain: "polygon",
-        payoutChainId: 137,
-        payoutAsset: "pUSD",
-        payoutAssetDecimals: 6,
-        assetContractAddress: enabledConfig.polygonPusdAddress,
-        reviewedBy: null,
-        reviewedAt: null,
-        paidAt: null,
-        txHash: null,
-        notes: null,
-        createdAt: "2026-04-01T00:00:00.000Z",
-      } satisfies AmbassadorRewardPayoutRecord,
-    }),
-    { action: "duplicate_open_payout" },
-  );
-  assert.deepEqual(
-    decideAutoPayoutRequest({ config, payableBalance: 500_000n, payoutWallet, openPayout: null }),
-    {
-      action: "create",
-      amountUsdcAtoms: 500_000n,
-      destinationValue: "0x1111111111111111111111111111111111111111",
-    },
-  );
+test("AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED=true is rejected by runtime config", () => {
+  const previous = process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED;
+  process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED = "true";
+  try {
+    assert.throws(() => getAmbassadorRewardsConfig(), /AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED must remain false/);
+  } finally {
+    if (previous === undefined) delete process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED;
+    else process.env.AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED = previous;
+  }
 });
 
 test("payout wallet and paid tx hash validation enforce Polygon wallet payouts", () => {

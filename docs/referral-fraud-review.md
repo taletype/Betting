@@ -12,6 +12,10 @@ Flags include:
 - Suspicious rapid referral pattern.
 - Duplicate referral application.
 - Referrer and referred user share payout wallet.
+- Order signer wallet does not match the bound user wallet.
+- Builder Code mismatch.
+- Confirmed revenue without route-event lineage.
+- Payout wallet recently changed before payout request.
 
 Do not collect invasive data. Hash IP, session, wallet, and user-agent signals where possible. Never log secrets, service-role keys, full auth headers, private keys, or raw bearer tokens.
 

@@ -97,10 +97,13 @@ test("legacy custodial API routes return 410 before auth", async () => {
 
 test("admin mock builder attribution keeps confirmed rewards pending until explicit review", () => {
   const source = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
+  const mockStart = source.indexOf("export const recordAdminMockBuilderTradeAttributionDb");
+  const mockEnd = source.indexOf("export const voidRewardsForTradeAttributionDb");
+  const mockSource = source.slice(mockStart, mockEnd);
 
-  assert.match(source, /if \(input\.status === "confirmed"\) {\s*await createRewardLedgerEntriesForTrade\(transaction, row\.id\);/);
-  assert.doesNotMatch(source, /recordAdminMockBuilderTradeAttributionDb[\s\S]+set status = 'payable'/);
-  assert.doesNotMatch(source, /recordAdminMockBuilderTradeAttributionDb[\s\S]+maybeCreateAutoPayoutRequest/);
+  assert.doesNotMatch(mockSource, /createRewardLedgerEntriesForTrade/);
+  assert.doesNotMatch(mockSource, /set status = 'payable'/);
+  assert.doesNotMatch(mockSource, /maybeCreateAutoPayoutRequest/);
 });
 
 test("ambassador payout requests atomically reserve payable rewards before returning", () => {
@@ -115,10 +118,13 @@ test("ambassador payout requests atomically reserve payable rewards before retur
 
 test("ambassador rewards cannot auto-create payout requests from config or payable transitions", () => {
   const source = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
+  const payableStart = source.indexOf("export const markRewardsPayableDb");
+  const payableEnd = source.indexOf("export const recordAdminMockBuilderTradeAttributionDb");
+  const payableSource = source.slice(payableStart, payableEnd);
 
   assert.match(source, /AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED must remain false; payout requests must stay manual/);
   assert.doesNotMatch(source, /const maybeCreateAutoPayoutRequest = async/);
-  assert.doesNotMatch(source, /markRewardsPayableDb[\s\S]+ambassador_reward_payouts/);
+  assert.doesNotMatch(payableSource, /ambassador_reward_payouts/);
 });
 
 test("admin referral and payout actions require non-empty operator reasons in backend logic", () => {

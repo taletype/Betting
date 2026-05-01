@@ -2,7 +2,6 @@ import { createDatabaseClient } from "@bet/db";
 
 import { insertAdminAuditRecord, insertAuditRecord } from "../shared/audit";
 import {
-  accountConfirmedBuilderTradeRewards,
   approveRewardPayout,
   createAmbassadorCodeForUser,
   createReferralAttribution,
@@ -14,7 +13,9 @@ import {
   markRewardsPayable,
   normalizePayoutWalletAddress,
   overrideReferralAttribution,
+  recordBuilderRouteEvent,
   readAmbassadorDashboard,
+  recordReferralClick,
   recordBuilderTradeAttribution,
   requestRewardPayout,
   updateRewardPayoutFailureState,
@@ -85,6 +86,42 @@ export const captureAmbassadorReferral = async (input: {
   });
 
   return getAmbassadorDashboard(referredUserId);
+};
+
+export const captureReferralClick = async (input: {
+  rawCode: string;
+  landingPath?: string | null;
+  queryRef?: string | null;
+  anonymousSessionId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}) => {
+  const db = createDatabaseClient();
+  return db.transaction((transaction) => recordReferralClick(transaction, input));
+};
+
+export const ingestBuilderRouteEvent = async (input: {
+  eventId?: string | null;
+  idempotencyKey?: string | null;
+  eventType: string;
+  appUserId?: string | null;
+  walletAddress?: string | null;
+  marketExternalId?: string | null;
+  externalOrderId?: string | null;
+  externalTradeId?: string | null;
+  source?: string | null;
+  builderCode?: string | null;
+  side?: "maker" | "taker" | "unknown" | null;
+  notionalAmountAtoms?: bigint | null;
+  builderFeeBps?: number | null;
+  builderFeeAmountAtoms?: bigint | null;
+  asset?: string | null;
+  rawReferenceId?: string | null;
+  occurredAt?: string | null;
+  rawJson?: Record<string, unknown>;
+}) => {
+  const db = createDatabaseClient();
+  return db.transaction((transaction) => recordBuilderRouteEvent(transaction, input));
 };
 
 export const getAdminAmbassadorOverview = async () => {
@@ -238,13 +275,6 @@ export const recordAdminMockBuilderTradeAttribution = async (input: {
       },
     });
 
-const ledger = tradeAttribution.status === "confirmed"
-      ? await accountConfirmedBuilderTradeRewards(transaction, {
-          tradeAttributionId: tradeAttribution.id,
-          config: getAmbassadorRewardsConfig(),
-        })
-      : [];
-
     await insertAuditRecord(transaction, {
       actorUserId: adminUserId,
       action: "ambassador.unconfirmed_builder_trade_placeholder_recorded",
@@ -272,7 +302,7 @@ const ledger = tradeAttribution.status === "confirmed"
 
     return {
       tradeAttribution,
-      ledger,
+      ledger: [],
     };
   });
 };

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { createDatabaseClient } from "@bet/db";
 import { getPolymarketBuilderCode } from "@bet/integrations";
 import { createSupabaseAdminClient } from "@bet/supabase/admin";
@@ -125,10 +126,124 @@ const recordAdminAuditLog = async (input: {
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+const hashNullable = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed ? crypto.createHash("sha256").update(trimmed).digest("hex") : null;
+};
+
+const normalizeReferralCode = (value: string | null | undefined): string | null => {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && /^[A-Z0-9_-]{3,64}$/.test(normalized) ? normalized : null;
+};
+
 const requireAdminReasonField = (value: unknown, message: string): string => {
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized) throw new Error(message);
   return normalized;
+};
+
+const captureReferralClickDb = async (input: {
+  rawCode: string;
+  landingPath: string;
+  queryRef?: string | null;
+  anonymousSessionId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}) => {
+  const db = createDatabaseClient();
+  return db.transaction(async (transaction) => {
+    const rawCode = input.rawCode.trim().slice(0, 128);
+    const normalizedCode = normalizeReferralCode(rawCode);
+    const [codeRecord] = normalizedCode
+      ? await transaction.query<{ id: string; owner_user_id: string; status: "active" | "disabled" }>(
+        `select id, owner_user_id, status from public.ambassador_codes where upper(code) = upper($1) limit 1`,
+        [normalizedCode],
+      )
+      : [];
+    const rejectReason = !normalizedCode
+      ? "malformed_referral_code"
+      : !codeRecord
+        ? "invalid_referral_code"
+        : codeRecord.status !== "active"
+          ? "disabled_referral_code"
+          : null;
+    const status = rejectReason ? "rejected" : "captured";
+    const sessionId = input.anonymousSessionId?.trim() || null;
+    const [row] = await transaction.query<{ id: string; raw_code: string; status: string; reject_reason: string | null; anonymous_session_id: string | null }>(
+      `
+        insert into public.referral_clicks (
+          referral_code_id, referrer_user_id, raw_code, landing_path, query_ref,
+          anonymous_session_id, user_agent_hash, ip_hash, first_seen_at, last_seen_at,
+          status, reject_reason, created_at
+        ) values (
+          $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, now(), now(), $9, $10, now()
+        )
+        on conflict (anonymous_session_id, (upper(raw_code)), landing_path)
+        where anonymous_session_id is not null
+        do update set last_seen_at = now(),
+                      status = case when public.referral_clicks.status = 'applied' then 'applied' else excluded.status end,
+                      reject_reason = excluded.reject_reason
+        returning id, raw_code, status, reject_reason, anonymous_session_id
+      `,
+      [
+        codeRecord?.id ?? null,
+        codeRecord?.owner_user_id ?? null,
+        rawCode,
+        input.landingPath || "/",
+        input.queryRef ?? normalizedCode,
+        sessionId,
+        hashNullable(input.userAgent),
+        hashNullable(input.ipAddress),
+        status,
+        rejectReason,
+      ],
+    );
+    if (!row) throw new Error("failed to capture referral click");
+    if (sessionId && !rejectReason) {
+      await transaction.query(
+        `
+          insert into public.referral_sessions (anonymous_session_id, first_referral_click_id, active_referral_click_id, status, first_seen_at, last_seen_at)
+          values ($1, $2::uuid, $2::uuid, 'pending', now(), now())
+          on conflict (anonymous_session_id) do update set last_seen_at = now()
+        `,
+        [sessionId, row.id],
+      );
+      await transaction.query(
+        `
+          insert into public.pending_referral_attributions (anonymous_session_id, referral_click_id, raw_code, normalized_code, landing_path, status, created_at, updated_at)
+          values ($1, $2::uuid, $3, $4, $5, 'pending', now(), now())
+          on conflict (anonymous_session_id)
+          where status = 'pending'
+          do update set updated_at = now()
+        `,
+        [sessionId, row.id, rawCode, normalizedCode, input.landingPath || "/"],
+      );
+    }
+    await transaction.query(
+      `
+        insert into public.audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+        values (null, $1, 'referral_attribution', $2, $3::jsonb, now())
+      `,
+      [
+        rejectReason ? "ambassador.referral_rejected" : "ambassador.referral_captured",
+        row.id,
+        JSON.stringify({
+          ambassadorCode: normalizedCode ?? rawCode,
+          reason: rejectReason,
+          sessionHash: hashNullable(sessionId),
+          ipHash: hashNullable(input.ipAddress),
+          userAgentHash: hashNullable(input.userAgent),
+        }),
+      ],
+    );
+    return {
+      id: row.id,
+      code: row.raw_code,
+      status: row.status,
+      rejectReason: row.reject_reason,
+      anonymousSessionId: row.anonymous_session_id,
+    };
+  });
 };
 
 const adminPermissionDeniedResponse = (
@@ -385,6 +500,19 @@ async function handleRequest(
       );
     }
 
+    if (apiPath === "referrals/click" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+      const payload = await captureReferralClickDb({
+        rawCode: String(body.code ?? body.ref ?? body.rawCode ?? ""),
+        landingPath: String(body.landingPath ?? "/"),
+        queryRef: body.queryRef ? String(body.queryRef) : null,
+        anonymousSessionId: body.anonymousSessionId ? String(body.anonymousSessionId) : body.sessionId ? String(body.sessionId) : null,
+        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
+        userAgent: request.headers.get("user-agent"),
+      });
+      return NextResponse.json(payload, { status: 202 });
+    }
+
     if (!isInternalExchangeEnabled() && isInternalExchangeApiPath(apiPath)) {
       return internalExchangeDisabledResponse();
     }
@@ -397,7 +525,18 @@ async function handleRequest(
       get: (name) => request.cookies.get(name)?.value,
     });
 
-    if (apiPath === "wallets/linked" && request.method === "GET") {
+    if ((apiPath === "internal/builder-route-events" || apiPath === "internal/builder-fee-confirmations") && request.method === "POST") {
+      const adminAccess = evaluateAdminAccess(user);
+      if (!adminAccess.ok) return NextResponse.json({ error: adminAccess.error }, { status: adminAccess.status });
+      const forwarded = await forwardServiceApiRequest(request, apiPath);
+      if (forwarded) return forwarded;
+      return NextResponse.json(
+        { error: "Service API is required for internal Builder attribution ingestion", code: "SERVICE_API_REQUIRED" },
+        { status: 503 },
+      );
+    }
+
+    if ((apiPath === "wallets/linked" || apiPath === "wallets/me") && request.method === "GET") {
       const { data, error } = await adminSupabase()
         .from("linked_wallets")
         .select("id, chain, wallet_address, verified_at")
@@ -406,14 +545,18 @@ async function handleRequest(
       if (error) {
         throw error;
       }
+      const wallet = data
+        ? {
+            id: data.id,
+            chain: data.chain,
+            walletAddress: data.wallet_address,
+            verifiedAt: data.verified_at,
+          }
+        : null;
       return NextResponse.json({
+        wallets: wallet ? [wallet] : [],
         wallet: data
-          ? {
-              id: data.id,
-              chain: data.chain,
-              walletAddress: data.wallet_address,
-              verifiedAt: data.verified_at,
-            }
+          ? wallet
           : null,
       });
     }
@@ -473,7 +616,7 @@ async function handleRequest(
       return NextResponse.json({ challenge: { ...challenge, id: row.id }, signedMessage }, { status: 201 });
     }
 
-    if (apiPath === "wallets/link" && request.method === "POST") {
+    if ((apiPath === "wallets/link" || apiPath === "wallets/bind" || apiPath === "wallets/verify") && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as {
         walletAddress?: string;
         chain?: string;
@@ -540,6 +683,15 @@ async function handleRequest(
           [userId, walletAddress, signature, signedMessage],
         );
         if (!linked) throw new Error("failed to link wallet");
+        await transaction.query(
+          `
+            insert into public.audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+            values
+              ($1::uuid, 'wallet_bound', 'linked_wallet', $2, $3::jsonb, now()),
+              ($1::uuid, 'wallet_verified', 'linked_wallet', $2, $3::jsonb, now())
+          `,
+          [userId, linked.id, JSON.stringify({ chain: linked.chain, walletAddress: linked.wallet_address })],
+        );
         return linked;
       });
 
@@ -554,6 +706,19 @@ async function handleRequest(
         },
         { status: 201 },
       );
+    }
+
+    if (apiPath.match(/^wallets\/[^/]+$/) && request.method === "DELETE") {
+      const walletId = apiPath.split("/")[1] ?? "";
+      await createDatabaseClient().transaction(async (transaction) => {
+        await transaction.query(`delete from public.linked_wallets where id = $1::uuid and user_id = $2::uuid`, [walletId, userId]);
+        await transaction.query(
+          `insert into public.audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at)
+           values ($1::uuid, 'wallet_unbound', 'linked_wallet', $2, '{}'::jsonb, now())`,
+          [userId, walletId],
+        );
+      });
+      return NextResponse.json({ ok: true });
     }
 
     if (apiPath === "portfolio" && request.method === "GET") {
@@ -576,11 +741,11 @@ async function handleRequest(
       return NextResponse.json({ withdrawals: data ?? [] });
     }
 
-    if (apiPath === "ambassador/dashboard" && request.method === "GET") {
+    if ((apiPath === "ambassador/dashboard" || apiPath === "ambassador/summary" || apiPath === "referrals/me") && request.method === "GET") {
       return NextResponse.json(normalizeApiPayload(await readAmbassadorDashboardDb(userId)));
     }
 
-    if (apiPath === "ambassador/capture" && request.method === "POST") {
+    if ((apiPath === "ambassador/capture" || apiPath === "referrals/apply") && request.method === "POST") {
       const rateLimit = checkLocalRateLimit("ambassadorReferral", userId, 20);
       if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
       const body = (await request.json().catch(() => ({}))) as { code?: string; idempotencyKey?: string; sessionId?: string };
@@ -593,6 +758,35 @@ async function handleRequest(
     }
 
     if (apiPath === "ambassador/payouts" && request.method === "POST") {
+      const rateLimit = checkLocalRateLimit("ambassadorPayout", userId, 10);
+      if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
+      const body = (await request.json().catch(() => ({}))) as {
+        destinationType?: "wallet" | "manual";
+        destinationValue?: string;
+      };
+      return NextResponse.json(
+        normalizeApiPayload(
+          await requestAmbassadorPayoutDb(userId, {
+            destinationType: body.destinationType === "manual" ? "manual" : "wallet",
+            destinationValue: body.destinationValue ?? "",
+          }),
+        ),
+        { status: 201 },
+      );
+    }
+
+    if ((apiPath === "rewards/summary" || apiPath === "rewards/ledger" || apiPath === "rewards/payout-requests") && request.method === "GET") {
+      const dashboard = await readAmbassadorDashboardDb(userId);
+      return NextResponse.json(normalizeApiPayload(
+        apiPath.endsWith("/summary")
+          ? { rewards: dashboard.rewards }
+          : apiPath.endsWith("/ledger")
+            ? { rewardLedger: dashboard.rewardLedger }
+            : { payoutRequests: dashboard.payouts },
+      ));
+    }
+
+    if (apiPath === "rewards/payout-requests" && request.method === "POST") {
       const rateLimit = checkLocalRateLimit("ambassadorPayout", userId, 10);
       if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
       const body = (await request.json().catch(() => ({}))) as {
@@ -698,10 +892,40 @@ async function handleRequest(
         return NextResponse.json({ withdrawals: data ?? [] });
       }
 
-      if (apiPath === "admin/ambassador" && request.method === "GET") {
+      if (
+        (
+          apiPath === "admin/ambassador" ||
+          apiPath === "admin/referrals" ||
+          apiPath === "admin/rewards" ||
+          apiPath === "admin/payouts" ||
+          apiPath === "admin/polymarket/builder-attributions"
+        ) &&
+        request.method === "GET"
+      ) {
         const permissionError = requireAdminPermissionResponse(user, "admin:read");
         if (permissionError) return permissionError;
         return NextResponse.json(normalizeApiPayload(await readAdminAmbassadorOverviewDb()));
+      }
+
+      if (apiPath === "admin/payouts/export.csv" && request.method === "GET") {
+        const permissionError = requireAdminPermissionResponse(user, "admin:read");
+        if (permissionError) return permissionError;
+        const overview = await readAdminAmbassadorOverviewDb();
+        const csv = [
+          "id,recipient_user_id,amount_usdc_atoms,status,payout_chain,payout_asset,destination_type,destination_value,tx_hash",
+          ...overview.payouts.map((payout) => [
+            payout.id,
+            payout.recipientUserId,
+            String(payout.amountUsdcAtoms),
+            payout.status,
+            payout.payoutChain,
+            payout.payoutAsset,
+            payout.destinationType,
+            payout.destinationValue.replaceAll(",", " "),
+            payout.txHash ?? "",
+          ].join(",")),
+        ].join("\n");
+        return new NextResponse(csv, { headers: { "content-type": "text/csv; charset=utf-8" } });
       }
 
       if (apiPath === "admin/ambassador/codes" && request.method === "POST") {
@@ -835,6 +1059,40 @@ async function handleRequest(
         return NextResponse.json(result);
       }
 
+      if (apiPath.match(/^admin\/ambassador\/risk-flags\/[^/]+\/(review|dismiss)$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "admin:read");
+        if (permissionError) return permissionError;
+        const parts = apiPath.split("/");
+        const riskFlagId = parts[3] ?? "";
+        const action = parts[4] === "dismiss" ? "dismissed" : "reviewed";
+        const body = (await request.json().catch(() => ({}))) as { reviewNotes?: string; notes?: string };
+        const note = requireAdminReasonField(body.reviewNotes ?? body.notes, "risk review note is required");
+        await createDatabaseClient().transaction(async (transaction) => {
+          await transaction.query(
+            `
+              update public.ambassador_risk_flags
+                 set status = $3,
+                     reviewed_by = $2::uuid,
+                     reviewed_at = now(),
+                     review_notes = $4
+               where id = $1::uuid
+                 and status = 'open'
+            `,
+            [riskFlagId, adminActorId, action, note],
+          );
+          await transaction.query(
+            `
+              insert into public.admin_audit_log (
+                actor_user_id, actor_admin_user_id, action, entity_type, target_type, entity_id, target_id,
+                before_status, after_status, note, metadata, created_at
+              ) values ($1::uuid, $1::uuid, $2, 'ambassador_risk_flag', 'ambassador_risk_flag', $3, $3, 'open', $4, $5, '{}'::jsonb, now())
+            `,
+            [adminActorId, action === "dismissed" ? "risk_flag.dismiss" : "risk_flag.review", riskFlagId, action, note],
+          );
+        });
+        return NextResponse.json({ ok: true });
+      }
+
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/approve$/) && request.method === "POST") {
         const permissionError = requireAdminPermissionResponse(user, "payout:approve");
         if (permissionError) return permissionError;
@@ -845,10 +1103,31 @@ async function handleRequest(
         return NextResponse.json(result);
       }
 
+      if (apiPath.match(/^admin\/payouts\/[^/]+\/approve$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:approve");
+        if (permissionError) return permissionError;
+        const payoutId = apiPath.split("/")[2] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { notes?: string };
+        const result = await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.approve", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? null } });
+        return NextResponse.json(result);
+      }
+
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/paid$/) && request.method === "POST") {
         const permissionError = requireAdminPermissionResponse(user, "payout:mark_paid");
         if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
+        await assertPayoutPaidByDifferentActor(payoutId, adminActorId);
+        const result = await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, metadata: { txHash: body.txHash ?? null } });
+        return NextResponse.json(result);
+      }
+
+      if (apiPath.match(/^admin\/payouts\/[^/]+\/mark-paid$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:mark_paid");
+        if (permissionError) return permissionError;
+        const payoutId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
         await assertPayoutPaidByDifferentActor(payoutId, adminActorId);
         const result = await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null });
@@ -867,10 +1146,32 @@ async function handleRequest(
         return NextResponse.json(result);
       }
 
+      if (apiPath.match(/^admin\/payouts\/[^/]+\/mark-failed$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:close");
+        if (permissionError) return permissionError;
+        const payoutId = apiPath.split("/")[2] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { notes?: string };
+        const notes = requireAdminReasonField(body.notes, "payout failure reason is required");
+        const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
+        return NextResponse.json(result);
+      }
+
       if (apiPath.match(/^admin\/ambassador\/payouts\/[^/]+\/cancelled$/) && request.method === "POST") {
         const permissionError = requireAdminPermissionResponse(user, "payout:close");
         if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { notes?: string };
+        const notes = requireAdminReasonField(body.notes, "payout cancellation reason is required");
+        const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
+        return NextResponse.json(result);
+      }
+
+      if (apiPath.match(/^admin\/payouts\/[^/]+\/cancel$/) && request.method === "POST") {
+        const permissionError = requireAdminPermissionResponse(user, "payout:close");
+        if (permissionError) return permissionError;
+        const payoutId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const notes = requireAdminReasonField(body.notes, "payout cancellation reason is required");
         const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });

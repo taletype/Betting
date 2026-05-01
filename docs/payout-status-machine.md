@@ -23,3 +23,5 @@ Reward locking:
 - Paid requests mark only rewards where `reserved_by_payout_id = payout.id` as paid.
 
 Payout state changes never auto-send crypto. Operators must manually execute payment, then record the Polygon transaction hash. Admin authorization must come from authenticated admin identity, not spoofable request headers.
+
+Admin endpoints and pages must write `admin_audit_log` with actor admin user id, target type/id, action, before/after status, note, metadata, and timestamp. Service-role keys must never be exposed to frontend code.

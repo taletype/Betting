@@ -28,7 +28,7 @@ const forbiddenChineseTerms = [
   "profit guaranteed",
 ];
 
-const approvedReferralSafetyCopy = "本平台不設入會費，不設多層推薦獎勵，不保證盈利，亦不會代用戶下注或交易。";
+const approvedReferralSafetyCopy = "本平台只支援直接推薦獎勵；不設多層或遞延推薦獎勵，亦不承諾固定回報。";
 
 const stripApprovedCopy = (value: string): string =>
   value.replaceAll(approvedReferralSafetyCopy, "");

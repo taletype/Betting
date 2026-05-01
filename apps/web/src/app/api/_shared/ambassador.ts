@@ -940,9 +940,6 @@ export const recordAdminMockBuilderTradeAttributionDb = async (input: {
         details: { builderFeeUsdcAtoms: input.builderFeeUsdcAtoms.toString() },
       });
     }
-if (input.status === "confirmed") {
-      await createRewardLedgerEntriesForTrade(transaction, row.id);
-    }
     return { tradeAttributionId: row.id, idempotent: false };
   });
 };

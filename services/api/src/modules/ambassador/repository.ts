@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import type { DatabaseExecutor, DatabaseTransaction } from "@bet/db";
+import { getPolymarketBuilderCode } from "@bet/integrations";
 import { isAddress } from "ethers";
 
 export type AmbassadorCodeStatus = "active" | "disabled";
@@ -198,6 +199,22 @@ export interface ReferralApplyContext {
   userAgent?: string | null;
 }
 
+export interface ReferralClickRecord {
+  id: string;
+  code: string;
+  status: "seen" | "captured" | "rejected" | "applied";
+  rejectReason: string | null;
+  anonymousSessionId: string | null;
+}
+
+export interface BuilderRouteEventRecord {
+  id: string;
+  idempotencyKey: string;
+  eventType: string;
+  status: "ingested" | "eligible" | "ineligible" | "rejected" | "void";
+  ineligibleReason: string | null;
+}
+
 interface AmbassadorCodeRow {
   id: string;
   code: string;
@@ -308,6 +325,22 @@ interface AdminAuditLogRow {
   entity_id: string;
   metadata: Record<string, unknown> | string;
   created_at: Date | string;
+}
+
+interface ReferralClickRow {
+  id: string;
+  raw_code: string;
+  status: "seen" | "captured" | "rejected" | "applied";
+  reject_reason: string | null;
+  anonymous_session_id: string | null;
+}
+
+interface BuilderRouteEventRow {
+  id: string;
+  idempotency_key: string;
+  event_type: string;
+  status: "ingested" | "eligible" | "ineligible" | "rejected" | "void";
+  ineligible_reason: string | null;
 }
 
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
@@ -431,6 +464,22 @@ const mapAdminAuditLog = (row: AdminAuditLogRow): AdminAuditLogRecord => ({
   entityId: row.entity_id,
   metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) as Record<string, unknown> : row.metadata,
   createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+});
+
+const mapReferralClick = (row: ReferralClickRow): ReferralClickRecord => ({
+  id: row.id,
+  code: row.raw_code,
+  status: row.status,
+  rejectReason: row.reject_reason,
+  anonymousSessionId: row.anonymous_session_id,
+});
+
+const mapBuilderRouteEvent = (row: BuilderRouteEventRow): BuilderRouteEventRecord => ({
+  id: row.id,
+  idempotencyKey: row.idempotency_key,
+  eventType: row.event_type,
+  status: row.status,
+  ineligibleReason: row.ineligible_reason,
 });
 
 export const insertRiskFlag = async (
@@ -599,6 +648,9 @@ export const validateRewardShareConfig = (config: AmbassadorRewardsConfig): void
   if (config.autoPayoutEnabled) {
     throw new Error("AMBASSADOR_AUTO_PAYOUT_ENABLED must remain false; automatic crypto payouts are not supported");
   }
+  if (config.autoPayoutRequestEnabled) {
+    throw new Error("AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED must remain false; payout requests must stay manual");
+  }
 
   if (config.payoutChain !== "polygon") {
     throw new Error("PAYOUT_CHAIN must be polygon");
@@ -637,6 +689,12 @@ export const normalizePayoutWalletAddress = (address: string): string => {
   if (!/^0x[0-9a-f]{40}$/.test(normalized) || !isAddress(normalized)) {
     throw new Error("Polygon payout wallet must be a valid 0x EVM address");
   }
+  return normalized;
+};
+
+export const normalizeEvmWalletAddress = (address: string | null | undefined): string | null => {
+  const normalized = address?.trim().toLowerCase() ?? "";
+  if (!/^0x[0-9a-f]{40}$/.test(normalized) || !isAddress(normalized)) return null;
   return normalized;
 };
 
@@ -822,6 +880,162 @@ export const getAmbassadorCodeByCode = async (
     [normalizedCode],
   );
   return row ? mapCode(row) : null;
+};
+
+export const recordReferralClick = async (
+  transaction: DatabaseTransaction,
+  input: {
+    rawCode: string;
+    landingPath?: string | null;
+    queryRef?: string | null;
+    anonymousSessionId?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  },
+): Promise<ReferralClickRecord> => {
+  const rawCode = input.rawCode.trim().slice(0, 128);
+  const normalizedCode = normalizeReferralCode(rawCode);
+  const landingPath = input.landingPath?.trim() || "/";
+  const codeRecord = normalizedCode ? await getAmbassadorCodeByCode(transaction, normalizedCode) : null;
+  const rejectReason = !normalizedCode
+    ? "malformed_referral_code"
+    : !codeRecord
+      ? "invalid_referral_code"
+      : codeRecord.status !== "active"
+        ? "disabled_referral_code"
+        : null;
+  const status: ReferralClickRow["status"] = rejectReason ? "rejected" : "captured";
+  const sessionId = input.anonymousSessionId?.trim() || null;
+
+  const [row] = await transaction.query<ReferralClickRow>(
+    `
+      insert into public.referral_clicks (
+        referral_code_id,
+        referrer_user_id,
+        raw_code,
+        landing_path,
+        query_ref,
+        anonymous_session_id,
+        user_agent_hash,
+        ip_hash,
+        first_seen_at,
+        last_seen_at,
+        status,
+        reject_reason,
+        created_at
+      ) values (
+        $1::uuid,
+        $2::uuid,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        now(),
+        now(),
+        $9,
+        $10,
+        now()
+      )
+      on conflict (anonymous_session_id, (upper(raw_code)), landing_path)
+      where anonymous_session_id is not null
+      do update set
+        last_seen_at = now(),
+        status = case
+          when public.referral_clicks.status = 'applied' then 'applied'
+          else excluded.status
+        end,
+        reject_reason = excluded.reject_reason
+      returning id, raw_code, status, reject_reason, anonymous_session_id
+    `,
+    [
+      codeRecord?.id ?? null,
+      codeRecord?.ownerUserId ?? null,
+      rawCode,
+      landingPath,
+      input.queryRef ?? normalizedCode,
+      sessionId,
+      hashNullable(input.userAgent),
+      hashNullable(input.ipAddress),
+      status,
+      rejectReason,
+    ],
+  );
+  if (!row) throw new Error("failed to record referral click");
+
+  await insertReferralAuditEvent(transaction, {
+    actorUserId: null,
+    action: "ambassador.referral_seen",
+    code: normalizedCode ?? rawCode,
+    reason: rejectReason,
+    context: {
+      sessionId,
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    },
+  });
+
+  if (rejectReason) {
+    await insertRiskFlag(transaction, {
+      userId: null,
+      severity: rejectReason === "disabled_referral_code" ? "medium" : "low",
+      reasonCode: rejectReason,
+      details: { codePrefix: rawCode.slice(0, 8), sessionHash: hashNullable(sessionId) },
+    });
+    return mapReferralClick(row);
+  }
+
+  if (sessionId) {
+    await transaction.query(
+      `
+        insert into public.referral_sessions (
+          anonymous_session_id,
+          first_referral_click_id,
+          active_referral_click_id,
+          status,
+          first_seen_at,
+          last_seen_at
+        ) values ($1, $2::uuid, $2::uuid, 'pending', now(), now())
+        on conflict (anonymous_session_id)
+        do update set
+          last_seen_at = now(),
+          active_referral_click_id = coalesce(public.referral_sessions.active_referral_click_id, excluded.active_referral_click_id)
+      `,
+      [sessionId, row.id],
+    );
+    await transaction.query(
+      `
+        insert into public.pending_referral_attributions (
+          anonymous_session_id,
+          referral_click_id,
+          raw_code,
+          normalized_code,
+          landing_path,
+          status,
+          created_at,
+          updated_at
+        ) values ($1, $2::uuid, $3, $4, $5, 'pending', now(), now())
+        on conflict (anonymous_session_id)
+        where status = 'pending'
+        do update set updated_at = now()
+      `,
+      [sessionId, row.id, rawCode, normalizedCode, landingPath],
+    );
+  }
+
+  await insertReferralAuditEvent(transaction, {
+    actorUserId: null,
+    action: "ambassador.referral_captured",
+    code: normalizedCode ?? rawCode,
+    context: {
+      sessionId,
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    },
+  });
+
+  return mapReferralClick(row);
 };
 
 export const getReferralAttributionForUser = async (
@@ -1086,6 +1300,45 @@ export const createReferralAttribution = async (
     ambassadorCode: normalizedCode,
     context,
   });
+
+  if (context.sessionId?.trim()) {
+    await transaction.query(
+      `
+        update public.pending_referral_attributions
+           set status = 'applied',
+               applied_user_id = $2::uuid,
+               applied_referral_attribution_id = $3::uuid,
+               applied_at = now(),
+               updated_at = now()
+         where anonymous_session_id = $1
+           and status = 'pending'
+      `,
+      [context.sessionId.trim(), input.referredUserId, attribution.id],
+    ).catch(() => []);
+    await transaction.query(
+      `
+        update public.referral_sessions
+           set status = 'applied',
+               applied_user_id = $2::uuid,
+               applied_at = now(),
+               last_seen_at = now()
+         where anonymous_session_id = $1
+           and status = 'pending'
+      `,
+      [context.sessionId.trim(), input.referredUserId],
+    ).catch(() => []);
+    await transaction.query(
+      `
+        update public.referral_clicks
+           set status = 'applied',
+               last_seen_at = now()
+         where anonymous_session_id = $1
+           and upper(raw_code) = upper($2)
+           and status in ('seen', 'captured')
+      `,
+      [context.sessionId.trim(), normalizedCode],
+    ).catch(() => []);
+  }
 
   return attribution;
 };
@@ -1414,6 +1667,244 @@ export const recordBuilderTradeAttribution = async (
   return mapTradeAttribution(row);
 };
 
+export const recordBuilderRouteEvent = async (
+  transaction: DatabaseTransaction,
+  input: {
+    eventId?: string | null;
+    idempotencyKey?: string | null;
+    eventType: string;
+    appUserId?: string | null;
+    walletAddress?: string | null;
+    marketExternalId?: string | null;
+    externalOrderId?: string | null;
+    externalTradeId?: string | null;
+    source?: string | null;
+    builderCode?: string | null;
+    side?: "maker" | "taker" | "unknown" | null;
+    notionalAmountAtoms?: bigint | null;
+    builderFeeBps?: number | null;
+    builderFeeAmountAtoms?: bigint | null;
+    asset?: string | null;
+    rawReferenceId?: string | null;
+    occurredAt?: string | null;
+    rawJson?: Record<string, unknown>;
+  },
+): Promise<BuilderRouteEventRecord> => {
+  const configuredBuilderCode = getPolymarketBuilderCode();
+  const normalizedWallet = normalizeEvmWalletAddress(input.walletAddress);
+  const builderCode = input.builderCode?.trim() || null;
+  const idempotencyKey = input.idempotencyKey?.trim() || input.eventId?.trim() || crypto
+    .createHash("sha256")
+    .update(JSON.stringify({
+      eventType: input.eventType,
+      appUserId: input.appUserId ?? null,
+      walletAddress: normalizedWallet,
+      externalOrderId: input.externalOrderId ?? null,
+      externalTradeId: input.externalTradeId ?? null,
+      rawReferenceId: input.rawReferenceId ?? null,
+    }))
+    .digest("hex");
+  const ineligibleReason = !builderCode
+    ? "builder_code_missing"
+    : configuredBuilderCode && builderCode.toLowerCase() !== configuredBuilderCode.toLowerCase()
+      ? "builder_code_mismatch"
+      : input.appUserId && input.walletAddress && !normalizedWallet
+        ? "wallet_address_invalid"
+        : null;
+  const status: BuilderRouteEventRecord["status"] = ineligibleReason ? "ineligible" : "eligible";
+
+  const [row] = await transaction.query<BuilderRouteEventRow>(
+    `
+      insert into public.builder_route_events (
+        event_id,
+        idempotency_key,
+        event_type,
+        app_user_id,
+        wallet_address,
+        market_external_id,
+        external_order_id,
+        external_trade_id,
+        source,
+        builder_code,
+        side,
+        notional_amount_atoms,
+        builder_fee_bps,
+        builder_fee_amount_atoms,
+        asset,
+        raw_reference_id,
+        occurred_at,
+        status,
+        ineligible_reason,
+        raw_json,
+        ingested_at,
+        created_at
+      ) values (
+        $1,
+        $2,
+        $3,
+        $4::uuid,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
+        $17::timestamptz,
+        $18,
+        $19,
+        $20::jsonb,
+        now(),
+        now()
+      )
+      on conflict (idempotency_key)
+      do update set ingested_at = public.builder_route_events.ingested_at
+      returning id, idempotency_key, event_type, status, ineligible_reason
+    `,
+    [
+      input.eventId ?? null,
+      idempotencyKey,
+      input.eventType,
+      input.appUserId ?? null,
+      normalizedWallet ?? input.walletAddress ?? null,
+      input.marketExternalId ?? null,
+      input.externalOrderId ?? null,
+      input.externalTradeId ?? null,
+      input.source ?? "polymarket",
+      builderCode,
+      input.side ?? "unknown",
+      input.notionalAmountAtoms ?? null,
+      input.builderFeeBps ?? null,
+      input.builderFeeAmountAtoms ?? null,
+      input.asset ?? null,
+      input.rawReferenceId ?? null,
+      input.occurredAt ?? null,
+      status,
+      ineligibleReason,
+      JSON.stringify(input.rawJson ?? {}),
+    ],
+  );
+  if (!row) throw new Error("failed to record Builder route event");
+  return mapBuilderRouteEvent(row);
+};
+
+export const recordBuilderFeeRevenueLedger = async (
+  transaction: DatabaseTransaction,
+  input: {
+    tradeAttributionId: string;
+    builderCode: string;
+    confirmationSource: string;
+    idempotencyKey: string;
+    source?: string | null;
+    externalOrderId?: string | null;
+    externalTradeId?: string | null;
+    appUserId: string;
+    traderWalletAddress?: string | null;
+    referrerUserId?: string | null;
+    referralAttributionId?: string | null;
+    marketExternalId?: string | null;
+    side?: "maker" | "taker" | "unknown" | null;
+    notionalAmountAtoms: bigint;
+    builderFeeBps?: number | null;
+    builderFeeAmountAtoms: bigint;
+    asset?: string | null;
+    rawJson?: Record<string, unknown>;
+  },
+): Promise<{ id: string }> => {
+  const configuredBuilderCode = getPolymarketBuilderCode();
+  if (!configuredBuilderCode || input.builderCode.toLowerCase() !== configuredBuilderCode.toLowerCase()) {
+    throw new Error("builder_code_mismatch");
+  }
+  const [row] = await transaction.query<{ id: string }>(
+    `
+      insert into public.builder_fee_revenue_ledger (
+        builder_trade_attribution_id,
+        source,
+        external_order_id,
+        external_trade_id,
+        app_user_id,
+        trader_wallet_address,
+        referrer_user_id,
+        referral_attribution_id,
+        builder_code,
+        market_external_id,
+        side,
+        notional_amount_atoms,
+        builder_fee_bps,
+        builder_fee_amount_atoms,
+        asset,
+        status,
+        confirmation_source,
+        confirmed_at,
+        idempotency_key,
+        raw_json,
+        created_at,
+        updated_at
+      ) values (
+        $1::uuid,
+        $2,
+        $3,
+        $4,
+        $5::uuid,
+        $6,
+        $7::uuid,
+        $8::uuid,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14,
+        $15,
+        'confirmed',
+        $16,
+        now(),
+        $17,
+        $18::jsonb,
+        now(),
+        now()
+      )
+      on conflict (idempotency_key) do update set updated_at = public.builder_fee_revenue_ledger.updated_at
+      returning id
+    `,
+    [
+      input.tradeAttributionId,
+      input.source ?? "polymarket",
+      input.externalOrderId ?? null,
+      input.externalTradeId ?? null,
+      input.appUserId,
+      normalizeEvmWalletAddress(input.traderWalletAddress) ?? input.traderWalletAddress ?? null,
+      input.referrerUserId ?? null,
+      input.referralAttributionId ?? null,
+      input.builderCode,
+      input.marketExternalId ?? null,
+      input.side ?? "unknown",
+      input.notionalAmountAtoms,
+      input.builderFeeBps ?? null,
+      input.builderFeeAmountAtoms,
+      input.asset ?? "pUSD",
+      input.confirmationSource,
+      input.idempotencyKey,
+      JSON.stringify(input.rawJson ?? {}),
+    ],
+  );
+  if (!row) throw new Error("failed to record Builder-fee revenue ledger");
+  await transaction.query(
+    `
+      update public.ambassador_reward_ledger
+         set builder_fee_revenue_ledger_id = coalesce(builder_fee_revenue_ledger_id, $2::uuid)
+       where source_trade_attribution_id = $1::uuid
+    `,
+    [input.tradeAttributionId, row.id],
+  );
+  return row;
+};
+
 export const getBuilderTradeAttribution = async (
   executor: DatabaseExecutor,
   tradeAttributionId: string,
@@ -1464,6 +1955,11 @@ export const createRewardLedgerEntries = async (
   });
 
   for (const draft of drafts) {
+    const calculationBps = draft.rewardType === "platform_revenue"
+      ? (trade.directReferrerUserId ? config.platformShareBps : config.platformShareBps + config.directReferrerShareBps)
+      : draft.rewardType === "direct_referrer_commission"
+        ? config.directReferrerShareBps
+        : config.traderCashbackShareBps;
     await transaction.query(
       `
         insert into public.ambassador_reward_ledger (
@@ -1471,6 +1967,10 @@ export const createRewardLedgerEntries = async (
           source_trade_attribution_id,
           reward_type,
           amount_usdc_atoms,
+          calculation_bps,
+          chain_id,
+          asset,
+          idempotency_key,
           status,
           created_at
         ) values (
@@ -1478,12 +1978,24 @@ export const createRewardLedgerEntries = async (
           $3::uuid,
           $4,
           $5,
+          $6,
+          137,
+          'pUSD',
+          $7,
           'pending',
           now()
         )
         on conflict do nothing
       `,
-      [draft.recipientUserId ?? zeroUuid, zeroUuid, trade.id, draft.rewardType, draft.amountUsdcAtoms],
+      [
+        draft.recipientUserId ?? zeroUuid,
+        zeroUuid,
+        trade.id,
+        draft.rewardType,
+        draft.amountUsdcAtoms,
+        calculationBps,
+        `reward:${trade.id}:${draft.rewardType}`,
+      ],
     );
   }
 
@@ -1533,14 +2045,7 @@ export const markRewardsPayable = async (
     `,
     [tradeAttributionId],
   );
-  const ledger = rows.map(mapRewardLedger);
-  const recipientIds = new Set(
-    ledger.map((row) => row.recipientUserId).filter((recipientUserId): recipientUserId is string => recipientUserId !== null),
-  );
-  for (const recipientUserId of recipientIds) {
-    await maybeCreateAutoPayoutRequest(transaction, recipientUserId, config);
-  }
-  return ledger;
+  return rows.map(mapRewardLedger);
 };
 
 export const markTradeRewardsPayable = markRewardsPayable;
@@ -1629,41 +2134,6 @@ export const findOpenRewardPayoutForRecipient = async (
   return row ? mapPayout(row) : null;
 };
 
-export type AutoPayoutRequestDecision =
-  | { action: "disabled" }
-  | { action: "below_threshold" }
-  | { action: "missing_wallet" }
-  | { action: "invalid_wallet" }
-  | { action: "duplicate_open_payout" }
-  | { action: "create"; destinationValue: string; amountUsdcAtoms: bigint };
-
-export const decideAutoPayoutRequest = (input: {
-  config: AmbassadorRewardsConfig;
-  payableBalance: bigint;
-  payoutWallet: { chain: string; walletAddress: string; assetPreference: string } | null;
-  openPayout: AmbassadorRewardPayoutRecord | null;
-}): AutoPayoutRequestDecision => {
-  validateRewardShareConfig(input.config);
-  if (!input.config.enabled || !input.config.autoPayoutRequestEnabled) return { action: "disabled" };
-  if (input.payableBalance < input.config.minPayoutUsdcAtoms || input.payableBalance <= 0n) {
-    return { action: "below_threshold" };
-  }
-  if (input.openPayout) return { action: "duplicate_open_payout" };
-  if (!input.payoutWallet || input.payoutWallet.chain !== "polygon" || input.payoutWallet.assetPreference !== "pUSD") {
-    return { action: "missing_wallet" };
-  }
-
-  try {
-    return {
-      action: "create",
-      destinationValue: normalizePayoutWalletAddress(input.payoutWallet.walletAddress),
-      amountUsdcAtoms: input.payableBalance,
-    };
-  } catch {
-    return { action: "invalid_wallet" };
-  }
-};
-
 const insertRewardPayoutRequest = async (
   transaction: DatabaseTransaction,
   input: {
@@ -1741,48 +2211,6 @@ const insertRewardPayoutRequest = async (
     throw new Error("failed to request reward payout");
   }
   return mapPayout(row);
-};
-
-export const maybeCreateAutoPayoutRequest = async (
-  transaction: DatabaseTransaction,
-  recipientUserId: string,
-  config = getAmbassadorRewardsConfig(),
-): Promise<AmbassadorRewardPayoutRecord | null> => {
-  validateRewardShareConfig(config);
-  if (!config.enabled || !config.autoPayoutRequestEnabled) return null;
-
-  const summary = await getRewardSummaryForUser(transaction, recipientUserId);
-  const payoutWallet = await getPayoutWalletForUser(transaction, recipientUserId);
-  const openPayout = await findOpenRewardPayoutForRecipient(transaction, recipientUserId);
-  const decision = decideAutoPayoutRequest({
-    config,
-    payableBalance: summary.payableRewards,
-    payoutWallet,
-    openPayout,
-  });
-
-  if (decision.action !== "create") return null;
-
-  const payout = await insertRewardPayoutRequest(transaction, {
-    recipientUserId,
-    amountUsdcAtoms: decision.amountUsdcAtoms,
-    destinationType: "wallet",
-    destinationValue: decision.destinationValue,
-    config,
-  });
-  await transaction.query(
-    `
-      update public.ambassador_reward_ledger
-      set status = 'approved',
-          approved_at = coalesce(approved_at, now()),
-          reserved_by_payout_id = $2::uuid,
-          reserved_at = coalesce(reserved_at, now())
-      where recipient_user_id = $1::uuid
-        and status = 'payable'
-    `,
-    [recipientUserId, payout.id],
-  );
-  return payout;
 };
 
 const flagPayoutWalletReuse = async (
