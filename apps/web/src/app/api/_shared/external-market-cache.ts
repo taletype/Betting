@@ -205,7 +205,7 @@ const toStatus = (row: ExternalMarketCacheRow): PublicExternalMarketRecord["stat
     cancelled: typeof flags.cancelled === "boolean" ? flags.cancelled : row.resolution_status === "cancelled",
     acceptingOrders: typeof flags.acceptingOrders === "boolean" ? flags.acceptingOrders : undefined,
     enableOrderBook: typeof flags.enableOrderBook === "boolean" ? flags.enableOrderBook : undefined,
-    status: row.resolution_status ?? undefined,
+    status: row.resolution_status && row.resolution_status !== "open" ? row.resolution_status : undefined,
     closeTime: row.close_time ?? undefined,
     endDate: row.close_time ?? undefined,
   });

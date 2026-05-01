@@ -9,16 +9,21 @@ const getStatusFlags = (market: ExternalMarketApiRecord): Record<string, unknown
 };
 
 const readBooleanFlag = (record: Record<string, unknown>, ...keys: string[]): boolean | undefined => {
+  let sawFalse = false;
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === "boolean") return value;
+    if (typeof value === "boolean") {
+      if (value) return true;
+      sawFalse = true;
+      continue;
+    }
     if (typeof value === "string") {
       const normalized = value.trim().toLowerCase();
       if (normalized === "true") return true;
-      if (normalized === "false") return false;
+      if (normalized === "false") sawFalse = true;
     }
   }
-  return undefined;
+  return sawFalse ? false : undefined;
 };
 
 export const getExternalPolymarketTradability = (
@@ -26,14 +31,14 @@ export const getExternalPolymarketTradability = (
   options: { stale?: boolean; now?: Date } = {},
 ): PolymarketTradabilityResult => {
   if (!market || market.source !== "polymarket") {
-    return getPolymarketTradability({ status: "closed", stale: true }, { now: options.now });
+    return getPolymarketTradability({ status: "open" }, { now: options.now });
   }
 
   const flags = getStatusFlags(market);
 
   return getPolymarketTradability({
     status: market.status,
-    active: readBooleanFlag(flags, "active") ?? (market.status === "open" ? true : undefined),
+    active: readBooleanFlag(flags, "active"),
     closed: readBooleanFlag(flags, "closed") ?? (market.status === "closed" ? true : undefined),
     archived: readBooleanFlag(flags, "archived") ?? (market.status === "cancelled" ? true : undefined),
     cancelled: readBooleanFlag(flags, "cancelled", "canceled") ?? (market.status === "cancelled" ? true : undefined),

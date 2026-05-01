@@ -183,7 +183,7 @@ const feedCopy: Record<AppLocale, {
     allEmptyBody: "Please try again later.",
     searchEmpty: "No markets found for \"{q}\"",
     clearSearch: "Clear search",
-    loadFailedTitle: "Market data could not be refreshed",
+    loadFailedTitle: "Market data temporarily unavailable",
     refreshMarkets: "Refresh markets",
     emptyTitle: "No market data right now",
     emptyActiveSr: "No active market data right now",
@@ -264,7 +264,7 @@ const feedCopy: Record<AppLocale, {
     allEmptyBody: "請稍後再試",
     searchEmpty: "找不到符合「{q}」的市場",
     clearSearch: "清除搜尋",
-    loadFailedTitle: "市場資料暫時未能更新",
+    loadFailedTitle: "市場資料暫時不可用",
     refreshMarkets: "重新整理市場",
     emptyTitle: "暫時未有市場資料",
     emptyActiveSr: "暫時未有活躍市場資料",
@@ -345,7 +345,7 @@ const feedCopy: Record<AppLocale, {
     allEmptyBody: "请稍后再试",
     searchEmpty: "找不到符合“{q}”的市场",
     clearSearch: "清除搜索",
-    loadFailedTitle: "市场数据暂时未能更新",
+    loadFailedTitle: "市场数据暂时不可用",
     refreshMarkets: "重新整理市场",
     emptyTitle: "暂时没有市场数据",
     emptyActiveSr: "暂时没有活跃市场数据",
@@ -653,15 +653,15 @@ const getMarketActionLabel = (
   market: ExternalMarketApiRecord,
   _topReason: PolymarketRoutingReadiness | null,
   _disabledReasonLabel: (reason: PolymarketRoutingReadiness) => string,
-  copy: ReturnType<typeof getLocaleCopy>["research"],
+  _copy: ReturnType<typeof getLocaleCopy>["research"],
   ui: (typeof feedCopy)[AppLocale],
 ): string => {
   if (isBrowseOnlyMarket(market)) return ui.browseOnlyCta;
   if (_topReason === "wallet_not_connected") return "連接錢包";
   if (_topReason === "credentials_missing") return "設定 Polymarket 交易權限";
   if (_topReason === "submitter_unavailable" || _topReason === "feature_disabled" || _topReason === "submit_mode_disabled") return "實盤提交已停用";
-  if (_topReason === "signature_required") return "準備自行簽署訂單";
-  return copy.tradeViaPolymarket;
+  if (_topReason === "signature_required") return "需要用戶自行簽署訂單";
+  return "準備建立訂單（需自行簽署）";
 };
 
 const isAllowlistedPolymarketBetaUser = (user: { id: string; email: string | null } | null): boolean => {
@@ -966,7 +966,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
                     marketTradable: !isBrowseOnlyMarket(market),
                     orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && (market.lastTradePrice ?? market.bestAsk ?? market.bestBid)),
                   });
-                  const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+                  const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : "準備建立訂單（需自行簽署）";
                   const marketActionLabel = getMarketActionLabel(market, marketTopReason, disabledReasonLabel, copy, ui);
                   const marketBadges = getMarketBadges(market, ui, locale);
                   const stale = isExternalMarketStale(market);
@@ -1028,7 +1028,7 @@ export async function renderExternalMarketsPage(locale: AppLocale, params?: Mark
               marketTradable: !isBrowseOnlyMarket(market),
               orderValid: Boolean(market.outcomes[0]?.externalOutcomeId && hasExternalMarketPriceData(market)),
             });
-            const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : copy.submitUserSignedOrder;
+            const marketDisabledLabel = marketTopReason ? disabledReasonLabel(marketTopReason) : "準備建立訂單（需自行簽署）";
             const marketActionLabel = getMarketActionLabel(market, marketTopReason, disabledReasonLabel, copy, ui);
             const marketShareUrl = `${getSiteUrl()}${detailPath}`;
             const sparklinePoints = toSparklinePoints(market);

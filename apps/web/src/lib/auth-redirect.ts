@@ -4,11 +4,30 @@ const controlCharacters = /[\u0000-\u001F\u007F]/;
 const normalizeSiteOrigin = (value: string): string => {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (!trimmed) return "";
-  return trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`;
+  const withProtocol = trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    url.protocol = "https:";
+    url.pathname = "";
+    url.search = "";
+    url.hash = "";
+    return url.origin;
+  } catch {
+    return "";
+  }
 };
 
 const isProductionRuntime = (): boolean =>
-  process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+  process.env.NODE_ENV === "production" || process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production";
+
+const isLocalhostOrigin = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return ["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname);
+  } catch {
+    return /\b(localhost|127\.0\.0\.1|0\.0\.0\.0)\b/i.test(value);
+  }
+};
 
 export const getMagicLinkSiteUrl = (): string => {
   const configured =
@@ -17,7 +36,7 @@ export const getMagicLinkSiteUrl = (): string => {
     process.env.VERCEL_URL;
   const normalized = configured ? normalizeSiteOrigin(configured) : "";
 
-  if (normalized) return normalized;
+  if (normalized && !(isProductionRuntime() && isLocalhostOrigin(normalized))) return normalized;
   if (isProductionRuntime()) {
     console.error("magic link site URL is not configured for production");
     throw new Error("AUTH_SITE_URL_REQUIRED");

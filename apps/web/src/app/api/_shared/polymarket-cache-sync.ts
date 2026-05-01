@@ -73,16 +73,21 @@ const readRawRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 const readBooleanFlag = (record: Record<string, unknown>, ...keys: string[]): boolean | null => {
+  let sawFalse = false;
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === "boolean") return value;
+    if (typeof value === "boolean") {
+      if (value) return true;
+      sawFalse = true;
+      continue;
+    }
     if (typeof value === "string") {
       const normalized = value.trim().toLowerCase();
       if (normalized === "true") return true;
-      if (normalized === "false") return false;
+      if (normalized === "false") sawFalse = true;
     }
   }
-  return null;
+  return sawFalse ? false : null;
 };
 
 const getStatusFlags = (rawJson: unknown): Record<string, unknown> => {

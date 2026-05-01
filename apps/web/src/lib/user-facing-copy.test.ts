@@ -128,7 +128,7 @@ test("zh-HK Polymarket live trading readiness copy exposes every explicit state"
     "市場只供瀏覽",
     "價格或數量無效",
     "需要用戶自行簽署訂單",
-    "準備自行簽署訂單",
+    "準備建立訂單（需自行簽署）",
     "已提交到 Polymarket",
   ]) {
     assert.ok(Object.values(readiness).includes(text), text);

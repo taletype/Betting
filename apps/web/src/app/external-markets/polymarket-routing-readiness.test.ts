@@ -55,7 +55,7 @@ test("single trading readiness object exposes zh-HK reason, missing checks, and 
   const ready = getPolymarketTradingReadiness({ ...readyInput(), betaUserAllowlisted: true });
   assert.equal(ready.enabled, true);
   assert.equal(ready.safeToSubmit, true);
-  assert.equal(ready.disabledReason, "透過 Polymarket 交易");
+  assert.equal(ready.disabledReason, "準備建立訂單（需自行簽署）");
   assert.deepEqual(ready.missingChecks, []);
 });
 

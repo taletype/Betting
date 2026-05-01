@@ -106,7 +106,7 @@ const toNumber = (value: string | number | null): number | null => {
 const mapExternalMarketStatus = (row: ExternalMarketRow): ExternalMarketRow["status"] =>
   row.source === "polymarket"
     ? resolvePolymarketMarketStatus({
-      status: row.status,
+      status: row.status === "open" ? undefined : row.status,
       closeTime: row.close_time ?? undefined,
       endDate: row.end_time ?? undefined,
       resolvedAt: row.resolved_at ?? undefined,

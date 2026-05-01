@@ -43,11 +43,7 @@ const getPendingReferralCode = (request: NextRequest): string | null =>
   normalizeReferralCode(request.cookies.get(pendingReferralCookieName)?.value);
 
 const authCallbackOtpTypes = new Set<AuthCallbackOtpType>([
-  "signup",
-  "invite",
   "magiclink",
-  "recovery",
-  "email_change",
   "email",
 ]);
 

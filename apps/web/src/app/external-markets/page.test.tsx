@@ -686,6 +686,10 @@ test("Polymarket page browsing works without builder code and shows disabled tra
           lastTradePrice: 0.41,
           volume24h: 10,
           volumeTotal: 100,
+          sourceProvenance: {
+            statusFlags: { active: true, closed: false, acceptingOrders: true, enableOrderBook: true },
+            staleAfter: "2099-01-01T00:00:00.000Z",
+          },
           lastSyncedAt: "2026-05-01T01:00:00.000Z",
           createdAt: "2026-05-01T01:00:00.000Z",
           updatedAt: "2026-05-01T01:00:00.000Z",
@@ -753,6 +757,10 @@ test("Polymarket detail page renders synced market detail", async (t) => {
           lastTradePrice: 0.51,
           volume24h: 10,
           volumeTotal: 100,
+          sourceProvenance: {
+            statusFlags: { active: true, closed: false, acceptingOrders: true, enableOrderBook: true },
+            staleAfter: "2099-01-01T00:00:00.000Z",
+          },
           lastSyncedAt: "2026-05-01T01:00:00.000Z",
           createdAt: "2026-05-01T01:00:00.000Z",
           updatedAt: "2026-05-01T01:00:00.000Z",
@@ -779,13 +787,13 @@ test("Polymarket detail page renders synced market detail", async (t) => {
   assert.match(markup, /你正在使用推薦碼：HKREF001/);
   assert.match(markup, /推薦分成/);
   assert.match(markup, /Orderbook snapshot/);
-  assert.match(markup, /透過 Polymarket 交易/);
+  assert.match(markup, /建立用戶自行簽署訂單/);
   assert.match(markup, /來源：Polymarket/);
   assert.match(markup, /資料來源：Polymarket API/);
   assert.match(markup, /上次同步/);
   assert.doesNotMatch(markup, /前往 Polymarket|Open on Polymarket/);
   assert.match(markup, /mobile-trade-sheet/);
-  assert.match(markup, /<summary><span>透過 Polymarket 交易<\/span><small>連接錢包<\/small><\/summary>/);
+  assert.match(markup, /<summary><span>連接錢包<\/span><small>連接錢包<\/small><\/summary>/);
   assert.match(markup, /data-testid="readiness-checklist"/);
   assert.match(markup, /<button[^>]*>連接錢包<\/button>/);
   assert.match(markup, /複製市場推薦連結/);
@@ -1292,7 +1300,7 @@ test("cancelled Polymarket detail page renders safely with disabled trade CTA", 
   assert.match(markup, /Cancelled market detail remains browsable/);
   assert.match(markup, /已取消/);
   assert.match(markup, /市場已取消/);
-  assert.match(markup, /透過 Polymarket 交易/);
+  assert.doesNotMatch(markup, /<button[^>]*>透過 Polymarket 交易<\/button>/);
   assert.match(markup, /disabled=""/);
 });
 
@@ -1327,10 +1335,10 @@ test("Polymarket detail page renders safe unavailable state when external fetch 
     searchParams: Promise.resolve({ ref: "timeoutref" }),
   }));
 
-  assert.match(markup, /市場資料暫時未能更新/);
+  assert.match(markup, /市場資料暫時不可用/);
   assert.match(markup, /外部 Polymarket \/ Gamma \/ CLOB 資料暫時不可用/);
   assert.match(markup, /你正在使用推薦碼：TIMEOUTREF/);
-  assert.match(markup, /透過 Polymarket 交易/);
+  assert.match(markup, /建立用戶自行簽署訂單/);
   assert.match(markup, /disabled=""/);
   assert.match(markup, /路由交易保持停用/);
 });
@@ -1507,7 +1515,7 @@ test("Polymarket page renders load error when market fetch fails", async (t) => 
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /市場資料暫時未能更新/);
+  assert.match(markup, /市場資料暫時不可用/);
   assert.match(markup, /已設定的 API 或同站 API route 無法連線/);
   assert.doesNotMatch(markup, /後端尚未提供 \/external\/markets/);
   assert.doesNotMatch(markup, /暫時未有市場資料/);
@@ -1532,7 +1540,7 @@ test("Polymarket page separates source failure from safe empty state", async (t)
   });
 
   const markup = renderToStaticMarkup(await PolymarketPage());
-  assert.match(markup, /市場資料暫時未能更新/);
+  assert.match(markup, /市場資料暫時不可用/);
   assert.match(markup, /已設定的市場資料來源暫時無法連線。/);
   assert.match(markup, /請稍後再試；瀏覽市場不需要登入或連接錢包。/);
   assert.match(markup, /external_markets, gamma-api\.polymarket\.com\/events/);
@@ -1977,7 +1985,7 @@ test("Polymarket page renders operator-visible diagnostics when production API b
 
   await withNodeEnv("production", async () => {
     const markup = renderToStaticMarkup(await PolymarketPage());
-    assert.match(markup, /市場資料暫時未能更新/);
+    assert.match(markup, /市場資料暫時不可用/);
     assert.match(markup, /API_BASE_URL \/ NEXT_PUBLIC_API_BASE_URL 未設定/);
     assert.match(markup, /\/api\/external\/markets fallback/);
     assert.match(markup, /後端 \/external\/markets 返回 500/);

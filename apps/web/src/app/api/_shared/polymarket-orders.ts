@@ -30,17 +30,6 @@ export const polymarketDisabledReasonZh: Record<PolymarketPreviewDisabledCode, s
   submitter_unavailable: "實盤提交已停用",
 };
 
-const marketNotTradableFallbackLabels: Record<Exclude<PolymarketTradabilityCode, "tradable">, string> = {
-  closed: "市場已關閉",
-  resolved: "市場已結算",
-  cancelled: "市場已取消",
-  inactive: "市場暫不可交易",
-  not_accepting_orders: "市場暫不接受訂單",
-  orderbook_disabled: "訂單簿暫不可用",
-  stale: "市場資料可能過期",
-  unknown: "市場只供瀏覽",
-};
-
 export interface PolymarketOrderPreviewInput {
   marketSource?: unknown;
   marketExternalId?: unknown;
@@ -191,6 +180,17 @@ export const previewPolymarketOrder = async (
       : price;
   const notional = price !== null && baseSize !== null ? price * baseSize : null;
   const disabledReasonCodes: PolymarketPreviewDisabledCode[] = [];
+  const previewMarket = market
+    ? {
+        source: "polymarket" as const,
+        externalId: market.externalId,
+        slug: market.slug,
+        title: market.title,
+        tradable,
+        tradabilityCode: tradability.code,
+        tradabilityLabel: tradability.labelZhHk,
+      }
+    : null;
 
   if (!input.walletConnected) disabledReasonCodes.push("wallet_not_connected");
   if (!input.l2CredentialsPresent) disabledReasonCodes.push("credentials_missing");
@@ -198,11 +198,11 @@ export const previewPolymarketOrder = async (
   if (!builderCodeConfigured) disabledReasonCodes.push("builder_code_missing");
   if (!routedTradingEnabled) disabledReasonCodes.push("feature_disabled");
   if (!input.submitterAvailable) disabledReasonCodes.push("submitter_unavailable");
-  if (!tradable) disabledReasonCodes.push("market_not_tradable");
+  if (!tradable && disabledReasonCodes.length === 0) disabledReasonCodes.push("market_not_tradable");
   if (!orderValid) disabledReasonCodes.push("invalid_order");
   const disabledReasons = disabledReasonCodes.map((code) =>
     code === "market_not_tradable" && tradability.code !== "tradable"
-      ? marketNotTradableFallbackLabels[tradability.code] ?? tradability.labelZhHk
+      ? previewMarket?.tradabilityLabel ?? tradability.labelZhHk
       : polymarketDisabledReasonZh[code],
   );
 
@@ -212,17 +212,7 @@ export const previewPolymarketOrder = async (
     routedTradingEnabled,
     disabledReasonCodes,
     disabledReasons,
-    market: market
-      ? {
-          source: "polymarket",
-          externalId: market.externalId,
-          slug: market.slug,
-          title: market.title,
-          tradable,
-          tradabilityCode: tradability.code,
-          tradabilityLabel: tradability.labelZhHk,
-        }
-      : null,
+    market: previewMarket,
     order: {
       tokenId: tokenId ?? null,
       outcomeExternalId: outcomeExternalId ?? null,

@@ -106,6 +106,15 @@ test("market state labels never mask missing credentials or disabled submitter a
     );
     assert.match(disabledSubmitter.disabledReasons.join(" "), /實盤提交已停用/);
     assert.doesNotMatch(disabledSubmitter.disabledReasons.join(" "), /市場已關閉/);
+
+    const missingCredentialsOnClosedMarket = await previewPolymarketOrder(
+      { ...baseInput(), l2CredentialsPresent: false },
+      [{ ...market, status: "closed", sourceProvenance: { statusFlags: { closed: true } } }],
+      new Date("2026-05-01T00:00:00.000Z"),
+    );
+    assert.match(missingCredentialsOnClosedMarket.disabledReasons.join(" "), /設定 Polymarket 交易權限/);
+    assert.doesNotMatch(missingCredentialsOnClosedMarket.disabledReasons.join(" "), /市場已關閉/);
+    assert.equal(missingCredentialsOnClosedMarket.market?.tradabilityLabel, "市場已關閉");
   });
 });
 

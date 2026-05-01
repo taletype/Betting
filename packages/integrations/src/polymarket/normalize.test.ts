@@ -191,3 +191,32 @@ test("status open without live Polymarket order flags is browse-only unknown, no
   assert.equal(result.code, "unknown");
   assert.equal(result.labelZhHk, "市場只供瀏覽");
 });
+
+test("status open with incomplete live flags remains unknown even when close date is past", () => {
+  const now = new Date("2026-05-01T00:00:00.000Z");
+  const result = getPolymarketTradability({
+    status: "open",
+    endDate: "2026-04-01T00:00:00.000Z",
+  }, { now });
+
+  assert.equal(result.tradable, false);
+  assert.equal(result.code, "unknown");
+  assert.equal(resolvePolymarketMarketStatus({
+    status: "open",
+    endDate: "2026-04-01T00:00:00.000Z",
+  }, now), "open");
+});
+
+test("strong live order flags stay tradable before stale and past-date fallbacks", () => {
+  const now = new Date("2026-05-01T00:00:00.000Z");
+  const result = getPolymarketTradability({
+    active: true,
+    closed: false,
+    accepting_orders: true,
+    stale: true,
+    endDate: "2026-04-01T00:00:00.000Z",
+  }, { now });
+
+  assert.equal(result.tradable, true);
+  assert.equal(result.code, "tradable");
+});

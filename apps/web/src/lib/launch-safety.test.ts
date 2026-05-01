@@ -281,7 +281,7 @@ test("ambassador stays public while account rewards are auth-protected", () => {
   assert.match(middleware, /"\/rewards"/);
 });
 
-test("Trade via Polymarket ticket is disabled by default", () => {
+test("user-signed Polymarket ticket is disabled by default", () => {
   const originalFlag = process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   delete process.env.POLYMARKET_ROUTED_TRADING_ENABLED;
   try {
@@ -302,7 +302,7 @@ test("Trade via Polymarket ticket is disabled by default", () => {
       }),
     );
 
-    assert.match(markup, /透過 Polymarket 交易/);
+    assert.match(markup, /建立用戶自行簽署訂單/);
     assert.match(markup, /交易介面預覽/);
     assert.match(markup, /用戶需要自行簽署訂單/);
     assert.match(markup, /本平台不會代用戶下注或交易/);

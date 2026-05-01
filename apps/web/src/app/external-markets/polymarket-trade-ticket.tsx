@@ -70,16 +70,16 @@ const getTradeTicketActionLabel = (
   input: PolymarketRoutingReadinessInput,
   readiness: ReturnType<typeof getPolymarketRoutingReadiness>,
 ): string => {
+  if (!input.marketTradable) return input.marketTradabilityLabel ?? "市場只供瀏覽";
   if (!input.walletConnected || input.walletAddressKnown === false) return "連接錢包";
   if (input.walletFundsSufficient === false || input.balanceAllowanceReady === false || input.fundingAvailable === false) return "增值錢包";
   if (input.walletVerified === false) return "驗證此 EVM 錢包";
   if (!input.hasCredentials) return "設定 Polymarket 交易權限";
-  if (!input.marketTradable) return input.marketTradabilityLabel ?? "市場只供瀏覽";
   if (input.orderValid === false) return "請輸入有效價格及數量";
-  if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "準備自行簽署訂單";
+  if (readiness === "signature_required" || input.userSigningAvailable === false || !input.userSigned) return "需要用戶自行簽署訂單";
   if (input.submitModeEnabled === false || !input.submitterAvailable || input.submitterEndpointAvailable === false || !input.featureEnabled) return "實盤提交已停用";
   if (input.submitted) return "訂單已提交";
-  return "準備自行簽署訂單";
+  return "準備建立訂單（需自行簽署）";
 };
 
 type SignedPolymarketOrder = Record<string, unknown> & {
@@ -631,7 +631,7 @@ export function PolymarketTradeTicket(props: Props) {
         setFlowStatus("請使用上方增值錢包流程為你自己的錢包增值；平台不託管資金。");
       } else if (tradeButtonLabel === "驗證此 EVM 錢包") {
         setFlowStatus("請先到帳戶頁簽署證明，完成 EVM 錢包驗證。");
-      } else if (tradeButtonLabel === "準備自行簽署訂單") {
+      } else if (tradeButtonLabel === "需要用戶自行簽署訂單" || tradeButtonLabel === "準備建立訂單（需自行簽署）") {
         await signOrder();
       }
     } catch (error) {
@@ -697,7 +697,7 @@ export function PolymarketTradeTicket(props: Props) {
     <div className="trade-ticket stack" data-testid="polymarket-trade-ticket">
       <div className="ticket-header">
         <div>
-          <strong>{copy.tradeViaPolymarket}</strong>
+          <strong>建立用戶自行簽署訂單</strong>
         </div>
         <span className="badge badge-neutral">非託管</span>
       </div>
@@ -720,7 +720,7 @@ export function PolymarketTradeTicket(props: Props) {
         <div className="section-heading-row">
           <strong>{copy.readiness}</strong>
           <span className={`badge badge-${topBlockingReason ? "warning" : "success"}`}>
-            {topBlockingReason ? readinessLabel : "可以提交"}
+            {topBlockingReason ? readinessLabel : "可建立訂單"}
           </span>
         </div>
         <div className="checklist-list" data-testid="readiness-checklist">

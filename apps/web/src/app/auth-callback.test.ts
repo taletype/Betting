@@ -95,6 +95,27 @@ test("auth callback rejects unsupported token hash types before Supabase verify"
   }
 });
 
+test("auth callback only accepts email and magiclink token hash types", async () => {
+  const verified: Array<{ token_hash: string; type: string }> = [];
+  setAuthCallbackDependenciesForTests({
+    supabaseServerClientFactory: mockSupabaseFactory({ verified, userId: "user-1" }) as never,
+    referralApplier: (async () => null) as never,
+  });
+  try {
+    const emailResponse = await GET(new NextRequest("https://bet.example/auth/callback?token_hash=email-hash&type=email&next=/account"));
+    assert.equal(emailResponse.headers.get("location"), "https://bet.example/account");
+    assert.deepEqual(verified, [{ token_hash: "email-hash", type: "email" }]);
+
+    const recoveryResponse = await GET(new NextRequest("https://bet.example/auth/callback?token_hash=recovery-hash&type=recovery&next=/account"));
+    const recoveryLocation = new URL(recoveryResponse.headers.get("location") ?? "");
+    assert.equal(recoveryLocation.pathname, "/login");
+    assert.equal(recoveryLocation.searchParams.get("auth"), "callback_failed");
+    assert.deepEqual(verified, [{ token_hash: "email-hash", type: "email" }]);
+  } finally {
+    setAuthCallbackDependenciesForTests({});
+  }
+});
+
 test("auth callback applies pending referral only after session exists", async () => {
   const applied: Array<{ userId: string; code: string }> = [];
   setAuthCallbackDependenciesForTests({

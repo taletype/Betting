@@ -62,4 +62,25 @@ test("magic link site URL prefers production URL envs and never falls back to lo
   }, () => {
     assert.throws(() => getMagicLinkSiteUrl(), /AUTH_SITE_URL_REQUIRED/);
   });
+
+  await withEnv({
+    NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
+    VERCEL_PROJECT_PRODUCTION_URL: undefined,
+    VERCEL_URL: undefined,
+    NODE_ENV: "production",
+    VERCEL: "1",
+  }, () => {
+    assert.throws(() => getMagicLinkSiteUrl(), /AUTH_SITE_URL_REQUIRED/);
+  });
+});
+
+test("magic link site URL normalizes configured production origins to https", async () => {
+  await withEnv({
+    NEXT_PUBLIC_SITE_URL: "http://bet.example/path?ignored=1",
+    VERCEL_PROJECT_PRODUCTION_URL: undefined,
+    VERCEL_URL: undefined,
+    NODE_ENV: "production",
+  }, () => {
+    assert.equal(getMagicLinkSiteUrl(), "https://bet.example");
+  });
 });

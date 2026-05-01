@@ -114,7 +114,7 @@ export const getPolymarketTradingReadiness = (
 
   return {
     enabled: safeToSubmit,
-    disabledReason: safeToSubmit ? "透過 Polymarket 交易" : tradingDisabledReasonZh[missingChecks[0] ?? "routedTradingEnabled"],
+    disabledReason: safeToSubmit ? "準備建立訂單（需自行簽署）" : tradingDisabledReasonZh[missingChecks[0] ?? "routedTradingEnabled"],
     missingChecks,
     safeToSubmit,
   };
@@ -231,7 +231,7 @@ export const getPolymarketReadinessChecklist = (
       label: "用戶自行簽署",
       explanation: input.userSigningAvailable === false || !input.userSigned ? "訂單提交前必須由用戶錢包簽署。" : "訂單已由用戶錢包簽署。",
       status: input.userSigningAvailable === false || !input.userSigned ? "missing" : "complete",
-      actionLabel: input.userSigningAvailable === false || !input.userSigned ? "準備自行簽署訂單" : undefined,
+      actionLabel: input.userSigningAvailable === false || !input.userSigned ? "需要用戶自行簽署訂單" : undefined,
     },
     {
       id: "builder_code",
