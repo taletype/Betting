@@ -124,6 +124,12 @@ const recordAdminAuditLog = async (input: {
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+const requireAdminReasonField = (value: unknown, message: string): string => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) throw new Error(message);
+  return normalized;
+};
+
 const adminPermissionDeniedResponse = (
   permission: AdminPermission,
   decision: ReturnType<typeof evaluateAdminPermission>,
@@ -714,8 +720,16 @@ async function handleRequest(
         const permissionError = requireAdminPermissionResponse(user, "ambassador_code:manage");
         if (permissionError) return permissionError;
         const codeId = apiPath.split("/")[3] ?? "";
+        const body = (await request.json().catch(() => ({}))) as { reason?: string };
+        const reason = requireAdminReasonField(body.reason, "admin disable reason is required");
         const result = normalizeApiPayload(await disableAdminAmbassadorCodeDb(codeId));
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "ambassador_code.disable", entityType: "ambassador_code", entityId: codeId });
+        await recordAdminAuditLog({
+          actorUserId: adminActorId,
+          action: "ambassador_code.disable",
+          entityType: "ambassador_code",
+          entityId: codeId,
+          metadata: { reason },
+        });
         return NextResponse.json(result);
       }
 
@@ -784,8 +798,9 @@ async function handleRequest(
         if (permissionError) return permissionError;
         const tradeAttributionId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { reason?: string };
-        const result = await voidRewardsForTradeAttributionDb(tradeAttributionId, String(body.reason ?? ""));
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "reward_ledger.void", entityType: "builder_trade_attribution", entityId: tradeAttributionId, metadata: { reason: body.reason ?? "" } });
+        const reason = requireAdminReasonField(body.reason, "void reason is required");
+        const result = await voidRewardsForTradeAttributionDb(tradeAttributionId, reason);
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "reward_ledger.void", entityType: "builder_trade_attribution", entityId: tradeAttributionId, metadata: { reason } });
         return NextResponse.json(result);
       }
 
@@ -815,8 +830,9 @@ async function handleRequest(
         if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
-        const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? "" } });
+        const notes = requireAdminReasonField(body.notes, "payout failure reason is required");
+        const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
         return NextResponse.json(result);
       }
 
@@ -825,8 +841,9 @@ async function handleRequest(
         if (permissionError) return permissionError;
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
-        const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: String(body.notes ?? "") });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? "" } });
+        const notes = requireAdminReasonField(body.notes, "payout cancellation reason is required");
+        const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
         return NextResponse.json(result);
       }
 
