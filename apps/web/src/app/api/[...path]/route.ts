@@ -163,14 +163,47 @@ const recordAdminAuditLog = async (input: {
   entityType: string;
   entityId: string;
   metadata?: Record<string, unknown>;
+  beforeStatus?: string | null;
+  afterStatus?: string | null;
+  note?: string | null;
 }) => {
   await createDatabaseClient().query(
     `
-      insert into public.admin_audit_log (actor_user_id, action, entity_type, entity_id, metadata, created_at)
-      values ($1::uuid, $2, $3, $4, $5::jsonb, now())
+      insert into public.admin_audit_log (
+        actor_user_id,
+        actor_admin_user_id,
+        action,
+        entity_type,
+        target_type,
+        entity_id,
+        target_id,
+        before_status,
+        after_status,
+        note,
+        metadata,
+        created_at
+      )
+      values ($1::uuid, $1::uuid, $2, $3, $3, $4, $4, $5, $6, $7, $8::jsonb, now())
     `,
-    [input.actorUserId, input.action, input.entityType, input.entityId, JSON.stringify(input.metadata ?? {})],
+    [
+      input.actorUserId,
+      input.action,
+      input.entityType,
+      input.entityId,
+      input.beforeStatus ?? (typeof input.metadata?.beforeStatus === "string" ? input.metadata.beforeStatus : null),
+      input.afterStatus ?? (typeof input.metadata?.afterStatus === "string" ? input.metadata.afterStatus : null),
+      input.note ?? (typeof input.metadata?.notes === "string" ? input.metadata.notes : null),
+      JSON.stringify(input.metadata ?? {}),
+    ],
   );
+};
+
+const readPayoutStatusForAudit = async (payoutId: string): Promise<string | null> => {
+  const [row] = await createDatabaseClient().query<{ status: string }>(
+    `select status from public.ambassador_reward_payouts where id = $1::uuid limit 1`,
+    [payoutId],
+  );
+  return row?.status ?? null;
 };
 
 const requiredAmbassadorHealthEnv = [
@@ -1333,7 +1366,7 @@ async function handleRequest(
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const result = await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.approve", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? null } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.approve", entityType: "payout_request", entityId: payoutId, beforeStatus: "requested", afterStatus: result.status, metadata: { beforeStatus: "requested", afterStatus: result.status, notes: body.notes ?? null } });
         return NextResponse.json(result);
       }
 
@@ -1343,7 +1376,7 @@ async function handleRequest(
         const payoutId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const result = await approveRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes: body.notes ?? null });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.approve", entityType: "payout_request", entityId: payoutId, metadata: { notes: body.notes ?? null } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.approve", entityType: "payout_request", entityId: payoutId, beforeStatus: "requested", afterStatus: result.status, metadata: { beforeStatus: "requested", afterStatus: result.status, notes: body.notes ?? null } });
         return NextResponse.json(result);
       }
 
@@ -1354,7 +1387,7 @@ async function handleRequest(
         const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
         await assertPayoutPaidByDifferentActor(payoutId, adminActorId);
         const result = await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, metadata: { txHash: body.txHash ?? null } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, beforeStatus: "approved", afterStatus: result.status, metadata: { beforeStatus: "approved", afterStatus: result.status, txHash: body.txHash ?? null } });
         return NextResponse.json(result);
       }
 
@@ -1365,7 +1398,7 @@ async function handleRequest(
         const body = (await request.json().catch(() => ({}))) as { txHash?: string; notes?: string };
         await assertPayoutPaidByDifferentActor(payoutId, adminActorId);
         const result = await markRewardPayoutPaidDb({ payoutId, reviewedBy: adminActorId, txHash: body.txHash ?? null, notes: body.notes ?? null });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, metadata: { txHash: body.txHash ?? null } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_paid", entityType: "payout_request", entityId: payoutId, beforeStatus: "approved", afterStatus: result.status, metadata: { beforeStatus: "approved", afterStatus: result.status, txHash: body.txHash ?? null } });
         return NextResponse.json(result);
       }
 
@@ -1375,8 +1408,9 @@ async function handleRequest(
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const notes = requireAdminReasonField(body.notes, "payout failure reason is required");
+        const beforeStatus = await readPayoutStatusForAudit(payoutId);
         const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, beforeStatus, afterStatus: result.status, note: notes, metadata: { beforeStatus, afterStatus: result.status, notes } });
         return NextResponse.json(result);
       }
 
@@ -1386,8 +1420,9 @@ async function handleRequest(
         const payoutId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const notes = requireAdminReasonField(body.notes, "payout failure reason is required");
+        const beforeStatus = await readPayoutStatusForAudit(payoutId);
         const result = await failRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.mark_failed", entityType: "payout_request", entityId: payoutId, beforeStatus, afterStatus: result.status, note: notes, metadata: { beforeStatus, afterStatus: result.status, notes } });
         return NextResponse.json(result);
       }
 
@@ -1397,8 +1432,9 @@ async function handleRequest(
         const payoutId = apiPath.split("/")[3] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const notes = requireAdminReasonField(body.notes, "payout cancellation reason is required");
+        const beforeStatus = await readPayoutStatusForAudit(payoutId);
         const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, beforeStatus, afterStatus: result.status, note: notes, metadata: { beforeStatus, afterStatus: result.status, notes } });
         return NextResponse.json(result);
       }
 
@@ -1408,8 +1444,9 @@ async function handleRequest(
         const payoutId = apiPath.split("/")[2] ?? "";
         const body = (await request.json().catch(() => ({}))) as { notes?: string };
         const notes = requireAdminReasonField(body.notes, "payout cancellation reason is required");
+        const beforeStatus = await readPayoutStatusForAudit(payoutId);
         const result = await cancelRewardPayoutDb({ payoutId, reviewedBy: adminActorId, notes });
-        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, metadata: { notes } });
+        await recordAdminAuditLog({ actorUserId: adminActorId, action: "payout.cancel", entityType: "payout_request", entityId: payoutId, beforeStatus, afterStatus: result.status, note: notes, metadata: { beforeStatus, afterStatus: result.status, notes } });
         return NextResponse.json(result);
       }
 

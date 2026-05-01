@@ -673,6 +673,9 @@ test("admin routes use granular RBAC and payout dual control", () => {
   assert.match(route, /risk_flag:dismiss/);
   assert.match(route, /payout:approve/);
   assert.match(route, /payout:mark_paid/);
+  assert.match(route, /before_status/);
+  assert.match(route, /after_status/);
+  assert.match(route, /readPayoutStatusForAudit/);
   assert.match(route, /AMBASSADOR_PAYOUT_DUAL_CONTROL_THRESHOLD_USDC_ATOMS/);
   assert.match(route, /payout requires a different admin to mark paid after approval/);
   assert.match(adminActions, /reviewAdminRiskFlag/);

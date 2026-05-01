@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Routed trading is still **not safe to enable for production**. The API now contains a real `@polymarket/clob-client-v2` submitter adapter, but the default path remains disabled because the product has not yet shipped secure user L2 credential storage/derivation or end-to-end browser order signing verification.
+Routed trading is still **not safe to enable for production**. The API contains a gated `@polymarket/clob-client-v2` submitter scaffold for the eventual authenticated path, but the default path remains disabled and must stay disabled until user-owned signing, user L2 credentials, geoblock verification, submitter health, and audit recording pass a separate production readiness review.
 
 Public Polymarket browsing and Builder reward accounting can remain live independently of order submission.
 
@@ -27,6 +27,8 @@ POLYMARKET_CLOB_SUBMITTER=disabled
 ```
 
 Do not configure platform-owned Polymarket trading credentials. User trades must use user-owned wallet signing and user-owned L2 credentials only.
+
+The deprecated `@polymarket/builder-signing-sdk` builder-header/HMAC flow is not used for CLOB V2 attribution. Builder attribution must flow through CLOB V2 `builderCode`/signed-order `builder` fields.
 
 ## Builder Attribution
 
@@ -94,6 +96,13 @@ Reward and payout safety:
 - Polygon pUSD payouts remain manual/admin-approved.
 - Admin approval and marking paid are separate steps; paid requires a valid transaction hash after an actual manual transfer.
 - No automatic payout or treasury-transfer path is enabled by this integration.
+
+Submitter cleanup:
+
+- The service package no longer depends on `@polymarket/builder-signing-sdk`.
+- The routed submitter uses `@polymarket/clob-client-v2` only.
+- The signed order must already contain the configured Builder Code before submitter invocation.
+- The submitter must not sign user orders server-side and must not use platform-owned CLOB credentials.
 
 ## Verification
 

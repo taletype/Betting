@@ -487,6 +487,21 @@ test("payout risk guard checks recipient, payout, referral, and trade links", ()
   assert.match(source, /flag\.trade_attribution_id in \(select id from related_trade_attributions\)/);
 });
 
+test("admin payout actions write before and after status audit metadata", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/handlers.ts"), "utf8");
+  const audit = readFileSync(resolve(process.cwd(), "src/modules/shared/audit.ts"), "utf8");
+
+  assert.match(audit, /before_status/);
+  assert.match(audit, /after_status/);
+  assert.match(source, /beforeStatus: "requested"/);
+  assert.match(source, /afterStatus: "approved"/);
+  assert.match(source, /beforeStatus: "approved"/);
+  assert.match(source, /afterStatus: "paid"/);
+  assert.match(source, /select status from public\.ambassador_reward_payouts/);
+  assert.match(source, /beforeStatus: existing\?\.status/);
+  assert.match(source, /afterStatus: input\.status/);
+});
+
 test("reward automation has no crypto transfer broadcast path", () => {
   const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
 

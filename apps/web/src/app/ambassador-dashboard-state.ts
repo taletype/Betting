@@ -10,7 +10,7 @@ export type AmbassadorDashboardState =
   | { kind: "expired_session"; user: AmbassadorDashboardUser; status: 401; code?: string | null }
   | { kind: "unavailable"; user: AmbassadorDashboardUser; status: number; code?: string | null; source?: string | null; message?: string | null };
 
-const secretBearingDiagnosticPattern = /token|cookie|authorization|auth[-_\s]*header|bearer|secret|service[-_\s]*role|SUPABASE_SERVICE_ROLE_KEY|api[-_\s]*secret|private[-_\s]*key/i;
+const secretBearingDiagnosticPattern = /token|cookie|authorization|auth[-_\s]*header|bearer|secret|service[-_\s]*role|api[-_\s]*secret|private[-_\s]*key/i;
 
 export const sanitizeAmbassadorDashboardDiagnostic = (value: string | null | undefined): string | null => {
   const normalized = value?.replace(/[\r\n]+/g, " ").trim();

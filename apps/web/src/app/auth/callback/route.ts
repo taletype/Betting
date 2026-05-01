@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { EmailOtpType } from "@supabase/supabase-js";
 
 import { createSupabaseServerClient } from "@bet/supabase/server";
 import { captureAmbassadorReferralDb } from "../../api/_shared/ambassador";
@@ -13,6 +14,7 @@ import {
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 type SupabaseServerClientFactory = typeof createSupabaseServerClient;
 type ReferralApplier = typeof captureAmbassadorReferralDb;
+type AuthCallbackOtpType = EmailOtpType;
 
 let supabaseServerClientFactory: SupabaseServerClientFactory = createSupabaseServerClient;
 let referralApplier: ReferralApplier = captureAmbassadorReferralDb;
@@ -38,6 +40,18 @@ const clearPendingReferralCookie = (response: NextResponse): void => {
 
 const getPendingReferralCode = (request: NextRequest): string | null =>
   normalizeReferralCode(request.cookies.get(pendingReferralCookieName)?.value);
+
+const authCallbackOtpTypes = new Set<AuthCallbackOtpType>([
+  "signup",
+  "invite",
+  "magiclink",
+  "recovery",
+  "email_change",
+  "email",
+]);
+
+const normalizeAuthCallbackOtpType = (value: string | null): AuthCallbackOtpType | null =>
+  value && authCallbackOtpTypes.has(value as AuthCallbackOtpType) ? (value as AuthCallbackOtpType) : null;
 
 const applyPendingReferral = async (
   request: NextRequest,
@@ -95,9 +109,13 @@ export async function GET(request: NextRequest) {
         throw exchangeError;
       }
     } else if (tokenHash && tokenType) {
+      const otpType = normalizeAuthCallbackOtpType(tokenType);
+      if (!otpType) {
+        throw new Error("auth callback has unsupported token type");
+      }
       const { error: otpError } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
-        type: tokenType,
+        type: otpType,
       });
       if (otpError) {
         throw otpError;

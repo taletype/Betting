@@ -472,6 +472,10 @@ export const updateAdminRewardPayoutFailureState = async (input: {
   const adminUserId = requireAdminUser(input.adminUserId);
   const db = createDatabaseClient();
   return db.transaction(async (transaction) => {
+    const [existing] = await transaction.query<{ status: string }>(
+      `select status from public.ambassador_reward_payouts where id = $1::uuid limit 1`,
+      [input.payoutId],
+    );
     const payout = await updateRewardPayoutFailureState(transaction, {
       payoutId: input.payoutId,
       reviewedBy: adminUserId,
@@ -483,7 +487,9 @@ export const updateAdminRewardPayoutFailureState = async (input: {
       action: input.status === "failed" ? "payout.mark_failed" : "payout.cancel",
       entityType: "payout_request",
       entityId: input.payoutId,
-      metadata: { afterStatus: input.status, notes: input.notes },
+      beforeStatus: existing?.status ?? null,
+      afterStatus: input.status,
+      metadata: { beforeStatus: existing?.status ?? null, afterStatus: input.status, notes: input.notes },
     });
     return payout;
   });

@@ -10,7 +10,7 @@ Rules:
 - Duplicate attribution attempts are idempotent and recorded for review.
 - Referral apply failures must not block market browsing.
 
-The browser stores a pending referral in localStorage and a SameSite cookie before login. After signup/login, the apply request includes an idempotency key and a non-secret session identifier. Server audit events record referral seen, captured, applied, and rejected outcomes without storing raw auth headers or secrets.
+The browser stores a pending referral in localStorage and a SameSite cookie before login. After signup/login, the apply request includes an idempotency key and a non-secret session identifier. Client funnel events include `referral_code_seen` and `referral_code_captured`; server audit events record `ambassador.referral_seen`, `ambassador.referral_captured`, `ambassador.referral_applied`, and `ambassador.referral_rejected` without storing raw auth headers or secrets.
 
 Operational dashboard requirements:
 - Apply the Supabase migrations that create and extend `public.profiles`, `public.ambassador_codes`, `public.referral_attributions`, `public.builder_trade_attributions`, `public.ambassador_reward_ledger`, and `public.ambassador_reward_payouts`. Required coverage includes `supabase/migrations/0002_auth_profiles.sql`, `supabase/migrations/0021_ambassador_rewards.sql`, `supabase/migrations/0031_reward_ledger_accounting_statuses.sql`, `supabase/migrations/0034_reward_payout_reservations.sql`, and `supabase/migrations/0038_attribution_to_payout_accounting_chain.sql`.

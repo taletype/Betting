@@ -77,6 +77,24 @@ test("auth callback rejects external next URL", async () => {
   }
 });
 
+test("auth callback rejects unsupported token hash types before Supabase verify", async () => {
+  const verified: Array<{ token_hash: string; type: string }> = [];
+  setAuthCallbackDependenciesForTests({
+    supabaseServerClientFactory: mockSupabaseFactory({ verified, userId: "user-1" }) as never,
+    referralApplier: (async () => null) as never,
+  });
+  try {
+    const response = await GET(new NextRequest("https://bet.example/auth/callback?token_hash=hash123&type=sms&next=/account"));
+    const location = new URL(response.headers.get("location") ?? "");
+
+    assert.equal(location.pathname, "/login");
+    assert.equal(location.searchParams.get("auth"), "callback_failed");
+    assert.deepEqual(verified, []);
+  } finally {
+    setAuthCallbackDependenciesForTests({});
+  }
+});
+
 test("auth callback applies pending referral only after session exists", async () => {
   const applied: Array<{ userId: string; code: string }> = [];
   setAuthCallbackDependenciesForTests({

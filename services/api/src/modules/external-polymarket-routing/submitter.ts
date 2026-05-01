@@ -6,12 +6,9 @@ import {
   OrderType,
   SignatureTypeV2,
   type ApiKeyCreds,
-  createL2Headers,
-  orderToJsonV2,
   type ClobClientOptions,
   type TickSize,
 } from "@polymarket/clob-client-v2";
-import { BuilderConfig, type BuilderApiKeyCreds, type BuilderHeaderPayload } from "@polymarket/builder-signing-sdk";
 
 import type { ExternalPolymarketOrderRoutePayload, PolymarketOrderSubmitter } from "./handlers";
 
@@ -91,26 +88,6 @@ const toOrderType = (orderType: ExternalPolymarketOrderRoutePayload["orderType"]
     default:
       return OrderType.GTC;
   }
-};
-
-const getBuilderApiCreds = (): BuilderApiKeyCreds => {
-  const key = process.env.POLY_BUILDER_API_KEY?.trim();
-  const secret = process.env.POLY_BUILDER_SECRET?.trim();
-  const passphrase = process.env.POLY_BUILDER_PASSPHRASE?.trim();
-  if (!key || !secret || !passphrase) {
-    throw new PolymarketSubmitterError(503, "POLYMARKET_BUILDER_AUTH_UNAVAILABLE", "Polymarket builder attribution is not configured");
-  }
-  return { key, secret, passphrase };
-};
-
-const createBuilderHeaders = async (method: string, path: string, body: string): Promise<BuilderHeaderPayload | null> => {
-  const creds = getBuilderApiCreds();
-  const config = new BuilderConfig({ localBuilderCreds: creds });
-  const headers = await config.generateBuilderHeaders(method, path, body);
-  if (!headers) {
-    throw new PolymarketSubmitterError(503, "POLYMARKET_BUILDER_AUTH_UNAVAILABLE", "Polymarket builder attribution is not configured");
-  }
-  return headers;
 };
 
 const normalizeResponse = (response: unknown): PolymarketOrderSubmitterResponse => {
@@ -260,28 +237,12 @@ export class PolymarketClobClientV2Submitter implements PolymarketOrderSubmitter
 
     try {
       const orderType = toOrderType(payload.orderType);
-      const orderPayload = orderToJsonV2(payload.signedOrder as unknown as Parameters<typeof orderToJsonV2>[0], payload.l2Credentials.key, orderType);
-      const body = JSON.stringify(orderPayload);
-      const l2Headers = await createL2Headers(
-        createAddressOnlySigner(payload.linkedWalletAddress),
-        toApiCreds(payload.l2Credentials),
-        { method: "POST", requestPath: "/order", body },
+      const client = this.createAuthenticatedClient(payload);
+      const response = await client.postOrder(
+        payload.signedOrder as unknown as Parameters<ClobClient["postOrder"]>[0],
+        orderType,
       );
-      const builderHeaders = await createBuilderHeaders("POST", "/order", body);
-      const response = await fetch(`${this.host}/order`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...Object.fromEntries(Object.entries(l2Headers).map(([key, value]) => [key, String(value)])),
-          ...(builderHeaders ?? {}),
-        },
-        body,
-      });
-      const responsePayload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new PolymarketSubmitterError(response.status, "POLYMARKET_UPSTREAM_ERROR", "Polymarket rejected the routed order");
-      }
-      return normalizeResponse(responsePayload);
+      return normalizeResponse(response);
     } catch (error) {
       throw mapUnknownSubmitterError(error);
     }

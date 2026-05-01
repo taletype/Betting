@@ -676,10 +676,29 @@ test("external Polymarket routing logs do not include secrets or full signatures
   assert.doesNotMatch(source, /logger\.(error|info|warn)\([^)]*(signature|secret|passphrase|auth|signedOrder|l2Credentials)/is);
 });
 
+test("signer wallet mismatch creates a non-secret risk flag for admin review", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/handlers.ts"), "utf8");
+
+  assert.match(source, /signer_wallet_mismatch/);
+  assert.match(source, /insert into public\.ambassador_risk_flags/);
+  assert.match(source, /hashRiskValue/);
+  assert.doesNotMatch(source, /details: \{[^}]*signedOrder\.signature/is);
+});
+
 test("submitter uses only user-scoped L2 credentials from the route payload", () => {
   const source = readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/submitter.ts"), "utf8");
   assert.match(source, /creds: toApiCreds\(payload\.l2Credentials\)/);
   assert.doesNotMatch(source, /process\.env\.POLYMARKET_(API_KEY|API_SECRET|API_PASSPHRASE|CLOB_API_KEY|CLOB_SECRET|CLOB_PASSPHRASE)/);
+});
+
+test("submitter does not use deprecated builder-signing SDK headers", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/modules/external-polymarket-routing/submitter.ts"), "utf8");
+  const packageJson = readFileSync(resolve(process.cwd(), "package.json"), "utf8");
+
+  assert.doesNotMatch(source, /@polymarket\/builder-signing-sdk|BuilderConfig|generateBuilderHeaders|POLY_BUILDER_API_KEY|POLY_BUILDER_SECRET|POLY_BUILDER_PASSPHRASE/);
+  assert.doesNotMatch(packageJson, /@polymarket\/builder-signing-sdk/);
+  assert.match(source, /client\.postOrder/);
+  assert.match(source, /builderConfig: \{ builderCode: payload\.orderInput\.builderCode \}/);
 });
 
 test("external Polymarket trading path does not mutate internal balances or log secrets", () => {

@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import { readBooleanFlag } from "@bet/config";
 import { createDatabaseClient } from "@bet/db";
 import {
@@ -215,6 +217,10 @@ const defaultL2CredentialLookup = lookupUserPolymarketL2Credentials;
 const defaultGeoblockProofVerifier = async (): Promise<boolean> => false;
 
 const normalizeAddress = (value: string): string => value.trim().toLowerCase();
+const hashRiskValue = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim().toLowerCase();
+  return trimmed ? crypto.createHash("sha256").update(trimmed).digest("hex") : null;
+};
 const splitEnvList = (name: string): string[] =>
   (process.env[name] ?? "")
     .split(",")
@@ -258,6 +264,41 @@ const isBuilderCodeSafelyConfigured = (): boolean => {
     return getPolymarketBuilderCode() !== null;
   } catch {
     return false;
+  }
+};
+
+const recordRoutedTradingRiskFlag = async (input: {
+  userId: string;
+  reasonCode: string;
+  severity: "low" | "medium" | "high";
+  details: Record<string, unknown>;
+}): Promise<void> => {
+  try {
+    await createDatabaseClient().query(
+      `
+        insert into public.ambassador_risk_flags (
+          user_id,
+          severity,
+          reason_code,
+          details,
+          status,
+          created_at
+        ) values (
+          $1::uuid,
+          $2,
+          $3,
+          $4::jsonb,
+          'open',
+          now()
+        )
+      `,
+      [input.userId, input.severity, input.reasonCode, JSON.stringify(input.details)],
+    );
+  } catch (error) {
+    logger.error("polymarket_builder.risk_flag_write_failed", {
+      reasonCode: input.reasonCode,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 
@@ -902,7 +943,18 @@ export const prepareExternalPolymarketOrderRoutePayload = async (
   if (!dependencies.allowNonProductionSubmissionForTests && !isBetaUserAllowed({ userId, email: dependencies.requestUserEmail, walletAddress: linkedWalletAddress })) {
     throw new ExternalPolymarketRoutingError(403, "POLYMARKET_BETA_USER_NOT_ALLOWLISTED", "測試交易功能只限指定用戶");
   }
-  if (linkedWalletAddress !== userWalletAddress || normalizeAddress(signedOrder.signer) !== linkedWalletAddress) {
+  const signedOrderSignerAddress = normalizeAddress(signedOrder.signer);
+  if (linkedWalletAddress !== userWalletAddress || signedOrderSignerAddress !== linkedWalletAddress) {
+    await recordRoutedTradingRiskFlag({
+      userId,
+      severity: "high",
+      reasonCode: "signer_wallet_mismatch",
+      details: {
+        linkedWalletHash: hashRiskValue(linkedWalletAddress),
+        requestWalletHash: hashRiskValue(userWalletAddress),
+        signedOrderSignerHash: hashRiskValue(signedOrderSignerAddress),
+      },
+    });
     throw new ExternalPolymarketRoutingError(400, "POLYMARKET_SIGNER_MISMATCH", "signed order signer must match the linked user wallet");
   }
   if (!ALLOWED_SIGNATURE_TYPES.has(signedOrder.signatureType)) {

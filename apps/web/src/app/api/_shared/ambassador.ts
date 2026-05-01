@@ -1091,7 +1091,7 @@ const updatePayoutStatusDb = async (input: {
           and status = 'requested'`,
       [input.payoutId, input.reviewedBy, input.notes ?? null],
     );
-    return { ok: true };
+    return { ok: true, status: input.status };
   }
 
   if (input.status === "paid") {
@@ -1120,7 +1120,7 @@ const updatePayoutStatusDb = async (input: {
           and status = 'approved'`,
       [input.payoutId],
     );
-    return { ok: true };
+    return { ok: true, status: input.status };
   }
 
   if (input.status === "failed" || input.status === "cancelled") {
@@ -1147,7 +1147,7 @@ const updatePayoutStatusDb = async (input: {
           and status = 'approved'`,
       [input.payoutId],
     );
-    return { ok: true };
+    return { ok: true, status: input.status };
   }
 
   throw new Error("unsupported payout status");

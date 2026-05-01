@@ -117,7 +117,7 @@ test("normalizes closed/resolved/cancelled and past close markets away from open
     question: "Future end?",
     active: true,
     closed: false,
-    endDate: "2026-05-01T00:00:00.000Z",
+    endDate: "2999-05-01T00:00:00.000Z",
   })?.status, "open");
 
   assert.equal(resolvePolymarketMarketStatus({

@@ -34,14 +34,29 @@ export const updateAdminRiskFlagReviewState = async (input: {
 
     await transaction.query(
       `
-        insert into public.admin_audit_log (actor_user_id, action, entity_type, entity_id, metadata, created_at)
-        values ($1::uuid, $2, 'ambassador_risk_flag', $3::uuid, $4::jsonb, now())
+        insert into public.admin_audit_log (
+          actor_user_id,
+          actor_admin_user_id,
+          action,
+          entity_type,
+          target_type,
+          entity_id,
+          target_id,
+          before_status,
+          after_status,
+          note,
+          metadata,
+          created_at
+        )
+        values ($1::uuid, $1::uuid, $2, 'ambassador_risk_flag', 'ambassador_risk_flag', $3::uuid, $3::uuid, 'open', $4, $5, $6::jsonb, now())
       `,
       [
         input.reviewedBy,
         input.status === "dismissed" ? "risk_flag.dismiss" : "risk_flag.review",
         input.riskFlagId,
-        JSON.stringify({ afterStatus: input.status, reviewNotes }),
+        input.status,
+        reviewNotes,
+        JSON.stringify({ beforeStatus: "open", afterStatus: input.status, reviewNotes }),
       ],
     );
 
