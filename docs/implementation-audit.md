@@ -1,6 +1,26 @@
 # Implementation Audit
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
+
+## Immediate Next Moves
+
+Simple answer: the remaining work is production proof and money-flow hardening, not more SDK integration.
+
+Missing work now:
+
+- Missing #1: `/ambassador` and `/rewards` must work cleanly in production, including a logged-in dashboard response where referral code loads and zero rewards still render as a valid empty state.
+- Missing #2: referral and payout hardening must be treated as one scoped PR focused on referral capture, first-valid-referral-wins behavior, fraud flags, reward-ledger idempotency, payout status transitions, admin approval, Polygon transaction hash recording, and no auto payout.
+- Missing #3: Builder-fee confirmation and reconciliation proof must be shown before rewards move from accounting evidence to payable money.
+- Missing #4: private beta QA is still needed for wallet connection, L2 credentials, order signing, submitter readiness, caps, and kill-switch behavior.
+- Missing #5: user guides and disclosures still need to be ready before public traffic.
+
+Build order now:
+
+1. Make `/ambassador` and `/rewards` clean in production.
+2. Harden referral capture and payout handling.
+3. Prove Builder-fee revenue to reward-ledger reconciliation.
+4. Run a private allowlisted trading beta.
+5. Only then consider public live trading.
 
 ## Current Routes
 
