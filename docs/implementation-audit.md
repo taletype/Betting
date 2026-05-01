@@ -6,6 +6,45 @@ Last updated: 2026-05-01
 
 Simple answer: the remaining work is production proof and money-flow hardening, not more SDK integration.
 
+### Move 1 - Production smoke
+
+Check the logged-in ambassador and rewards dashboard path in production first.
+
+- Goal: referral code loads successfully and zero rewards also load successfully.
+- App-native dashboard path in this repo: `/api/ambassador/dashboard`
+- If production is fronted by a versioned gateway, also smoke the deployed gateway path that maps to the same dashboard payload, for example `/api/version/api/ambassador/dashboard/account/ambassador/rewards`.
+
+Success means:
+
+- `/ambassador` loads cleanly in production.
+- `/rewards` loads cleanly in production.
+- The logged-in dashboard payload includes a valid `ambassadorCode.code`.
+- A user with no confirmed rewards still gets a valid zero-state payload instead of an error.
+
+### Move 2 - Referral and payout hardening PR
+
+Keep this as one scoped PR and focus only on:
+
+- referral capture
+- first-valid-referral-wins behavior
+- fraud flags
+- reward ledger idempotency
+- payout status machine
+- admin approval
+- Polygon transaction hash recording
+- no auto payout
+
+### Move 3 - Private trading beta plan
+
+Only after referral and payout handling is clean:
+
+- 5-10 allowlisted wallets
+- small order caps
+- daily volume caps
+- a kill switch
+- manual monitoring
+- Builder-fee reconciliation proof
+
 Missing work now:
 
 - Missing #1: `/ambassador` and `/rewards` must work cleanly in production, including a logged-in dashboard response where referral code loads and zero rewards still render as a valid empty state.
