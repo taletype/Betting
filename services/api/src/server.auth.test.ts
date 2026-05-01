@@ -221,6 +221,21 @@ test("userId in command body cannot authenticate or impersonate", async () => {
   assert.deepEqual(await response.json(), { error: "authentication required" });
 });
 
+test("ambassador dashboard rejects spoofed x-user-id without bearer auth", async () => {
+  const handleRequest = await getHandleRequest();
+  const response = await handleRequest(
+    new Request("http://localhost/ambassador/dashboard", {
+      headers: {
+        "x-user-id": "11111111-1111-4111-8111-111111111111",
+        "x-admin": "true",
+      },
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "authentication required" });
+});
+
 test("ambassador capture endpoint applies authenticated referral code", async () => {
   const server = await getServer();
   let captured: { userId?: string; code: string } | null = null;

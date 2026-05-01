@@ -73,6 +73,11 @@ const safeErrorMessage = (error: unknown): string =>
 
 const privateNoStoreHeaders = { "cache-control": "private, no-store" };
 
+const logDevelopmentDiagnostic = (message: string, metadata?: Record<string, unknown>): void => {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") return;
+  console.warn(message, metadata ?? {});
+};
+
 const rateLimitState = new Map<string, { windowStartedAtMs: number; count: number }>();
 
 const checkLocalRateLimit = (
@@ -518,6 +523,12 @@ async function handleRequest(
     }
 
     if (!userId) {
+      if (apiPath === "ambassador/dashboard" || apiPath === "ambassador/summary" || apiPath === "referrals/me") {
+        logDevelopmentDiagnostic("dashboard API missing authenticated session", {
+          hasCookieHeader: Boolean(request.headers.get("cookie")),
+          hasBearerToken: Boolean(request.headers.get("authorization")?.startsWith("Bearer ")),
+        });
+      }
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 

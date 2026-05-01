@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import AmbassadorPage from "./page";
+import { renderAmbassadorPage } from "./page";
+
+const user = {
+  id: "22222222-2222-4222-8222-222222222222",
+  email: "user@example.test",
+  role: "user",
+};
 
 const dashboard = {
   ambassadorCode: {
@@ -53,7 +59,8 @@ const withDashboardFetch = async (run: () => Promise<void>) => {
 test("ambassador page renders referral code UI and safe direct-referral copy", async () => {
   await withDashboardFetch(async () => {
     const markup = renderToStaticMarkup(
-      await AmbassadorPage({
+      await renderAmbassadorPage("zh-HK", {
+        currentUser: user,
         searchParams: Promise.resolve({ slug: "will-hk-market-open" }),
       }),
     );
@@ -81,13 +88,23 @@ test("ambassador page renders referral code UI and safe direct-referral copy", a
 
 test("ambassador page falls back to the Polymarket feed invite link", async () => {
   await withDashboardFetch(async () => {
-    const markup = renderToStaticMarkup(await AmbassadorPage());
+    const markup = renderToStaticMarkup(await renderAmbassadorPage("zh-HK", { currentUser: user }));
 
     assert.match(markup, /data-copy-value="http:\/\/127.0.0.1:3000\/polymarket\?ref=HKREF001"/);
   });
 });
 
 test("ambassador page explains invite flow and shows auth CTAs when logged out", async () => {
+  const markup = renderToStaticMarkup(await renderAmbassadorPage("zh-HK", { currentUser: null }));
+
+  assert.match(markup, /邀請朋友/);
+  assert.match(markup, /分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易/);
+  assert.match(markup, /登入/);
+  assert.match(markup, /註冊/);
+  assert.match(markup, /複製市場推薦連結/);
+});
+
+test("logged-in ambassador page shows expired session when dashboard returns 401", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -96,13 +113,32 @@ test("ambassador page explains invite flow and shows auth CTAs when logged out",
     })) as typeof globalThis.fetch;
 
   try {
-    const markup = renderToStaticMarkup(await AmbassadorPage());
+    const markup = renderToStaticMarkup(await renderAmbassadorPage("zh-HK", { currentUser: user }));
 
-    assert.match(markup, /邀請朋友/);
-    assert.match(markup, /分享市場連結。當你直接推薦的用戶透過本平台完成合資格交易/);
+    assert.match(markup, /登入狀態已過期，請重新登入。/);
     assert.match(markup, /登入/);
-    assert.match(markup, /註冊/);
-    assert.match(markup, /複製市場推薦連結/);
+    assert.doesNotMatch(markup, /註冊/);
+    assert.doesNotMatch(markup, /推薦碼<\/span>/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("logged-in ambassador page shows retry state when dashboard returns 500", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "database unavailable" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+
+  try {
+    const markup = renderToStaticMarkup(await renderAmbassadorPage("zh-HK", { currentUser: user }));
+
+    assert.match(markup, /已登入，但推薦資料暫時未能載入。請重新整理或稍後再試。/);
+    assert.match(markup, /重新整理/);
+    assert.doesNotMatch(markup, /註冊/);
+    assert.doesNotMatch(markup, /請先登入以查看此頁面。/);
   } finally {
     globalThis.fetch = originalFetch;
   }

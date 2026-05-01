@@ -493,6 +493,42 @@ test("admin catch-all endpoints reject spoofed admin headers", async () => {
   assert.deepEqual(await response.json(), { error: "Authentication required" });
 });
 
+test("ambassador dashboard rejects spoofed user headers", async () => {
+  const response = await GET(new NextRequest("http://localhost/api/ambassador/dashboard", {
+    headers: {
+      "x-user-id": "11111111-1111-4111-8111-111111111111",
+      "x-admin": "true",
+    },
+  }), { params: Promise.resolve({ path: ["ambassador", "dashboard"] }) });
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Authentication required" });
+});
+
+test("ambassador dashboard auth uses Supabase cookies and forwarded bearer only", () => {
+  const apiClient = readFileSync(resolve(process.cwd(), "src/lib/api.ts"), "utf8");
+  const webAuth = readFileSync(resolve(process.cwd(), "src/app/api/auth.ts"), "utf8");
+  const route = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
+
+  assert.match(apiClient, /getServerCookieHeader/);
+  assert.match(apiClient, /headers\.cookie = cookieHeader/);
+  assert.match(apiClient, /headers\.authorization = `Bearer \$\{accessToken\}`/);
+  assert.match(webAuth, /request\.cookies\.get\(name\)\?\.value/);
+  assert.doesNotMatch(webAuth, /x-user-id|x-admin/);
+  assert.doesNotMatch(route, /request\.headers\.get\("x-user-id"\)|request\.headers\.get\("x-admin"\)/);
+});
+
+test("frontend code does not expose Supabase service-role keys", () => {
+  const frontendFiles = [
+    "src/lib/api.ts",
+    "src/app/app-shell.tsx",
+    "src/app/ambassador/page.tsx",
+    "src/app/auth-session.ts",
+  ].map((path) => readFileSync(resolve(process.cwd(), path), "utf8")).join("\n");
+
+  assert.doesNotMatch(frontendFiles, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+});
+
 test("admin Polymarket status is protected and reports cache sync audit", async () => {
   setSupabaseAdminClientFactoryForTests(() => makeExternalMarketsSupabase() as never);
   try {

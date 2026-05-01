@@ -1,7 +1,7 @@
 import React from "react";
 import { defaultLocale, formatDateTime, getLocaleCopy, getLocaleHref, type AppLocale } from "../../lib/locale";
 import { formatUsdc } from "../../lib/format";
-import { getAmbassadorDashboard, toBigInt } from "../../lib/api";
+import { getAmbassadorDashboard, isApiResponseError, toBigInt } from "../../lib/api";
 import { applyReferralCodeAction } from "../auth-actions";
 import { ReferralFunnelChart, RewardSplitChart } from "../charts/market-charts";
 import { PendingReferralApplier } from "../pending-referral-applier";
@@ -9,6 +9,7 @@ import { PendingReferralNotice } from "../pending-referral-notice";
 import { BetaLaunchDisclosure, EmptyState, MetricCard, SafetyDisclosure, SharedRewardDisclosure, SharedSafetyDisclosure, StatusChip } from "../product-ui";
 import { TrackedCopyButton } from "../tracked-copy-button";
 import { getSiteUrl } from "../../lib/site-url";
+import { getCurrentWebUser, type WebSessionUser } from "../auth-session";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,9 @@ const ambassadorPageCopy: Record<AppLocale, {
   directReferredUser: string;
   attributedAt: string;
   eligibleVolume: string;
+  expiredSession: string;
+  dashboardUnavailable: string;
+  preparingCode: string;
 }> = {
   en: {
     heroTitle: "Ambassador Rewards",
@@ -59,6 +63,9 @@ const ambassadorPageCopy: Record<AppLocale, {
     directReferredUser: "Direct referred user",
     attributedAt: "Attributed",
     eligibleVolume: "Eligible volume",
+    expiredSession: "Your login session has expired. Please log in again.",
+    dashboardUnavailable: "You are logged in, but referral data could not be loaded. Please refresh or try again later.",
+    preparingCode: "Preparing your referral code.",
   },
   "zh-HK": {
     heroTitle: "邀請朋友",
@@ -83,6 +90,9 @@ const ambassadorPageCopy: Record<AppLocale, {
     directReferredUser: "直接推薦用戶",
     attributedAt: "歸因日期",
     eligibleVolume: "合資格成交額",
+    expiredSession: "登入狀態已過期，請重新登入。",
+    dashboardUnavailable: "已登入，但推薦資料暫時未能載入。請重新整理或稍後再試。",
+    preparingCode: "正在準備你的推薦碼。",
   },
   "zh-CN": {
     heroTitle: "邀请朋友",
@@ -107,6 +117,9 @@ const ambassadorPageCopy: Record<AppLocale, {
     directReferredUser: "直接推荐用户",
     attributedAt: "归因日期",
     eligibleVolume: "合资格成交额",
+    expiredSession: "登录状态已过期，请重新登录。",
+    dashboardUnavailable: "已登录，但推荐资料暂时未能载入。请刷新或稍后再试。",
+    preparingCode: "正在准备你的推荐码。",
   },
 };
 
@@ -122,13 +135,26 @@ const getMarketSlug = (searchParams?: Record<string, string | string[] | undefin
 
 export async function renderAmbassadorPage(locale: AppLocale, {
   searchParams,
+  currentUser,
+  dashboardLoader = getAmbassadorDashboard,
 }: Readonly<{
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  currentUser?: WebSessionUser | null;
+  dashboardLoader?: typeof getAmbassadorDashboard;
 }> = {}) {
   const copy = getLocaleCopy(locale).ambassador;
   const authCopy = getLocaleCopy(locale).auth;
   const pageCopy = ambassadorPageCopy[locale];
-  const dashboard = await getAmbassadorDashboard().catch(() => null);
+  const user = currentUser === undefined ? await getCurrentWebUser() : currentUser;
+  let dashboard: Awaited<ReturnType<typeof getAmbassadorDashboard>> | null = null;
+  let dashboardError: unknown = null;
+  if (user) {
+    try {
+      dashboard = await dashboardLoader();
+    } catch (error) {
+      dashboardError = error;
+    }
+  }
   const siteUrl = getSiteUrl();
   const resolvedSearchParams = await searchParams;
   const marketSlug = getMarketSlug(resolvedSearchParams);
@@ -171,7 +197,7 @@ export async function renderAmbassadorPage(locale: AppLocale, {
         </div>
       </SafetyDisclosure>
 
-      {!dashboard ? (
+      {!user ? (
         <section className="panel stack">
           <EmptyState title={authCopy.sessionRequired}>{pageCopy.signedOutBody}</EmptyState>
           <span className="sr-only">{pageCopy.copyMarketReferralLink}</span>
@@ -179,6 +205,25 @@ export async function renderAmbassadorPage(locale: AppLocale, {
             <a className="button-link" href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
             <a className="button-link secondary" href={getLocaleHref(locale, "/signup")}>{authCopy.signup}</a>
           </div>
+        </section>
+      ) : dashboardError ? (
+        <section className="panel stack">
+          <EmptyState title={isApiResponseError(dashboardError) && dashboardError.status === 401 ? pageCopy.expiredSession : pageCopy.dashboardUnavailable}>
+            {isApiResponseError(dashboardError) && dashboardError.status === 401 ? pageCopy.expiredSession : pageCopy.referralCodeNote}
+          </EmptyState>
+          {isApiResponseError(dashboardError) && dashboardError.status === 401 ? (
+            <div className="market-actions">
+              <a className="button-link" href={getLocaleHref(locale, "/login")}>{authCopy.login}</a>
+            </div>
+          ) : (
+            <div className="market-actions">
+              <a className="button-link" href={getLocaleHref(locale, "/ambassador")}>{locale === "en" ? "Retry" : locale === "zh-CN" ? "重新整理" : "重新整理"}</a>
+            </div>
+          )}
+        </section>
+      ) : !dashboard?.ambassadorCode?.code ? (
+        <section className="panel stack">
+          <EmptyState title={pageCopy.preparingCode}>{pageCopy.dashboardUnavailable}</EmptyState>
         </section>
       ) : (
         <>

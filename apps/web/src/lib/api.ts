@@ -3,6 +3,14 @@ import {
   GetAdminAmbassadorOverviewResponseSchema,
 } from "@bet/contracts";
 
+const isDevelopmentRuntime = (): boolean =>
+  process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+
+const logDevelopmentDiagnostic = (message: string, metadata?: Record<string, unknown>): void => {
+  if (!isDevelopmentRuntime() || typeof window !== "undefined") return;
+  console.warn(message, metadata ?? {});
+};
+
 const getServerCookieHeader = async (): Promise<string | null> => {
   if (typeof window !== "undefined") {
     return null;
@@ -196,7 +204,7 @@ const getApiUrl = (path: string, options?: { requireConfiguredBaseUrl?: boolean 
   return getLocalApiUrl(path);
 };
 
-class ApiResponseError extends Error {
+export class ApiResponseError extends Error {
   readonly status: number;
   readonly url: string;
   readonly code: string | null;
@@ -211,6 +219,9 @@ class ApiResponseError extends Error {
     this.source = input.source ?? null;
   }
 }
+
+export const isApiResponseError = (error: unknown): error is ApiResponseError =>
+  error instanceof ApiResponseError;
 
 export type ExternalMarketsLoadErrorCode =
   | "missing_api_base_url"
@@ -243,11 +254,21 @@ const executeApiRequest = async <T>(
 
   let response: Response;
   try {
+    const proxyHeaders = await getOptionalProxyHeaders();
+    if (url.includes("/ambassador/dashboard")) {
+      const headerRecord = proxyHeaders as Record<string, string>;
+      if (!headerRecord.authorization) {
+        logDevelopmentDiagnostic("dashboard API auth forwarding: missing Supabase access token");
+      }
+      if (!headerRecord.cookie) {
+        logDevelopmentDiagnostic("dashboard API auth forwarding: missing server cookie header");
+      }
+    }
     response = await fetch(url, {
       ...init,
       headers: {
         "content-type": "application/json",
-        ...(await getOptionalProxyHeaders()),
+        ...proxyHeaders,
         ...(init?.headers ?? {}),
       },
       cache: "no-store",
@@ -263,6 +284,12 @@ const executeApiRequest = async <T>(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { code?: string; error?: string; message?: string; source?: string };
+    if (url.includes("/ambassador/dashboard")) {
+      logDevelopmentDiagnostic(
+        response.status === 401 ? "dashboard API returned 401" : "dashboard endpoint failure",
+        { status: response.status, code: payload.code ?? payload.error ?? null },
+      );
+    }
     throw new ApiResponseError({
       message: payload.message ?? payload.error ?? `API request failed for ${url}: ${response.status}`,
       status: response.status,

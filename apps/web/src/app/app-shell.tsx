@@ -38,7 +38,6 @@ export function AppShell({
     { href: "/ambassador", label: copy.shell.nav.invite, mobileLabel: copy.shell.nav.invite, showMobile: true },
     { href: "/rewards", label: copy.shell.nav.rewards, mobileLabel: copy.shell.nav.rewards, showMobile: true },
     { href: "/guides", label: copy.shell.nav.guides, mobileLabel: copy.shell.nav.guides, showMobile: true },
-    { href: "/account", label: copy.shell.nav.account, mobileLabel: copy.shell.nav.account, showMobile: true },
     ...(showAdmin ? [{ href: "/admin", label: copy.shell.nav.admin, mobileLabel: copy.shell.nav.admin, showMobile: true }] : []),
   ];
   const normalizedPath = currentPath === "/" ? "/" : currentPath.replace(/^\/(zh-hk|zh-cn|en)(?=\/|$)/i, "") || "/";
