@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import { DELETE as legacyOrderDELETE } from "./orders/[orderId]/route";
@@ -91,4 +93,12 @@ test("legacy custodial API routes return 410 before auth", async () => {
     assert.equal(response.status, 410);
     assert.deepEqual(await response.json(), expectedLegacyPayload);
   }
+});
+
+test("admin mock builder attribution keeps confirmed rewards pending until explicit review", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/app/api/_shared/ambassador.ts"), "utf8");
+
+  assert.match(source, /if \(input\.status === "confirmed"\) {\s*await createRewardLedgerEntriesForTrade\(transaction, row\.id\);/);
+  assert.doesNotMatch(source, /recordAdminMockBuilderTradeAttributionDb[\s\S]+set status = 'payable'/);
+  assert.doesNotMatch(source, /recordAdminMockBuilderTradeAttributionDb[\s\S]+maybeCreateAutoPayoutRequest/);
 });
