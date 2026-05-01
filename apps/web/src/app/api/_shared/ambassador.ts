@@ -100,6 +100,9 @@ const getRewardConfig = () => {
   };
   const total = config.platformShareBps + config.directReferrerShareBps + config.traderCashbackShareBps;
   if (total !== 10000) throw new Error("ambassador reward shares must sum to 10000 bps");
+  if (config.autoPayoutRequestEnabled) {
+    throw new Error("AMBASSADOR_AUTO_PAYOUT_REQUEST_ENABLED must remain false; payout requests must stay manual");
+  }
   if (config.autoPayoutEnabled) throw new Error("AMBASSADOR_AUTO_PAYOUT_ENABLED must remain false; automatic crypto payouts are not supported");
   if (config.payoutChain !== "polygon") throw new Error("PAYOUT_CHAIN must be polygon");
   if (config.payoutChainId !== 137) throw new Error("PAYOUT_CHAIN_ID must be 137 for Polygon payouts");
@@ -855,69 +858,6 @@ const createRewardLedgerEntriesForTrade = async (transaction: DatabaseTransactio
   );
 };
 
-const maybeCreateAutoPayoutRequest = async (transaction: DatabaseTransaction, recipientUserId: string) => {
-  const config = getRewardConfig();
-  if (!config.enabled || !config.autoPayoutRequestEnabled) return null;
-
-  const [[summary], [wallet], [openPayout]] = await Promise.all([
-    transaction.query<{ amount: bigint }>(
-      `select coalesce(sum(amount_usdc_atoms), 0::bigint) as amount from public.ambassador_reward_ledger where recipient_user_id = $1::uuid and status = 'payable'`,
-      [recipientUserId],
-    ),
-    transaction.query<{ wallet_address: string; asset_preference: string }>(
-      `select wallet_address, asset_preference from public.ambassador_payout_wallets where user_id = $1::uuid and chain = 'polygon' limit 1`,
-      [recipientUserId],
-    ),
-    transaction.query<{ id: string }>(
-      `select id from public.ambassador_reward_payouts where recipient_user_id = $1::uuid and status in ('requested', 'approved') limit 1`,
-      [recipientUserId],
-    ),
-  ]);
-
-  const payableBalance = summary?.amount ?? 0n;
-  if (payableBalance < parseMinPayout() || payableBalance <= 0n || openPayout) return null;
-  if (!wallet || wallet.asset_preference !== "pUSD") return null;
-  let destinationValue: string;
-  try {
-    destinationValue = normalizePayoutWalletAddress(wallet.wallet_address);
-  } catch {
-    return null;
-  }
-
-  const [row] = await transaction.query<{ id: string }>(
-    `
-      insert into public.ambassador_reward_payouts (
-        recipient_user_id, amount_usdc_atoms, status, destination_type, destination_value,
-        payout_chain, payout_chain_id, payout_asset, payout_asset_decimals, asset_contract_address, created_at
-      ) values ($1::uuid, $2, 'requested', 'wallet', $3, $4, $5, $6, $7, $8, now())
-      on conflict do nothing
-      returning id
-    `,
-    [
-      recipientUserId,
-      payableBalance,
-      destinationValue,
-      config.payoutChain,
-      config.payoutChainId,
-      config.payoutAsset,
-      config.payoutAssetDecimals,
-      config.polygonPusdAddress,
-    ],
-  );
-  if (!row) return null;
-  await transaction.query(
-    `update public.ambassador_reward_ledger
-        set status = 'approved',
-            approved_at = coalesce(approved_at, now()),
-            reserved_by_payout_id = $2::uuid,
-            reserved_at = coalesce(reserved_at, now())
-      where recipient_user_id = $1::uuid
-        and status = 'payable'`,
-    [recipientUserId, row.id],
-  );
-  return row ?? null;
-};
-
 export const markRewardsPayableDb = async (tradeAttributionId: string) => {
   const db = getDb();
   return db.transaction(async (transaction) => {
@@ -934,13 +874,6 @@ export const markRewardsPayableDb = async (tradeAttributionId: string) => {
           and status = 'pending'`,
       [tradeAttributionId],
     );
-    const recipients = await transaction.query<{ recipient_user_id: string }>(
-      `select distinct recipient_user_id from public.ambassador_reward_ledger where source_trade_attribution_id = $1::uuid and recipient_user_id is not null`,
-      [tradeAttributionId],
-    );
-    for (const recipient of recipients) {
-      await maybeCreateAutoPayoutRequest(transaction, recipient.recipient_user_id);
-    }
     return { ok: true };
   });
 };
