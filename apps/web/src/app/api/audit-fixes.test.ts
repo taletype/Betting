@@ -120,3 +120,14 @@ test("ambassador rewards cannot auto-create payout requests from config or payab
   assert.doesNotMatch(source, /const maybeCreateAutoPayoutRequest = async/);
   assert.doesNotMatch(source, /markRewardsPayableDb[\s\S]+ambassador_reward_payouts/);
 });
+
+test("admin referral and payout actions require non-empty operator reasons in backend logic", () => {
+  const routeSource = readFileSync(resolve(process.cwd(), "src/app/api/[...path]/route.ts"), "utf8");
+
+  assert.match(routeSource, /const requireAdminReasonField = \(value: unknown, message: string\): string => \{/);
+  assert.match(routeSource, /const reason = requireAdminReasonField\(body\.reason, "admin disable reason is required"\)/);
+  assert.match(routeSource, /const reason = requireAdminReasonField\(body\.reason, "void reason is required"\)/);
+  assert.match(routeSource, /const notes = requireAdminReasonField\(body\.notes, "payout failure reason is required"\)/);
+  assert.match(routeSource, /const notes = requireAdminReasonField\(body\.notes, "payout cancellation reason is required"\)/);
+  assert.match(routeSource, /metadata: \{ reason \}/);
+});
