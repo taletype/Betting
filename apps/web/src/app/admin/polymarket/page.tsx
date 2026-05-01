@@ -173,7 +173,7 @@ export default async function AdminPolymarketPage() {
             ) : null}
           </tbody>
         </table>
-        <p className="muted">獎勵只可由已確認的官方 Builder fee 證據建立；本頁不會顯示 Builder Code secret、API key、錢包私鑰或 service-role key。</p>
+        <p className="muted">獎勵只可由已確認的官方 Builder fee 證據建立；本頁不會顯示 Builder Code secret、API key、錢包私鑰或管理員後端密鑰。</p>
       </section>
 
       <section className="panel stack">
