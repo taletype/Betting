@@ -230,7 +230,7 @@ test("reward ledger entries are created as pending records", () => {
   assert.match(source, /status,\s*created_at/);
   assert.match(source, /'pending'/);
   assert.match(source, /builder trade attribution must be confirmed before rewards become payable/);
-assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
+  assert.match(handlers, /tradeAttribution\.status === "confirmed"/);
   assert.match(handlers, /accountConfirmedBuilderTradeRewards/);
   assert.doesNotMatch(handlers, /ledger = await markRewardsPayable\(transaction, tradeAttribution\.id\)/);
 });
@@ -246,15 +246,16 @@ test("unconfirmed Builder attribution does not create payable rewards", () => {
 
 test("payout workflow enforces threshold and admin approval before paid", () => {
   const source = readFileSync(resolve(process.cwd(), "src/modules/ambassador/repository.ts"), "utf8");
+  const handlers = readFileSync(resolve(process.cwd(), "src/modules/ambassador/handlers.ts"), "utf8");
 
-  assert.match(source, /from public\.ambassador_reward_ledger[\s\S]+status = 'payable'[\s\S]+for update/);
   assert.match(source, /payable rewards are below the minimum payout threshold/);
   assert.match(source, /status = 'requested'/);
   assert.match(source, /'requested',\s*\$3,/);
   assert.match(source, /status = 'approved'/);
   assert.match(source, /ambassador_reward_ledger[\s\S]+set status = 'approved'/);
-  assert.match(source, /payout request must reserve the exact payable reward amount/);
-  assert.match(source, /status = 'approved'/);
+  assert.match(handlers, /from public\.ambassador_reward_ledger[\s\S]+status = 'payable'[\s\S]+for update/);
+  assert.match(handlers, /payout request must reserve the exact payable reward amount/);
+  assert.match(handlers, /findOpenRewardPayoutForRecipient/);
   assert.match(source, /wallet payout tx hash must be a 32-byte 0x hash/);
   assert.match(source, /recipient already has an open reward payout request/);
   assert.match(source, /payout requires admin approval before it can be marked paid/);
