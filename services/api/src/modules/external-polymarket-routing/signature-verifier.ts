@@ -12,12 +12,11 @@ export interface PolymarketV2Order {
   tokenId: string | number | bigint;
   makerAmount: string | number | bigint;
   takerAmount: string | number | bigint;
-  expiration: string | number | bigint;
+  side: number; // 0 for BUY, 1 for SELL
+  signatureType: number;
   timestamp: string | number | bigint;
   metadata: string;
-  side: number; // 0 for BUY, 1 for SELL
   builder: string;
-  signatureType: number;
 }
 
 /**
@@ -32,12 +31,11 @@ const POLYMARKET_V2_ORDER_TYPES = {
     { name: "tokenId", type: "uint256" },
     { name: "makerAmount", type: "uint256" },
     { name: "takerAmount", type: "uint256" },
-    { name: "expiration", type: "uint256" },
+    { name: "side", type: "uint8" },
+    { name: "signatureType", type: "uint8" },
     { name: "timestamp", type: "uint256" },
     { name: "metadata", type: "bytes32" },
-    { name: "side", type: "uint8" },
     { name: "builder", type: "bytes32" },
-    { name: "signatureType", type: "uint8" },
   ],
 } as const;
 
@@ -46,10 +44,10 @@ const POLYMARKET_V2_ORDER_TYPES = {
  * Defaults to Polygon Mainnet CTF Exchange values.
  */
 const getPolymarketV2Domain = (): TypedDataDomain => ({
-  name: process.env.POLYMARKET_CLOB_DOMAIN_NAME || "ClobMarket",
-  version: process.env.POLYMARKET_CLOB_DOMAIN_VERSION || "1",
+  name: process.env.POLYMARKET_CLOB_DOMAIN_NAME || "Polymarket CTF Exchange",
+  version: process.env.POLYMARKET_CLOB_DOMAIN_VERSION || "2",
   chainId: Number(process.env.POLYMARKET_CLOB_CHAIN_ID || "137"),
-  verifyingContract: (process.env.POLYMARKET_CLOB_EXCHANGE_ADDRESS || "0x4bFb9717c5870b4BA4ca46016393cb2170f1622e") as `0x${string}`,
+  verifyingContract: (process.env.POLYMARKET_CLOB_EXCHANGE_ADDRESS || "0xE111180000d2663C0091e4f400237545B87B996B") as `0x${string}`,
 });
 
 /**
@@ -81,12 +79,11 @@ export const verifyPolymarketOrderSignature = async (payload: {
       tokenId: signedOrder.tokenId,
       makerAmount: signedOrder.makerAmount,
       takerAmount: signedOrder.takerAmount,
-      expiration: signedOrder.expiration || 0,
+      side,
+      signatureType: signedOrder.signatureType || 0,
       timestamp: signedOrder.timestamp,
       metadata: signedOrder.metadata || "0x0000000000000000000000000000000000000000000000000000000000000000",
-      side,
       builder: signedOrder.builder,
-      signatureType: signedOrder.signatureType || 0,
     };
 
     // Critical check: The builder code signed by the user MUST match the one we are routing with.
@@ -105,7 +102,7 @@ export const verifyPolymarketOrderSignature = async (payload: {
       domain,
       types: POLYMARKET_V2_ORDER_TYPES,
       primaryType: "Order",
-      message: message as any,
+      message,
       signature: signedOrder.signature as `0x${string}`,
     });
 
