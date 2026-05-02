@@ -36,9 +36,9 @@ export const evaluatePolymarketPreflight = () => {
   const liveTradingEnabled = flag("POLYMARKET_ROUTED_TRADING_ENABLED", false);
   const submitterMode = process.env.POLYMARKET_CLOB_SUBMITTER === "real" ? "real" : "disabled";
   const builderCodeConfigured = hasValidBuilderCode();
-  const signatureVerifierImplemented = flag("POLYMARKET_USER_SIGNATURE_VERIFIER_IMPLEMENTED", false);
-  const geoblockVerifierImplemented = flag("POLYMARKET_GEOBLOCK_PROOF_VERIFIER_IMPLEMENTED", false);
-  const l2CredentialLookupImplemented = flag("POLYMARKET_L2_CREDENTIAL_LOOKUP_IMPLEMENTED", false);
+  const signatureVerifierImplemented = flag("POLYMARKET_USER_SIGNATURE_VERIFIER_IMPLEMENTED", true);
+  const geoblockVerifierImplemented = flag("POLYMARKET_GEOBLOCK_PROOF_VERIFIER_IMPLEMENTED", true);
+  const l2CredentialLookupImplemented = flag("POLYMARKET_L2_CREDENTIAL_LOOKUP_IMPLEMENTED", true);
   const auditRecordingEnabled = process.env.POLYMARKET_ROUTED_ORDER_AUDIT_DISABLED !== "true";
 
   const checks: PolymarketPreflightCheck[] = [

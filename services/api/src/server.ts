@@ -33,6 +33,7 @@ import {
   verifyPolymarketL2CredentialChallengeSignature,
 } from "./modules/external-polymarket-routing/l2-credentials";
 import { evaluatePolymarketPreflight } from "./modules/external-polymarket-routing/preflight";
+import { verifyPolymarketOrderSignature } from "./modules/external-polymarket-routing/signature-verifier";
 import { runPolymarketBuilderAttributionSyncWithDependencies } from "./modules/external-polymarket-routing/builder-attribution-sync";
 import { getHealth } from "./modules/health/handlers";
 import {
@@ -587,6 +588,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
             requestUserEmail: requestUser?.email ?? null,
             serverRegionCheck: region,
             geoblockProofVerifier: async () => region.status === "allowed",
+            signatureVerifier: verifyPolymarketOrderSignature,
           },
         );
         return new Response(toJson(payload), {
@@ -676,6 +678,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         const payload = await routeExternalPolymarketOrder(body, {
           requestUserId,
           requestUserEmail: requestUser?.email ?? null,
+          signatureVerifier: verifyPolymarketOrderSignature,
         });
         return new Response(toJson(payload), {
           headers: { "content-type": "application/json" },
